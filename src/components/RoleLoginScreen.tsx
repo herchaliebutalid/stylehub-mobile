@@ -1,20 +1,12 @@
-import {
-  Ionicons,
-} from '@expo/vector-icons';
 
-import {
-  router,
-} from 'expo-router';
-
-import {
-  useState,
-} from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { useState } from 'react';
 
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -25,54 +17,54 @@ import {
   View,
 } from 'react-native';
 
-import {
-  COLORS,
-} from '@/src/constants/colors';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import {
-  LAYOUT,
-  RADII,
-  SHADOWS,
-  SPACING,
-  TYPOGRAPHY,
-} from '@/src/constants/design';
+import { LAYOUT } from '@/src/constants/design';
+import { useAuth } from '@/src/context/AuthContext';
+import { ApiError } from '@/src/services/api';
+import type { MobileUserRole } from '@/src/types/auth';
 
-import {
-  useAuth,
-} from '@/src/context/AuthContext';
+/* ==========================================================
+   STYLEHUB LOGIN THEME
+   Dark Navy / Warm Orange / White
+   ========================================================== */
 
-import {
-  ApiError,
-} from '@/src/services/api';
+const THEME = {
+  navy: '#08131F',
+  navyDark: '#06101A',
+  navyLight: '#162635',
 
-import type {
-  MobileUserRole,
-} from '@/src/types/auth';
+  orange: '#D99202',
+  orangeDark: '#C78200',
+  orangeSoft: '#F8E8CC',
 
+  white: '#FFFFFF',
+  offWhite: '#F7F8FA',
 
-/* ==========================================================================
-   TYPES
-   ========================================================================== */
+  text: '#152432',
+  muted: '#6B7A89',
+  mutedLight: '#B7C2CE',
+
+  border: '#E7EBF0',
+  customerSoft: '#EEF3F8',
+
+  danger: '#C43D43',
+  dangerSoft: '#FFF0F0',
+
+  green: '#167C51',
+  greenSoft: '#E7F7EF',
+};
 
 interface RoleLoginScreenProps {
-  role:
-    MobileUserRole;
-
-  title:
-    string;
-
-  subtitle:
-    string;
-
-  icon:
-    | 'person-outline'
-    | 'storefront-outline';
+  role: MobileUserRole;
+  title: string;
+  subtitle: string;
+  icon: 'person-outline' | 'storefront-outline';
 }
 
-
-/* ==========================================================================
-   ROLE LOGIN SCREEN
-   ========================================================================== */
+/* ==========================================================
+   SHARED CUSTOMER / SHOP OWNER LOGIN
+   ========================================================== */
 
 export default function RoleLoginScreen({
   role,
@@ -80,167 +72,76 @@ export default function RoleLoginScreen({
   subtitle,
   icon,
 }: RoleLoginScreenProps) {
-  const {
-    login,
-    isSubmitting,
-  } =
-    useAuth();
+  const { login, isSubmitting } = useAuth();
 
-  const {
-    width,
-    height,
-  } =
-    useWindowDimensions();
+  const { width } = useWindowDimensions();
 
+  /* FORM STATE */
 
-  /* ==========================================================================
-     FORM STATE
-     ========================================================================== */
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
 
-  const [
-    email,
-    setEmail,
-  ] =
-    useState('');
-
-  const [
-    password,
-    setPassword,
-  ] =
-    useState('');
-
-  const [
-    passwordVisible,
-    setPasswordVisible,
-  ] =
+  const [passwordVisible, setPasswordVisible] =
     useState(false);
 
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] =
-    useState('');
+  const [errorMessage, setErrorMessage] = useState('');
 
+  /* RESPONSIVE SETTINGS */
 
-  /* ==========================================================================
-     RESPONSIVE STATE
-     ========================================================================== */
+  const isSmallPhone = width < 360;
+  const isTablet = width >= 720;
 
-  const isSmallPhone =
-    width < 360;
+  const horizontalPadding = isTablet
+    ? 32
+    : isSmallPhone
+      ? 16
+      : 22;
 
-  const isShortScreen =
-    height < 700;
+  /* ROLE SETTINGS */
 
-  const isTablet =
-    width >= 720;
+  const isCustomer = role === 'customer';
 
+  const roleLabel = isCustomer
+    ? 'Customer'
+    : 'Shop Owner';
 
-  const horizontalPadding =
-    isTablet
-      ? 32
-      : isSmallPhone
-        ? 16
-        : LAYOUT.screenPadding;
+  const roleDescription = isCustomer
+    ? 'Access your bookings, discover shops and manage your StyleHub experience.'
+    : 'Access your shop dashboard, services, schedules and customer bookings.';
 
-
-  /* ==========================================================================
-     ROLE PRESENTATION
-     ========================================================================== */
-
-  const isCustomer =
-    role ===
-    'customer';
-
-  const roleLabel =
-    isCustomer
-      ? 'Customer'
-      : 'Shop Owner';
-
-  const roleAccent =
-    isCustomer
-      ? COLORS.blue
-      : COLORS.orange;
-
-  const roleAccentSoft =
-    isCustomer
-      ? COLORS.blueSoft
-      : COLORS.orangeSoft;
-
-  const roleDescription =
-    isCustomer
-      ? 'Access your bookings, discover shops and manage your StyleHub experience.'
-      : 'Access your shop dashboard, services, schedules and customer bookings.';
-
-
-  /* ==========================================================================
-     LOGIN
-     ========================================================================== */
+  /* LOGIN */
 
   async function handleLogin() {
     setErrorMessage('');
 
-    const normalizedEmail =
-      email
-        .trim()
-        .toLowerCase();
+    const normalizedEmail = email.trim().toLowerCase();
 
-    if (
-      normalizedEmail ===
-      ''
-    ) {
-      setErrorMessage(
-        'Enter your email address.',
-      );
-
+    if (normalizedEmail === '') {
+      setErrorMessage('Enter your email address.');
       return;
     }
 
-    if (
-      password ===
-      ''
-    ) {
-      setErrorMessage(
-        'Enter your password.',
-      );
-
+    if (password === '') {
+      setErrorMessage('Enter your password.');
       return;
     }
 
     try {
-      const user =
-        await login({
-          role,
+      const user = await login({
+        role,
+        email: normalizedEmail,
+        password,
+      });
 
-          email:
-            normalizedEmail,
-
-          password,
-        });
-
-      if (
-        user.role ===
-        'customer'
-      ) {
-        router.replace(
-          '/(customer)/customer',
-        );
-
+      if (user.role === 'customer') {
+        router.replace('/(customer)/customer');
         return;
       }
 
-      router.replace(
-        '/(shop-owner)/shop-owner',
-      );
+      router.replace('/(shop-owner)/shop-owner');
     } catch (error) {
-      if (
-        error instanceof
-        ApiError
-      ) {
-        setErrorMessage(
-          error.message,
-        );
-
+      if (error instanceof ApiError) {
+        setErrorMessage(error.message);
         return;
       }
 
@@ -250,489 +151,276 @@ export default function RoleLoginScreen({
     }
   }
 
-
-  /* ==========================================================================
-     FORGOT PASSWORD
-     ========================================================================== */
+  /* FORGOT PASSWORD */
 
   function handleForgotPassword() {
     router.push({
-      pathname:
-        '/forgot-password',
-
-      params: {
-        role,
-      },
+      pathname: '/forgot-password',
+      params: { role },
     });
   }
 
-
-  /* ==========================================================================
-     CREATE ACCOUNT
-     ========================================================================== */
+  /* CREATE ACCOUNT */
 
   function handleCreateAccount() {
-    if (
-      role ===
-      'customer'
-    ) {
-      router.push(
-        '/(auth)/customer-register',
-      );
-
+    if (role === 'customer') {
+      router.push('/(auth)/customer-register');
       return;
     }
 
-    router.push(
-      '/(auth)/shop-owner-register',
-    );
+    router.push('/(auth)/shop-owner-register');
   }
 
-
-  /* ==========================================================================
-     RENDER
-     ========================================================================== */
+  /* MAIN SCREEN */
 
   return (
     <SafeAreaView
-      style={
-        styles.safeArea
-      }
+      edges={['top', 'bottom']}
+      style={styles.safeArea}
     >
       <StatusBar
-        barStyle="dark-content"
-        backgroundColor={
-          COLORS.background
-        }
+        barStyle="light-content"
+        backgroundColor={THEME.navyDark}
+        translucent={false}
       />
 
-
       <KeyboardAvoidingView
-        style={
-          styles.keyboardView
-        }
+        style={styles.keyboardView}
         behavior={
-          Platform.OS ===
-          'ios'
+          Platform.OS === 'ios'
             ? 'padding'
             : undefined
         }
       >
         <ScrollView
           keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={
-            false
-          }
-          contentContainerStyle={
-            styles.scrollContent
-          }
-          bounces={
-            false
-          }
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.scrollContent}
+          bounces={false}
         >
           <View
             style={[
               styles.screen,
-
               {
-                paddingHorizontal:
-                  horizontalPadding,
+                paddingHorizontal: horizontalPadding,
+                paddingTop: 40,
               },
-
-              isShortScreen &&
-                styles.screenCompact,
             ]}
           >
-            {/* ==============================================================
-                TOP NAVIGATION
-                ============================================================== */}
+            {/* TOP NAVIGATION */}
 
-            <View
-              style={
-                styles.topBar
-              }
-            >
+            <View style={styles.topBar}>
               <TouchableOpacity
                 activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel="Go back"
-                disabled={
-                  isSubmitting
-                }
-                onPress={
-                  () =>
-                    router.back()
-                }
-                style={
-                  styles.backButton
-                }
+                disabled={isSubmitting}
+                onPress={() => router.back()}
+                style={styles.backButton}
               >
                 <Ionicons
                   name="arrow-back"
-                  size={20}
-                  color={
-                    COLORS.navy
-                  }
+                  size={21}
+                  color={THEME.white}
                 />
               </TouchableOpacity>
+
+              <View style={styles.topBarCaptionWrap}>
+                <View style={styles.topBarDot} />
+
+                <Text style={styles.topBarCaption}>
+                  STYLEHUB ACCOUNT
+                </Text>
+              </View>
             </View>
 
+            {/* HEADER */}
 
-            {/* ==============================================================
-                HEADER
-                ============================================================== */}
-
-            <View
-              style={[
-                styles.headingSection,
-
-                isShortScreen &&
-                  styles.headingSectionCompact,
-              ]}
-            >
+            <View style={styles.headingSection}>
               <View
                 style={[
                   styles.roleIconShell,
-
-                  {
-                    backgroundColor:
-                      roleAccentSoft,
-                  },
+                  isCustomer
+                    ? styles.customerIconShell
+                    : styles.ownerIconShell,
                 ]}
               >
                 <Ionicons
                   name={icon}
-                  size={
-                    isSmallPhone
-                      ? 25
-                      : 28
-                  }
-                  color={
-                    roleAccent
-                  }
+                  size={isSmallPhone ? 25 : 28}
+                  color={THEME.orange}
                 />
               </View>
 
+              <View style={styles.roleBadge}>
+                <View style={styles.roleBadgeDot} />
 
-              <View
-                style={[
-                  styles.roleBadge,
-
-                  {
-                    backgroundColor:
-                      roleAccentSoft,
-                  },
-                ]}
-              >
-                <View
-                  style={[
-                    styles.roleBadgeDot,
-
-                    {
-                      backgroundColor:
-                        roleAccent,
-                    },
-                  ]}
-                />
-
-                <Text
-                  style={[
-                    styles.roleBadgeText,
-
-                    {
-                      color:
-                        roleAccent,
-                    },
-                  ]}
-                >
+                <Text style={styles.roleBadgeText}>
                   {roleLabel.toUpperCase()}
                 </Text>
               </View>
 
-
               <Text
                 style={[
                   styles.title,
-
-                  isSmallPhone &&
-                    styles.titleSmall,
+                  isSmallPhone && styles.titleSmall,
                 ]}
               >
                 {title}
               </Text>
 
-
-              <Text
-                style={
-                  styles.subtitle
-                }
-              >
+              <Text style={styles.subtitle}>
                 {subtitle}
               </Text>
+
+              <View style={styles.headingAccentLine} />
             </View>
 
+            {/* LOGIN CARD */}
 
-            {/* ==============================================================
-                LOGIN CARD
-                ============================================================== */}
+            <View style={styles.loginCard}>
+              <View style={styles.cardAccentLine} />
 
-            <View
-              style={
-                styles.loginCard
-              }
-            >
-              <View
-                style={
-                  styles.cardHeader
-                }
-              >
-                <View>
-                  <Text
-                    style={
-                      styles.cardEyebrow
-                    }
-                  >
+              <View style={styles.cardHeader}>
+                <View style={styles.cardHeadingCopy}>
+                  <Text style={styles.cardEyebrow}>
                     ACCOUNT ACCESS
                   </Text>
 
-                  <Text
-                    style={
-                      styles.cardTitle
-                    }
-                  >
+                  <Text style={styles.cardTitle}>
                     Sign in to continue
                   </Text>
                 </View>
 
-
-                <View
-                  style={
-                    styles.secureBadge
-                  }
-                >
+                <View style={styles.secureBadge}>
                   <Ionicons
                     name="shield-checkmark-outline"
                     size={14}
-                    color={
-                      COLORS.green
-                    }
+                    color={THEME.green}
                   />
 
-                  <Text
-                    style={
-                      styles.secureBadgeText
-                    }
-                  >
+                  <Text style={styles.secureBadgeText}>
                     Secure
                   </Text>
                 </View>
               </View>
 
+              {/* EMAIL ADDRESS */}
 
-              {/* ============================================================
-                  EMAIL
-                  ============================================================ */}
-
-              <View
-                style={
-                  styles.field
-                }
-              >
-                <Text
-                  style={
-                    styles.label
-                  }
-                >
+              <View style={styles.field}>
+                <Text style={styles.label}>
                   Email address
                 </Text>
 
-
-                <View
-                  style={
-                    styles.inputContainer
-                  }
-                >
-                  <View
-                    style={
-                      styles.inputIcon
-                    }
-                  >
+                <View style={styles.inputContainer}>
+                  <View style={styles.inputIcon}>
                     <Ionicons
                       name="mail-outline"
                       size={18}
-                      color={
-                        COLORS.textMuted
-                      }
+                      color={THEME.muted}
                     />
                   </View>
 
-
                   <TextInput
                     value={email}
-                    onChangeText={
-                      (value) => {
-                        setEmail(value);
+                    onChangeText={(value) => {
+                      setEmail(value);
 
-                        if (
-                          errorMessage
-                        ) {
-                          setErrorMessage('');
-                        }
+                      if (errorMessage) {
+                        setErrorMessage('');
                       }
-                    }
+                    }}
                     autoCapitalize="none"
                     autoCorrect={false}
                     keyboardType="email-address"
                     textContentType="emailAddress"
                     autoComplete="email"
                     placeholder="name@example.com"
-                    placeholderTextColor={
-                      COLORS.textLight
-                    }
-                    editable={
-                      !isSubmitting
-                    }
+                    placeholderTextColor={THEME.muted}
+                    editable={!isSubmitting}
                     multiline={false}
                     numberOfLines={1}
                     returnKeyType="next"
-                    style={
-                      styles.input
-                    }
+                    selectionColor={THEME.orange}
+                    style={styles.input}
                   />
                 </View>
               </View>
 
+              {/* PASSWORD */}
 
-              {/* ============================================================
-                  PASSWORD
-                  ============================================================ */}
-
-              <View
-                style={
-                  styles.field
-                }
-              >
-                <View
-                  style={
-                    styles.passwordLabelRow
-                  }
-                >
-                  <Text
-                    style={
-                      styles.label
-                    }
-                  >
+              <View style={styles.field}>
+                <View style={styles.passwordLabelRow}>
+                  <Text style={styles.label}>
                     Password
                   </Text>
 
-
                   <TouchableOpacity
                     activeOpacity={0.7}
-                    disabled={
-                      isSubmitting
-                    }
+                    disabled={isSubmitting}
                     accessibilityRole="button"
                     accessibilityLabel="Forgot password"
-                    onPress={
-                      handleForgotPassword
-                    }
-                    style={
-                      styles.forgotButton
-                    }
+                    onPress={handleForgotPassword}
+                    style={styles.forgotButton}
                   >
-                    <Text
-                      style={
-                        styles.forgotText
-                      }
-                    >
+                    <Text style={styles.forgotText}>
                       Forgot password?
                     </Text>
                   </TouchableOpacity>
                 </View>
 
-
-                <View
-                  style={
-                    styles.inputContainer
-                  }
-                >
-                  <View
-                    style={
-                      styles.inputIcon
-                    }
-                  >
+                <View style={styles.inputContainer}>
+                  <View style={styles.inputIcon}>
                     <Ionicons
                       name="lock-closed-outline"
                       size={18}
-                      color={
-                        COLORS.textMuted
-                      }
+                      color={THEME.muted}
                     />
                   </View>
 
-
                   <TextInput
                     value={password}
-                    onChangeText={
-                      (value) => {
-                        setPassword(value);
+                    onChangeText={(value) => {
+                      setPassword(value);
 
-                        if (
-                          errorMessage
-                        ) {
-                          setErrorMessage('');
-                        }
+                      if (errorMessage) {
+                        setErrorMessage('');
                       }
-                    }
-                    secureTextEntry={
-                      !passwordVisible
-                    }
+                    }}
+                    secureTextEntry={!passwordVisible}
                     textContentType="password"
                     autoComplete="current-password"
                     autoCapitalize="none"
                     autoCorrect={false}
                     placeholder="Enter your password"
-                    placeholderTextColor={
-                      COLORS.textLight
-                    }
-                    editable={
-                      !isSubmitting
-                    }
+                    placeholderTextColor={THEME.muted}
+                    editable={!isSubmitting}
                     multiline={false}
                     numberOfLines={1}
                     returnKeyType="done"
-                    onSubmitEditing={
-                      handleLogin
-                    }
+                    selectionColor={THEME.orange}
+                    onSubmitEditing={handleLogin}
                     style={[
                       styles.input,
-
                       styles.passwordInput,
                     ]}
                   />
 
-
                   <TouchableOpacity
                     activeOpacity={0.65}
-                    disabled={
-                      isSubmitting
-                    }
+                    disabled={isSubmitting}
                     accessibilityRole="button"
                     accessibilityLabel={
                       passwordVisible
                         ? 'Hide password'
                         : 'Show password'
                     }
-                    onPress={
-                      () =>
-                        setPasswordVisible(
-                          (current) =>
-                            !current,
-                        )
+                    onPress={() =>
+                      setPasswordVisible(
+                        (current) => !current,
+                      )
                     }
-                    style={
-                      styles.passwordToggle
-                    }
+                    style={styles.passwordToggle}
                   >
                     <Ionicons
                       name={
@@ -741,177 +429,91 @@ export default function RoleLoginScreen({
                           : 'eye-outline'
                       }
                       size={20}
-                      color={
-                        COLORS.textMuted
-                      }
+                      color={THEME.muted}
                     />
                   </TouchableOpacity>
                 </View>
               </View>
 
+              {/* ERROR MESSAGE */}
 
-              {/* ============================================================
-                  ERROR
-                  ============================================================ */}
+              {errorMessage ? (
+                <View style={styles.errorBox}>
+                  <View style={styles.errorIcon}>
+                    <Ionicons
+                      name="alert-circle-outline"
+                      size={18}
+                      color={THEME.danger}
+                    />
+                  </View>
 
-              {
-                errorMessage
-                  ? (
-                    <View
-                      style={
-                        styles.errorBox
-                      }
-                    >
-                      <View
-                        style={
-                          styles.errorIcon
-                        }
-                      >
-                        <Ionicons
-                          name="alert-circle-outline"
-                          size={17}
-                          color={
-                            COLORS.danger
-                          }
-                        />
-                      </View>
+                  <View style={styles.errorCopy}>
+                    <Text style={styles.errorTitle}>
+                      Unable to sign in
+                    </Text>
 
-                      <View
-                        style={
-                          styles.errorCopy
-                        }
-                      >
-                        <Text
-                          style={
-                            styles.errorTitle
-                          }
-                        >
-                          Unable to sign in
-                        </Text>
+                    <Text style={styles.errorText}>
+                      {errorMessage}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
 
-                        <Text
-                          style={
-                            styles.errorText
-                          }
-                        >
-                          {errorMessage}
-                        </Text>
-                      </View>
-                    </View>
-                  )
-                  : null
-              }
-
-
-              {/* ============================================================
-                  LOGIN BUTTON
-                  ============================================================ */}
+              {/* SIGN IN BUTTON */}
 
               <TouchableOpacity
                 activeOpacity={0.86}
-                disabled={
-                  isSubmitting
-                }
+                disabled={isSubmitting}
                 accessibilityRole="button"
                 accessibilityLabel={`Sign in as ${roleLabel}`}
-                onPress={
-                  handleLogin
-                }
+                onPress={handleLogin}
                 style={[
                   styles.loginButton,
-
                   isSubmitting &&
                     styles.loginButtonDisabled,
                 ]}
               >
-                {
-                  isSubmitting
-                    ? (
-                      <>
-                        <ActivityIndicator
-                          size="small"
-                          color={
-                            COLORS.white
-                          }
-                        />
+                {isSubmitting ? (
+                  <>
+                    <ActivityIndicator
+                      size="small"
+                      color={THEME.navyDark}
+                    />
 
-                        <Text
-                          style={
-                            styles.loginButtonText
-                          }
-                        >
-                          Signing in...
-                        </Text>
-                      </>
-                    )
-                    : (
-                      <>
-                        <Text
-                          style={
-                            styles.loginButtonText
-                          }
-                        >
-                          Sign In
-                        </Text>
+                    <Text style={styles.loginButtonText}>
+                      Signing in...
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.loginButtonText}>
+                      Sign In
+                    </Text>
 
-                        <View
-                          style={
-                            styles.loginButtonIcon
-                          }
-                        >
-                          <Ionicons
-                            name="arrow-forward"
-                            size={17}
-                            color={
-                              COLORS.white
-                            }
-                          />
-                        </View>
-                      </>
-                    )
-                }
+                    <View style={styles.loginButtonIcon}>
+                      <Ionicons
+                        name="arrow-forward"
+                        size={18}
+                        color={THEME.white}
+                      />
+                    </View>
+                  </>
+                )}
               </TouchableOpacity>
 
+              {/* ROLE INFORMATION */}
 
-              {/* ============================================================
-                  ROLE INFORMATION
-                  ============================================================ */}
-
-              <View
-                style={
-                  styles.roleInformation
-                }
-              >
-                <View
-                  style={[
-                    styles.roleInformationIcon,
-
-                    {
-                      backgroundColor:
-                        roleAccentSoft,
-                    },
-                  ]}
-                >
+              <View style={styles.roleInformation}>
+                <View style={styles.roleInformationIcon}>
                   <Ionicons
                     name={icon}
-                    size={16}
-                    color={
-                      roleAccent
-                    }
+                    size={17}
+                    color={THEME.orangeDark}
                   />
                 </View>
 
-
-                <View
-                  style={
-                    styles.roleInformationCopy
-                  }
-                >
-                  <Text
-                    style={
-                      styles.roleInformationTitle
-                    }
-                  >
+                <View style={styles.roleInformationCopy}>
+                  <Text style={styles.roleInformationTitle}>
                     {roleLabel} access
                   </Text>
 
@@ -926,128 +528,70 @@ export default function RoleLoginScreen({
               </View>
             </View>
 
+            {/* CREATE ACCOUNT CARD */}
 
-            {/* ==============================================================
-                CREATE ACCOUNT
-                ============================================================== */}
-
-            <View
-              style={
-                styles.createCard
-              }
-            >
-              <View
-                style={
-                  styles.createCopy
-                }
-              >
-                <Text
-                  style={
-                    styles.createEyebrow
-                  }
-                >
+            <View style={styles.createCard}>
+              <View style={styles.createCopy}>
+                <Text style={styles.createEyebrow}>
                   NEW TO STYLEHUB?
                 </Text>
 
-                <Text
-                  style={
-                    styles.createTitle
-                  }
-                >
-                  Create your {roleLabel.toLowerCase()} account
+                <Text style={styles.createTitle}>
+                  Create your {roleLabel.toLowerCase()}{' '}
+                  account
                 </Text>
 
-                <Text
-                  style={
-                    styles.createDescription
-                  }
-                >
-                  {
-                    isCustomer
-                      ? 'Join StyleHub to discover shops and start booking services.'
-                      : 'Register your account and submit your shop to join StyleHub.'
-                  }
+                <Text style={styles.createDescription}>
+                  {isCustomer
+                    ? 'Join StyleHub to discover shops and start booking services.'
+                    : 'Register your account and submit your shop to join StyleHub.'}
                 </Text>
               </View>
 
-
               <TouchableOpacity
                 activeOpacity={0.82}
-                disabled={
-                  isSubmitting
-                }
+                disabled={isSubmitting}
                 accessibilityRole="button"
                 accessibilityLabel={`Create ${roleLabel} account`}
-                onPress={
-                  handleCreateAccount
-                }
-                style={
-                  styles.createButton
-                }
+                onPress={handleCreateAccount}
+                style={styles.createButton}
               >
-                <Ionicons
-                  name="person-add-outline"
-                  size={17}
-                  color={
-                    COLORS.navy
-                  }
-                />
+                <View style={styles.createButtonIcon}>
+                  <Ionicons
+                    name="person-add-outline"
+                    size={18}
+                    color={THEME.orangeDark}
+                  />
+                </View>
 
-                <Text
-                  style={
-                    styles.createButtonText
-                  }
-                >
+                <Text style={styles.createButtonText}>
                   Create account
                 </Text>
 
                 <Ionicons
-                  name="chevron-forward"
-                  size={17}
-                  color={
-                    COLORS.navy
-                  }
+                  name="arrow-forward"
+                  size={18}
+                  color={THEME.orangeDark}
                 />
               </TouchableOpacity>
             </View>
 
+            {/* FOOTER */}
 
-            {/* ==============================================================
-                SECURITY FOOTER
-                ============================================================== */}
-
-            <View
-              style={
-                styles.securityFooter
-              }
-            >
+            <View style={styles.securityFooter}>
               <Ionicons
                 name="lock-closed-outline"
                 size={13}
-                color={
-                  COLORS.textLight
-                }
+                color={THEME.mutedLight}
               />
 
-              <Text
-                style={
-                  styles.securityFooterText
-                }
-              >
+              <Text style={styles.securityFooterText}>
                 Secure StyleHub account access
               </Text>
 
-              <View
-                style={
-                  styles.footerDot
-                }
-              />
+              <View style={styles.footerDot} />
 
-              <Text
-                style={
-                  styles.securityFooterText
-                }
-              >
+              <Text style={styles.securityFooterText}>
                 {roleLabel}
               </Text>
             </View>
@@ -1058,825 +602,556 @@ export default function RoleLoginScreen({
   );
 }
 
-
-/* ==========================================================================
+/* ==========================================================
    STYLES
-   ========================================================================== */
-
-const styles =
-  StyleSheet.create({
-    safeArea: {
-      flex: 1,
-
-      backgroundColor:
-        COLORS.background,
-    },
-
-
-    keyboardView: {
-      flex: 1,
-    },
-
-
-    scrollContent: {
-      flexGrow: 1,
-
-      backgroundColor:
-        COLORS.background,
-    },
-
-
-    screen: {
-      width: '100%',
-
-      maxWidth:
-        LAYOUT.contentMaxWidth,
-
-      flexGrow: 1,
-
-      alignSelf: 'center',
-
-      paddingTop:
-        SPACING.sm,
-
-      paddingBottom:
-        SPACING.xxl,
-    },
-
-
-    screenCompact: {
-      paddingTop:
-        SPACING.xs,
-
-      paddingBottom:
-        SPACING.xl,
-    },
-
-
-    /* ======================================================================
-       TOP BAR
-       ====================================================================== */
-
-    topBar: {
-      minHeight: 52,
-
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      justifyContent:
-        'flex-start',
-    },
-
-
-    backButton: {
-      width:
-        LAYOUT.iconButtonSize,
-
-      height:
-        LAYOUT.iconButtonSize,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      borderWidth: 1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    /* ======================================================================
-       HEADING
-       ====================================================================== */
-
-    headingSection: {
-      alignItems: 'center',
-
-      paddingTop:
-        SPACING.lg,
-
-      paddingBottom:
-        SPACING.xxl,
-    },
-
-
-    headingSectionCompact: {
-      paddingTop:
-        SPACING.sm,
-
-      paddingBottom:
-        SPACING.xl,
-    },
-
-
-    roleIconShell: {
-      width: 62,
-
-      height: 62,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      borderRadius:
-        RADII.xl,
-
-      marginBottom:
-        SPACING.md,
-    },
-
-
-    roleBadge: {
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      gap: 6,
-
-      paddingHorizontal: 9,
-
-      paddingVertical: 5,
-
-      borderRadius:
-        RADII.pill,
-
-      marginBottom:
-        SPACING.sm,
-    },
-
-
-    roleBadgeDot: {
-      width: 5,
-
-      height: 5,
-
-      borderRadius: 3,
-    },
-
-
-    roleBadgeText: {
-      fontSize: 8,
-
-      fontWeight: '800',
-
-      letterSpacing: 1,
-    },
-
-
-    title: {
-      maxWidth: 520,
-
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.display,
-
-      lineHeight: 36,
-
-      fontWeight: '800',
-
-      letterSpacing: -0.8,
-
-      textAlign: 'center',
-    },
-
-
-    titleSmall: {
-      fontSize: 26,
-
-      lineHeight: 32,
-    },
-
-
-    subtitle: {
-      maxWidth: 500,
-
-      marginTop:
-        SPACING.xs,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      lineHeight: 20,
-
-      textAlign: 'center',
-    },
-
-
-    /* ======================================================================
-       LOGIN CARD
-       ====================================================================== */
-
-    loginCard: {
-      width: '100%',
-
-      padding:
-        SPACING.lg,
-
-      borderWidth: 1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.xl,
-
-      backgroundColor:
-        COLORS.surface,
-
-      ...SHADOWS.card,
-    },
-
-
-    cardHeader: {
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      justifyContent:
-        'space-between',
-
-      gap:
-        SPACING.sm,
-
-      marginBottom:
-        SPACING.xl,
-    },
-
-
-    cardEyebrow: {
-      color:
-        COLORS.textLight,
-
-      fontSize: 8,
-
-      fontWeight: '800',
-
-      letterSpacing: 1.2,
-    },
-
-
-    cardTitle: {
-      marginTop: 3,
-
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.section,
-
-      fontWeight: '800',
-
-      letterSpacing: -0.25,
-    },
-
-
-    secureBadge: {
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      gap: 5,
-
-      paddingHorizontal: 9,
-
-      paddingVertical: 6,
-
-      borderWidth: 1,
-
-      borderColor:
-        '#DCEDE5',
-
-      borderRadius:
-        RADII.pill,
-
-      backgroundColor:
-        COLORS.greenSoft,
-    },
-
-
-    secureBadgeText: {
-      color:
-        COLORS.green,
-
-      fontSize: 9,
-
-      fontWeight: '700',
-    },
-
-
-    /* ======================================================================
-       FIELDS
-       ====================================================================== */
-
-    field: {
-      marginBottom:
-        SPACING.md,
-    },
-
-
-    label: {
-      color:
-        COLORS.navy,
-
-      fontSize: 12,
-
-      fontWeight: '700',
-    },
-
-
-    passwordLabelRow: {
-      minHeight: 29,
-
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      justifyContent:
-        'space-between',
-
-      gap:
-        SPACING.sm,
-
-      marginBottom: 7,
-    },
-
-
-    forgotButton: {
-      minHeight: 28,
-
-      justifyContent: 'center',
-
-      paddingLeft:
-        SPACING.sm,
-    },
-
-
-    forgotText: {
-      color:
-        COLORS.blue,
-
-      fontSize: 11,
-
-      fontWeight: '700',
-    },
-
-
-    inputContainer: {
-      minHeight: 54,
-
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      paddingHorizontal:
-        SPACING.sm,
-
-      borderWidth: 1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.surfaceSoft,
-    },
-
-
-    inputIcon: {
-      width: 31,
-
-      height: 31,
-
-      flexShrink: 0,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      borderRadius:
-        RADII.sm,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    input: {
-      minWidth: 0,
-
-      minHeight: 52,
-
-      flex: 1,
-
-      paddingHorizontal:
-        SPACING.sm,
-
-      paddingVertical: 0,
-
-      color:
-        COLORS.text,
-
-      fontSize: 13,
-    },
-
-
-    passwordInput: {
-      paddingRight:
-        SPACING.xs,
-    },
-
-
-    passwordToggle: {
-      width: 38,
-
-      height: 42,
-
-      flexShrink: 0,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      borderRadius:
-        RADII.sm,
-    },
-
-
-    /* ======================================================================
-       ERROR
-       ====================================================================== */
-
-    errorBox: {
-      flexDirection: 'row',
-
-      alignItems: 'flex-start',
-
-      gap:
-        SPACING.sm,
-
-      marginBottom:
-        SPACING.md,
-
-      padding:
-        SPACING.sm,
-
-      borderWidth: 1,
-
-      borderColor:
-        '#F1CECE',
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.dangerSoft,
-    },
-
-
-    errorIcon: {
-      width: 30,
-
-      height: 30,
-
-      flexShrink: 0,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      borderRadius:
-        RADII.sm,
-
-      backgroundColor:
-        COLORS.white,
-    },
-
-
-    errorCopy: {
-      minWidth: 0,
-
-      flex: 1,
-    },
-
-
-    errorTitle: {
-      color:
-        COLORS.danger,
-
-      fontSize: 11,
-
-      fontWeight: '700',
-    },
-
-
-    errorText: {
-      marginTop: 2,
-
-      color:
-        COLORS.danger,
-
-      fontSize: 11,
-
-      lineHeight: 16,
-    },
-
-
-    /* ======================================================================
-       LOGIN BUTTON
-       ====================================================================== */
-
-    loginButton: {
-      minHeight:
-        LAYOUT.buttonHeight,
-
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      gap:
-        SPACING.xs,
-
-      marginTop:
-        SPACING.xs,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.navy,
-
-      ...SHADOWS.card,
-    },
-
-
-    loginButtonDisabled: {
-      opacity: 0.58,
-    },
-
-
-    loginButtonText: {
-      color:
-        COLORS.white,
-
-      fontSize: 14,
-
-      fontWeight: '700',
-    },
-
-
-    loginButtonIcon: {
-      width: 26,
-
-      height: 26,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      borderRadius:
-        RADII.pill,
-
-      backgroundColor:
-        'rgba(255,255,255,0.08)',
-    },
-
-
-    /* ======================================================================
-       ROLE INFORMATION
-       ====================================================================== */
-
-    roleInformation: {
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      gap:
-        SPACING.sm,
-
-      marginTop:
-        SPACING.lg,
-
-      paddingTop:
-        SPACING.md,
-
-      borderTopWidth: 1,
-
-      borderTopColor:
-        COLORS.border,
-    },
-
-
-    roleInformationIcon: {
-      width: 38,
-
-      height: 38,
-
-      flexShrink: 0,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      borderRadius:
-        RADII.md,
-    },
-
-
-    roleInformationCopy: {
-      minWidth: 0,
-
-      flex: 1,
-    },
-
-
-    roleInformationTitle: {
-      color:
-        COLORS.text,
-
-      fontSize: 11,
-
-      fontWeight: '700',
-    },
-
-
-    roleInformationDescription: {
-      marginTop: 2,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize: 10,
-
-      lineHeight: 15,
-    },
-
-
-    /* ======================================================================
-       CREATE ACCOUNT
-       ====================================================================== */
-
-    createCard: {
-      width: '100%',
-
-      marginTop:
-        SPACING.md,
-
-      padding:
-        SPACING.lg,
-
-      borderWidth: 1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.xl,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    createCopy: {
-      marginBottom:
-        SPACING.md,
-    },
-
-
-    createEyebrow: {
-      color:
-        COLORS.textLight,
-
-      fontSize: 8,
-
-      fontWeight: '800',
-
-      letterSpacing: 1.1,
-    },
-
-
-    createTitle: {
-      marginTop: 4,
-
-      color:
-        COLORS.text,
-
-      fontSize: 14,
-
-      fontWeight: '800',
-    },
-
-
-    createDescription: {
-      marginTop: 4,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize: 11,
-
-      lineHeight: 17,
-    },
-
-
-    createButton: {
-      minHeight:
-        LAYOUT.compactButtonHeight,
-
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      gap:
-        SPACING.xs,
-
-      paddingHorizontal:
-        SPACING.md,
-
-      borderWidth: 1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.surfaceSoft,
-    },
-
-
-    createButtonText: {
-      flex: 1,
-
-      color:
-        COLORS.navy,
-
-      fontSize: 12,
-
-      fontWeight: '700',
-
-      textAlign: 'center',
-    },
-
-
-    /* ======================================================================
-       FOOTER
-       ====================================================================== */
-
-    securityFooter: {
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      flexWrap: 'wrap',
-
-      gap: 7,
-
-      marginTop:
-        SPACING.xl,
-    },
-
-
-    securityFooterText: {
-      color:
-        COLORS.textLight,
-
-      fontSize: 9,
-
-      fontWeight: '600',
-    },
-
-
-    footerDot: {
-      width: 3,
-
-      height: 3,
-
-      borderRadius: 2,
-
-      backgroundColor:
-        COLORS.textLight,
-    },
-  });
+   ========================================================== */
+
+const styles = StyleSheet.create({
+  /* ROOT */
+
+  safeArea: {
+    flex: 1,
+    backgroundColor: THEME.navyDark,
+  },
+
+  keyboardView: {
+    flex: 1,
+  },
+
+  scrollContent: {
+    flexGrow: 1,
+    backgroundColor: THEME.navy,
+  },
+
+  screen: {
+    width: '100%',
+    maxWidth: LAYOUT.contentMaxWidth,
+    flexGrow: 1,
+    alignSelf: 'center',
+    paddingBottom: 40,
+  },
+
+  /* TOP NAVIGATION */
+
+  topBar: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  backButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+
+  topBarCaptionWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+
+  topBarDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: THEME.orange,
+  },
+
+  topBarCaption: {
+    color: THEME.mutedLight,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+  },
+
+  /* HEADING */
+
+  headingSection: {
+    alignItems: 'center',
+    paddingTop: 24,
+    paddingBottom: 32,
+  },
+
+  roleIconShell: {
+    width: 64,
+    height: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(217,146,2,0.28)',
+    borderRadius: 20,
+    marginBottom: 15,
+  },
+
+  customerIconShell: {
+    backgroundColor: 'rgba(217,146,2,0.10)',
+  },
+
+  ownerIconShell: {
+    backgroundColor: 'rgba(217,146,2,0.10)',
+  },
+
+  roleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: 'rgba(217,146,2,0.30)',
+    borderRadius: 999,
+    backgroundColor: 'rgba(217,146,2,0.10)',
+    marginBottom: 12,
+  },
+
+  roleBadgeDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: THEME.orange,
+  },
+
+  roleBadgeText: {
+    color: THEME.orange,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.4,
+  },
+
+  title: {
+    maxWidth: 520,
+    color: THEME.white,
+    fontSize: 30,
+    lineHeight: 38,
+    fontWeight: '800',
+    letterSpacing: -0.8,
+    textAlign: 'center',
+  },
+
+  titleSmall: {
+    fontSize: 26,
+    lineHeight: 33,
+  },
+
+  subtitle: {
+    maxWidth: 480,
+    marginTop: 9,
+    color: THEME.mutedLight,
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+
+  headingAccentLine: {
+    width: 36,
+    height: 3,
+    marginTop: 19,
+    borderRadius: 999,
+    backgroundColor: THEME.orange,
+  },
+
+  /* LOGIN CARD */
+
+  loginCard: {
+    width: '100%',
+    overflow: 'hidden',
+    padding: 18,
+    borderRadius: 17,
+    backgroundColor: THEME.white,
+
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOffset: {
+          width: 0,
+          height: 7,
+        },
+        shadowOpacity: 0.14,
+        shadowRadius: 17,
+      },
+      android: {
+        elevation: 5,
+      },
+      default: {
+        elevation: 3,
+      },
+    }),
+  },
+
+  cardAccentLine: {
+    position: 'absolute',
+    top: 18,
+    bottom: 18,
+    left: 0,
+    width: 4,
+    borderTopRightRadius: 6,
+    borderBottomRightRadius: 6,
+    backgroundColor: THEME.orange,
+  },
+
+  cardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+    marginBottom: 23,
+  },
+
+  cardHeadingCopy: {
+    flex: 1,
+  },
+
+  cardEyebrow: {
+    color: THEME.muted,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+  },
+
+  cardTitle: {
+    marginTop: 5,
+    color: THEME.text,
+    fontSize: 19,
+    lineHeight: 25,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+
+  secureBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: '#DCEDE5',
+    borderRadius: 999,
+    backgroundColor: THEME.greenSoft,
+  },
+
+  secureBadgeText: {
+    color: THEME.green,
+    fontSize: 9,
+    fontWeight: '700',
+  },
+
+  /* INPUT FIELDS */
+
+  field: {
+    marginBottom: 17,
+  },
+
+  label: {
+    color: THEME.text,
+    fontSize: 12,
+    fontWeight: '800',
+    marginBottom: 8,
+  },
+
+  passwordLabelRow: {
+    minHeight: 29,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+    marginBottom: 7,
+  },
+
+  forgotButton: {
+    minHeight: 28,
+    justifyContent: 'center',
+    paddingLeft: 8,
+  },
+
+  forgotText: {
+    color: THEME.orangeDark,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  inputContainer: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 12,
+    backgroundColor: THEME.offWhite,
+  },
+
+  inputIcon: {
+    width: 33,
+    height: 33,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9,
+    backgroundColor: THEME.white,
+  },
+
+  input: {
+    minWidth: 0,
+    minHeight: 52,
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 0,
+    color: THEME.text,
+    fontSize: 13,
+  },
+
+  passwordInput: {
+    paddingRight: 4,
+  },
+
+  passwordToggle: {
+    width: 38,
+    height: 42,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9,
+  },
+
+  /* ERROR */
+
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 9,
+    marginBottom: 15,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#F1CECE',
+    borderRadius: 12,
+    backgroundColor: THEME.dangerSoft,
+  },
+
+  errorIcon: {
+    width: 30,
+    height: 30,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9,
+    backgroundColor: THEME.white,
+  },
+
+  errorCopy: {
+    minWidth: 0,
+    flex: 1,
+  },
+
+  errorTitle: {
+    color: THEME.danger,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  errorText: {
+    marginTop: 3,
+    color: THEME.danger,
+    fontSize: 11,
+    lineHeight: 17,
+  },
+
+  /* LOGIN BUTTON */
+
+  loginButton: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+    marginTop: 5,
+    borderRadius: 12,
+    backgroundColor: THEME.orange,
+
+    ...Platform.select({
+      ios: {
+        shadowColor: '#D99202',
+        shadowOffset: {
+          width: 0,
+          height: 5,
+        },
+        shadowOpacity: 0.18,
+        shadowRadius: 9,
+      },
+      android: {
+        elevation: 3,
+      },
+      default: {},
+    }),
+  },
+
+  loginButtonDisabled: {
+    opacity: 0.58,
+  },
+
+  loginButtonText: {
+    color: THEME.navyDark,
+    fontSize: 14,
+    fontWeight: '800',
+  },
+
+  loginButtonIcon: {
+    width: 27,
+    height: 27,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    backgroundColor: THEME.navyDark,
+  },
+
+  /* ROLE INFORMATION */
+
+  roleInformation: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 19,
+    paddingTop: 16,
+    borderTopWidth: 1,
+    borderTopColor: THEME.border,
+  },
+
+  roleInformationIcon: {
+    width: 39,
+    height: 39,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: THEME.orangeSoft,
+  },
+
+  roleInformationCopy: {
+    minWidth: 0,
+    flex: 1,
+  },
+
+  roleInformationTitle: {
+    color: THEME.text,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  roleInformationDescription: {
+    marginTop: 3,
+    color: THEME.muted,
+    fontSize: 10,
+    lineHeight: 15,
+  },
+
+  /* CREATE ACCOUNT CARD */
+
+  createCard: {
+    width: '100%',
+    marginTop: 14,
+    padding: 18,
+    borderRadius: 17,
+    backgroundColor: THEME.white,
+
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOffset: {
+          width: 0,
+          height: 4,
+        },
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
+      },
+      android: {
+        elevation: 2,
+      },
+      default: {},
+    }),
+  },
+
+  createCopy: {
+    marginBottom: 15,
+  },
+
+  createEyebrow: {
+    color: THEME.orangeDark,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+  },
+
+  createTitle: {
+    marginTop: 5,
+    color: THEME.text,
+    fontSize: 16,
+    lineHeight: 22,
+    fontWeight: '800',
+  },
+
+  createDescription: {
+    marginTop: 5,
+    color: THEME.muted,
+    fontSize: 11,
+    lineHeight: 17,
+  },
+
+  createButton: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 12,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 12,
+    backgroundColor: THEME.offWhite,
+  },
+
+  createButtonIcon: {
+    width: 31,
+    height: 31,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9,
+    backgroundColor: THEME.orangeSoft,
+  },
+
+  createButtonText: {
+    flex: 1,
+    color: THEME.text,
+    fontSize: 12,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
+
+  /* FOOTER */
+
+  securityFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 7,
+    marginTop: 25,
+  },
+
+  securityFooterText: {
+    color: THEME.mutedLight,
+    fontSize: 10,
+    fontWeight: '600',
+  },
+
+  footerDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: THEME.orange,
+  },
+});

@@ -1,3 +1,4 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import {
   router,
@@ -12,7 +13,6 @@ import {
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  Modal,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -24,6 +24,7 @@ import {
   View,
 } from 'react-native';
 
+import StyleHubModal from '@/src/components/StyleHubModal';
 import { COLORS } from '@/src/constants/colors';
 import {
   LAYOUT,
@@ -44,8 +45,11 @@ import type {
   CustomerFeedback,
 } from '@/src/types/customer';
 
-
 const RATINGS = [1, 2, 3, 4, 5] as const;
+
+/* ==========================================================
+   HELPERS
+   ========================================================== */
 
 function getRouteValue(
   value: string | string[] | undefined,
@@ -86,9 +90,9 @@ function formatTime(value: string): string {
   const minute = match[2];
 
   if (
-    Number.isNaN(hour24)
-    || hour24 < 0
-    || hour24 > 23
+    Number.isNaN(hour24) ||
+    hour24 < 0 ||
+    hour24 > 23
   ) {
     return value;
   }
@@ -146,6 +150,10 @@ function ratingLabel(rating: number): string {
   }
 }
 
+/* ==========================================================
+   CUSTOMER FEEDBACK SCREEN
+   ========================================================== */
+
 export default function CustomerFeedbackScreen() {
   const params = useLocalSearchParams<{
     appointmentId?: string | string[];
@@ -169,29 +177,49 @@ export default function CustomerFeedbackScreen() {
 
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState('');
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
-  const [successVisible, setSuccessVisible] = useState(false);
-  const [successMessage, setSuccessMessage] = useState(
-    'Thank you for sharing your experience.',
-  );
+
+  const [isLoading, setIsLoading] =
+    useState(true);
+
+  const [isRefreshing, setIsRefreshing] =
+    useState(false);
+
+  const [isSubmitting, setIsSubmitting] =
+    useState(false);
+
+  const [errorMessage, setErrorMessage] =
+    useState('');
+
+  /* Shared modal visibility */
+
+  const [successVisible, setSuccessVisible] =
+    useState(false);
+
+  const [successMessage, setSuccessMessage] =
+    useState(
+      'Thank you for sharing your experience.',
+    );
+
+  /* ========================================================
+     LOAD APPOINTMENT AND EXISTING FEEDBACK
+     ======================================================== */
 
   const loadData = useCallback(
     async (
       refreshing = false,
     ): Promise<void> => {
       if (
-        !token
-        || !Number.isInteger(appointmentId)
-        || appointmentId < 1
+        !token ||
+        !Number.isInteger(appointmentId) ||
+        appointmentId < 1
       ) {
         setIsLoading(false);
         setIsRefreshing(false);
+
         setErrorMessage(
           'The selected appointment is invalid.',
         );
+
         return;
       }
 
@@ -248,33 +276,46 @@ export default function CustomerFeedbackScreen() {
     }, [loadData]),
   );
 
-  const scheduleLabel = useMemo(
-    () => {
-      if (!appointment) {
-        return '';
-      }
+  /* ========================================================
+     APPOINTMENT SCHEDULE
+     ======================================================== */
 
-      return `${formatTime(appointment.starts_at)} – ${formatTime(appointment.ends_at)}`;
-    },
-    [appointment],
-  );
+  const scheduleLabel = useMemo(() => {
+    if (!appointment) {
+      return '';
+    }
+
+    return `${formatTime(
+      appointment.starts_at,
+    )} – ${formatTime(
+      appointment.ends_at,
+    )}`;
+  }, [appointment]);
+
+  /* ========================================================
+     REVIEW ELIGIBILITY
+     ======================================================== */
 
   const canSubmit = Boolean(
-    appointment
-    && appointment.status === 'completed'
-    && !existingFeedback,
+    appointment &&
+    appointment.status === 'completed' &&
+    !existingFeedback,
   );
 
   const existingSubmittedAt = formatDateTime(
     existingFeedback?.created_at ?? null,
   );
 
+  /* ========================================================
+     SUBMIT CUSTOMER FEEDBACK
+     ======================================================== */
+
   async function handleSubmit(): Promise<void> {
     if (
-      !token
-      || !appointment
-      || !canSubmit
-      || isSubmitting
+      !token ||
+      !appointment ||
+      !canSubmit ||
+      isSubmitting
     ) {
       return;
     }
@@ -285,6 +326,7 @@ export default function CustomerFeedbackScreen() {
       setErrorMessage(
         'Select a rating from 1 to 5 stars.',
       );
+
       return;
     }
 
@@ -292,6 +334,7 @@ export default function CustomerFeedbackScreen() {
       setErrorMessage(
         'Feedback comment may not exceed 2000 characters.',
       );
+
       return;
     }
 
@@ -307,12 +350,16 @@ export default function CustomerFeedbackScreen() {
         },
       );
 
+      /* Keep Laravel's returned feedback. */
+
       setExistingFeedback(response.data.feedback);
 
       setSuccessMessage(
-        response.message
-        ?? 'Thank you for sharing your experience.',
+        response.message ??
+        'Thank you for sharing your experience.',
       );
+
+      /* Show compact green success modal. */
 
       setSuccessVisible(true);
     } catch (error) {
@@ -326,6 +373,10 @@ export default function CustomerFeedbackScreen() {
     }
   }
 
+  /* ========================================================
+     CLOSE SUCCESS MODAL AND RETURN
+     ======================================================== */
+
   function handleDone(): void {
     setSuccessVisible(false);
 
@@ -333,11 +384,14 @@ export default function CustomerFeedbackScreen() {
       pathname:
         '/(customer)/customer-appointment/[appointmentId]',
       params: {
-        appointmentId:
-          String(appointmentId),
+        appointmentId: String(appointmentId),
       },
     });
   }
+
+  /* ========================================================
+     LOADING STATE
+     ======================================================== */
 
   if (isLoading && !appointment) {
     return (
@@ -360,12 +414,17 @@ export default function CustomerFeedbackScreen() {
           </Text>
 
           <Text style={styles.loadingText}>
-            Checking the appointment and whether feedback has already been submitted.
+            Checking the appointment and whether
+            feedback has already been submitted.
           </Text>
         </View>
       </SafeAreaView>
     );
   }
+
+  /* ========================================================
+     UNAVAILABLE STATE
+     ======================================================== */
 
   if (!appointment) {
     return (
@@ -404,14 +463,18 @@ export default function CustomerFeedbackScreen() {
             </Text>
 
             <Text style={styles.unavailableText}>
-              {errorMessage
-                || 'Unable to display this appointment.'}
+              {errorMessage ||
+                'Unable to display this appointment.'}
             </Text>
           </View>
         </View>
       </SafeAreaView>
     );
   }
+
+  /* ========================================================
+     MAIN SCREEN
+     ======================================================== */
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -433,6 +496,8 @@ export default function CustomerFeedbackScreen() {
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.container}
         >
+          {/* TOP NAVIGATION */}
+
           <View style={styles.topBar}>
             <TouchableOpacity
               activeOpacity={0.7}
@@ -464,19 +529,16 @@ export default function CustomerFeedbackScreen() {
               accessibilityRole="button"
               accessibilityLabel="Refresh feedback"
               disabled={
-                isRefreshing
-                || isSubmitting
+                isRefreshing ||
+                isSubmitting
               }
               onPress={() =>
                 void loadData(true)
               }
               style={[
                 styles.topIconButton,
-                (
-                  isRefreshing
-                  || isSubmitting
-                )
-                && styles.disabledButton,
+                (isRefreshing || isSubmitting) &&
+                  styles.disabledButton,
               ]}
             >
               {isRefreshing ? (
@@ -494,6 +556,8 @@ export default function CustomerFeedbackScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* PAGE HEADER */}
+
           <View style={styles.header}>
             <Text style={styles.eyebrow}>
               YOUR EXPERIENCE
@@ -504,9 +568,14 @@ export default function CustomerFeedbackScreen() {
             </Text>
 
             <Text style={styles.subtitle}>
-              Rate the appointment from 1 to 5 stars and optionally leave a comment for the shop. Each completed appointment can receive feedback only once.
+              Rate the appointment from 1 to 5 stars
+              and optionally leave a comment for
+              the shop. Each completed appointment
+              can receive feedback only once.
             </Text>
           </View>
+
+          {/* ERROR MESSAGE */}
 
           {errorMessage ? (
             <MessageBox
@@ -515,12 +584,15 @@ export default function CustomerFeedbackScreen() {
             />
           ) : null}
 
+          {/* APPOINTMENT HERO */}
+
           <View style={styles.appointmentHero}>
             <View style={styles.appointmentHeroTopRow}>
               <View style={styles.appointmentHeroIcon}>
                 <Ionicons
                   name={
-                    appointment.shop?.type === 'barber_shop'
+                    appointment.shop?.type ===
+                    'barber_shop'
                       ? 'cut-outline'
                       : 'sparkles-outline'
                   }
@@ -547,7 +619,8 @@ export default function CustomerFeedbackScreen() {
             </Text>
 
             <Text style={styles.heroShop}>
-              {appointment.shop?.name ?? 'StyleHub Shop'}
+              {appointment.shop?.name ??
+                'StyleHub Shop'}
             </Text>
 
             <View style={styles.heroScheduleRow}>
@@ -559,7 +632,9 @@ export default function CustomerFeedbackScreen() {
                 />
 
                 <Text style={styles.heroScheduleText}>
-                  {formatDate(appointment.appointment_date)}
+                  {formatDate(
+                    appointment.appointment_date,
+                  )}
                 </Text>
               </View>
 
@@ -576,6 +651,10 @@ export default function CustomerFeedbackScreen() {
               </View>
             </View>
           </View>
+
+          {/* ==================================================
+              EXISTING SUBMITTED FEEDBACK
+              ================================================== */}
 
           {existingFeedback ? (
             <>
@@ -600,10 +679,13 @@ export default function CustomerFeedbackScreen() {
                     </Text>
 
                     <Text style={styles.existingSubtitle}>
-                      Your review is saved with this completed appointment.
+                      Your review is saved with this
+                      completed appointment.
                     </Text>
                   </View>
                 </View>
+
+                {/* STORED STAR RATING */}
 
                 <View style={styles.existingRatingArea}>
                   <View style={styles.existingStars}>
@@ -626,9 +708,12 @@ export default function CustomerFeedbackScreen() {
                   </View>
 
                   <Text style={styles.existingRatingValue}>
-                    {existingFeedback.rating}/5 · {ratingLabel(existingFeedback.rating)}
+                    {existingFeedback.rating}/5 ·{' '}
+                    {ratingLabel(existingFeedback.rating)}
                   </Text>
                 </View>
+
+                {/* STORED COMMENT */}
 
                 <View style={styles.existingCommentCard}>
                   <Text style={styles.existingCommentLabel}>
@@ -636,10 +721,12 @@ export default function CustomerFeedbackScreen() {
                   </Text>
 
                   <Text style={styles.existingComment}>
-                    {existingFeedback.comment?.trim()
-                      || 'No written comment was included.'}
+                    {existingFeedback.comment?.trim() ||
+                      'No written comment was included.'}
                   </Text>
                 </View>
+
+                {/* SUBMISSION DATE */}
 
                 {existingSubmittedAt ? (
                   <View style={styles.submittedRow}>
@@ -655,6 +742,8 @@ export default function CustomerFeedbackScreen() {
                   </View>
                 ) : null}
               </View>
+
+              {/* RETURN TO APPOINTMENT */}
 
               <TouchableOpacity
                 activeOpacity={0.8}
@@ -684,6 +773,10 @@ export default function CustomerFeedbackScreen() {
               </TouchableOpacity>
             </>
           ) : appointment.status !== 'completed' ? (
+            /* ==================================================
+               APPOINTMENT NOT YET ELIGIBLE
+               ================================================== */
+
             <>
               <SectionHeading
                 title="Feedback availability"
@@ -705,13 +798,21 @@ export default function CustomerFeedbackScreen() {
                   </Text>
 
                   <Text style={styles.warningText}>
-                    Feedback can only be submitted after Laravel marks the appointment as completed.
+                    Feedback can only be submitted
+                    after Laravel marks the
+                    appointment as completed.
                   </Text>
                 </View>
               </View>
             </>
           ) : (
+            /* ==================================================
+               NEW FEEDBACK FORM
+               ================================================== */
+
             <>
+              {/* STAR RATING */}
+
               <SectionHeading
                 title="Your rating"
                 subtitle="Select one rating from 1 to 5 stars."
@@ -728,7 +829,9 @@ export default function CustomerFeedbackScreen() {
                         activeOpacity={0.75}
                         disabled={isSubmitting}
                         accessibilityRole="button"
-                        accessibilityLabel={`${star} star${star === 1 ? '' : 's'}`}
+                        accessibilityLabel={`${star} star${
+                          star === 1 ? '' : 's'
+                        }`}
                         accessibilityState={{
                           selected: rating === star,
                         }}
@@ -763,6 +866,8 @@ export default function CustomerFeedbackScreen() {
                   {ratingLabel(rating)}
                 </Text>
               </View>
+
+              {/* OPTIONAL COMMENT */}
 
               <SectionHeading
                 title="Optional comment"
@@ -808,6 +913,8 @@ export default function CustomerFeedbackScreen() {
                 </Text>
               </View>
 
+              {/* REVIEW POLICY */}
+
               <View style={styles.reviewNotice}>
                 <View style={styles.reviewNoticeIcon}>
                   <Ionicons
@@ -823,10 +930,15 @@ export default function CustomerFeedbackScreen() {
                   </Text>
 
                   <Text style={styles.reviewNoticeText}>
-                    After submission, this appointment cannot receive duplicate feedback. Laravel remains the final authority for review eligibility.
+                    After submission, this appointment
+                    cannot receive duplicate feedback.
+                    Laravel remains the final authority
+                    for review eligibility.
                   </Text>
                 </View>
               </View>
+
+              {/* SUBMIT BUTTON */}
 
               <TouchableOpacity
                 activeOpacity={0.84}
@@ -838,8 +950,8 @@ export default function CustomerFeedbackScreen() {
                 }
                 style={[
                   styles.submitButton,
-                  isSubmitting
-                  && styles.disabledButton,
+                  isSubmitting &&
+                    styles.disabledButton,
                 ]}
               >
                 {isSubmitting ? (
@@ -866,77 +978,69 @@ export default function CustomerFeedbackScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <Modal
+      {/* ==================================================
+          SHARED STYLEHUB SUCCESS MODAL
+
+          Uses the same compact layout as:
+          - Customer Profile
+          - Appointment Details
+          - Booking Review
+          - Reschedule Request
+
+          Green tone = successful submission
+          ================================================== */}
+
+      <StyleHubModal
         visible={successVisible}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={handleDone}
+        onClose={handleDone}
+        title="Feedback submitted"
+        message={successMessage}
+        tone="success"
+        icon="checkmark-circle-outline"
+        dismissOnBackdrop={false}
+        actions={[
+          {
+            label: 'Back to appointment',
+            variant: 'primary',
+            icon: 'arrow-forward',
+            onPress: handleDone,
+          },
+        ]}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalSuccessIcon}>
+        {/* SUBMITTED RATING SUMMARY */}
+
+        <View style={styles.modalRatingCard}>
+          <View style={styles.modalStars}>
+            {RATINGS.map((star) => (
               <Ionicons
-                name="checkmark"
-                size={30}
-                color={COLORS.white}
+                key={star}
+                name={
+                  star <= rating
+                    ? 'star'
+                    : 'star-outline'
+                }
+                size={21}
+                color={
+                  star <= rating
+                    ? COLORS.warning
+                    : COLORS.textLight
+                }
               />
-            </View>
-
-            <Text style={styles.modalTitle}>
-              Feedback submitted
-            </Text>
-
-            <Text style={styles.modalText}>
-              {successMessage}
-            </Text>
-
-            <View style={styles.modalRatingCard}>
-              <View style={styles.modalStars}>
-                {RATINGS.map((star) => (
-                  <Ionicons
-                    key={star}
-                    name={
-                      star <= rating
-                        ? 'star'
-                        : 'star-outline'
-                    }
-                    size={22}
-                    color={
-                      star <= rating
-                        ? COLORS.warning
-                        : COLORS.textLight
-                    }
-                  />
-                ))}
-              </View>
-
-              <Text style={styles.modalRatingText}>
-                {rating}/5 · {ratingLabel(rating)}
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              activeOpacity={0.84}
-              onPress={handleDone}
-              style={styles.modalButton}
-            >
-              <Text style={styles.modalButtonText}>
-                Back to appointment
-              </Text>
-
-              <Ionicons
-                name="arrow-forward"
-                size={17}
-                color={COLORS.white}
-              />
-            </TouchableOpacity>
+            ))}
           </View>
+
+          <Text style={styles.modalRatingText}>
+            {rating}/5 · {ratingLabel(rating)}
+          </Text>
         </View>
-      </Modal>
+      </StyleHubModal>
     </SafeAreaView>
   );
 }
+
+/* ==========================================================
+   REUSABLE SECTION HEADING
+   ========================================================== */
 
 function SectionHeading({
   title,
@@ -957,6 +1061,10 @@ function SectionHeading({
     </View>
   );
 }
+
+/* ==========================================================
+   REUSABLE ERROR MESSAGE
+   ========================================================== */
 
 function MessageBox({
   title,
@@ -988,6 +1096,10 @@ function MessageBox({
   );
 }
 
+/* ==========================================================
+   COMPLETE SCREEN STYLES
+   ========================================================== */
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -1006,6 +1118,8 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.sm,
     paddingBottom: 48,
   },
+
+  /* TOP BAR */
 
   topBar: {
     minHeight: 48,
@@ -1040,6 +1154,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  /* PAGE HEADER */
+
   header: {
     marginTop: SPACING.lg,
   },
@@ -1068,6 +1184,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.body,
     lineHeight: 21,
   },
+
+  /* ERROR MESSAGE */
 
   errorBox: {
     marginTop: SPACING.lg,
@@ -1104,6 +1222,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 18,
   },
+
+  /* APPOINTMENT HERO */
 
   appointmentHero: {
     marginTop: SPACING.xl,
@@ -1180,6 +1300,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  /* SECTION HEADINGS */
+
   sectionHeading: {
     marginTop: SPACING.xxl,
     marginBottom: 12,
@@ -1198,6 +1320,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 17,
   },
+
+  /* EXISTING FEEDBACK */
 
   existingCard: {
     padding: 16,
@@ -1240,6 +1364,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
+  /* EXISTING STAR RATING */
+
   existingRatingArea: {
     marginTop: 16,
     alignItems: 'center',
@@ -1259,6 +1385,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.secondary,
     fontWeight: '800',
   },
+
+  /* EXISTING COMMENT */
 
   existingCommentCard: {
     marginTop: 13,
@@ -1292,6 +1420,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.micro,
   },
 
+  /* RETURN BUTTON */
+
   returnButton: {
     minHeight: LAYOUT.buttonHeight,
     marginTop: 14,
@@ -1308,6 +1438,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.body,
     fontWeight: '800',
   },
+
+  /* NOT ELIGIBLE WARNING */
 
   warningCard: {
     flexDirection: 'row',
@@ -1343,6 +1475,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 18,
   },
+
+  /* STAR RATING INPUT */
 
   ratingCard: {
     alignItems: 'center',
@@ -1383,6 +1517,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.caption,
     fontWeight: '800',
   },
+
+  /* COMMENT FORM */
 
   commentCard: {
     padding: 16,
@@ -1446,6 +1582,8 @@ const styles = StyleSheet.create({
     textAlign: 'right',
   },
 
+  /* REVIEW NOTICE */
+
   reviewNotice: {
     marginTop: 12,
     flexDirection: 'row',
@@ -1482,6 +1620,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
+  /* SUBMIT FEEDBACK */
+
   submitButton: {
     minHeight: LAYOUT.buttonHeight,
     marginTop: 14,
@@ -1500,51 +1640,15 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  modalOverlay: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 18,
-    backgroundColor: 'rgba(0, 0, 0, 0.42)',
-  },
+  /* ========================================================
+     COMPACT SHARED MODAL RATING SUMMARY
 
-  modalCard: {
-    width: '100%',
-    maxWidth: 500,
-    padding: 18,
-    borderRadius: RADII.xl,
-    backgroundColor: COLORS.surface,
-    ...SHADOWS.floating,
-  },
-
-  modalSuccessIcon: {
-    width: 58,
-    height: 58,
-    alignSelf: 'center',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 29,
-    backgroundColor: COLORS.green,
-  },
-
-  modalTitle: {
-    marginTop: 13,
-    color: COLORS.text,
-    fontSize: TYPOGRAPHY.section,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-
-  modalText: {
-    marginTop: 6,
-    color: COLORS.textMuted,
-    fontSize: TYPOGRAPHY.body,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
+     The modal card, icon, message and buttons
+     are styled by StyleHubModal.tsx.
+     ======================================================== */
 
   modalRatingCard: {
-    marginTop: 15,
+    width: '100%',
     alignItems: 'center',
     padding: 12,
     borderRadius: RADII.md,
@@ -1561,24 +1665,10 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: TYPOGRAPHY.caption,
     fontWeight: '800',
+    textAlign: 'center',
   },
 
-  modalButton: {
-    minHeight: LAYOUT.buttonHeight,
-    marginTop: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.primary,
-  },
-
-  modalButtonText: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.body,
-    fontWeight: '800',
-  },
+  /* LOADING STATE */
 
   loadingContainer: {
     flex: 1,
@@ -1611,6 +1701,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     textAlign: 'center',
   },
+
+  /* UNAVAILABLE STATE */
 
   unavailableContainer: {
     flex: 1,

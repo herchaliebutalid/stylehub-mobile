@@ -1,28 +1,20 @@
-import {
-  Redirect,
-  Stack,
-} from 'expo-router';
+
+import { Redirect, Stack } from 'expo-router';
 
 import {
   ActivityIndicator,
+  StatusBar,
   StyleSheet,
   View,
 } from 'react-native';
 
-import {
-  COLORS,
-} from '@/src/constants/colors';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import {
-  useAuth,
-} from '@/src/context/AuthContext';
+import { COLORS } from '@/src/constants/colors';
+import { useAuth } from '@/src/context/AuthContext';
 
 export default function CustomerLayout() {
-  const {
-    user,
-    isBootstrapping,
-  } =
-    useAuth();
+  const { user, isBootstrapping } = useAuth();
 
   /*
   |--------------------------------------------------------------------------
@@ -30,22 +22,17 @@ export default function CustomerLayout() {
   |--------------------------------------------------------------------------
   */
 
-  if (
-    isBootstrapping
-  ) {
+  if (isBootstrapping) {
     return (
-      <View
-        style={
-          styles.loading
-        }
+      <SafeAreaView
+        style={styles.safeArea}
+        edges={['top', 'bottom']}
       >
         <ActivityIndicator
           size="large"
-          color={
-            COLORS.primary
-          }
+          color={COLORS.primary}
         />
-      </View>
+      </SafeAreaView>
     );
   }
 
@@ -56,11 +43,7 @@ export default function CustomerLayout() {
   */
 
   if (!user) {
-    return (
-      <Redirect
-        href="/(auth)/role-selection"
-      />
-    );
+    return <Redirect href="/(auth)/role-selection" />;
   }
 
   /*
@@ -68,21 +51,12 @@ export default function CustomerLayout() {
   | Phone Verification Gate
   |--------------------------------------------------------------------------
   |
-  | This protects navigation UX.
-  |
-  | Laravel middleware independently protects the actual APIs.
+  | Laravel middleware independently protects the APIs.
   |
   */
 
-  if (
-    user.phone_verified !==
-    true
-  ) {
-    return (
-      <Redirect
-        href="/phone-verification"
-      />
-    );
+  if (user.phone_verified !== true) {
+    return <Redirect href="/phone-verification" />;
   }
 
   /*
@@ -91,14 +65,9 @@ export default function CustomerLayout() {
   |--------------------------------------------------------------------------
   */
 
-  if (
-    user.role !==
-    'customer'
-  ) {
+  if (user.role !== 'customer') {
     return (
-      <Redirect
-        href="/(shop-owner)/shop-owner"
-      />
+      <Redirect href="/(shop-owner)/shop-owner" />
     );
   }
 
@@ -109,28 +78,35 @@ export default function CustomerLayout() {
   */
 
   return (
-    <Stack
-      screenOptions={{
-        headerShown:
-          false,
-      }}
-    />
+    <View style={styles.container}>
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor={COLORS.background}
+        translucent={false}
+      />
+
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          contentStyle: {
+            backgroundColor: COLORS.background,
+          },
+        }}
+      />
+    </View>
   );
 }
 
-const styles =
-  StyleSheet.create({
-    loading: {
-      flex:
-        1,
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
 
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      backgroundColor:
-        COLORS.background,
-    },
-  });
+  safeArea: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.background,
+  },
+});

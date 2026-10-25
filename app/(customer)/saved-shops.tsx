@@ -1,20 +1,11 @@
+
 import { Ionicons } from '@expo/vector-icons';
-import {
-  router,
-  useFocusEffect,
-} from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import type { ComponentProps } from 'react';
-import {
-  useCallback,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Modal,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -23,8 +14,10 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import ShopOwnerAvatar from '@/src/components/ShopOwnerAvatar';
+import StyleHubModal from '@/src/components/StyleHubModal';
 import { COLORS } from '@/src/constants/colors';
 import {
   LAYOUT,
@@ -70,6 +63,10 @@ const TYPE_FILTERS: {
   },
 ];
 
+/* ==========================================================
+   SHOP AVAILABILITY
+   ========================================================== */
+
 function availabilityPresentation(
   status: ShopAvailabilityStatus,
 ): {
@@ -109,55 +106,45 @@ function availabilityPresentation(
   }
 }
 
+/* ==========================================================
+   CUSTOMER SAVED SHOPS
+   ========================================================== */
+
 export default function CustomerSavedShopsScreen() {
   const { token } = useAuth();
 
-  const [
-    shops,
-    setShops,
-  ] = useState<CustomerShop[]>([]);
+  const [shops, setShops] = useState<CustomerShop[]>([]);
+  const [searchText, setSearchText] = useState('');
+  const [typeFilter, setTypeFilter] =
+    useState<ShopTypeFilter>('all');
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const [removingShopId, setRemovingShopId] =
+    useState<number | null>(null);
+
+  const [removeTarget, setRemoveTarget] =
+    useState<CustomerShop | null>(null);
+
+  /* Shared modal states */
 
   const [
-    searchText,
-    setSearchText,
-  ] = useState('');
-
-  const [
-    typeFilter,
-    setTypeFilter,
-  ] = useState<ShopTypeFilter>('all');
-
-  const [
-    isLoading,
-    setIsLoading,
-  ] = useState(true);
-
-  const [
-    isRefreshing,
-    setIsRefreshing,
+    removeSuccessVisible,
+    setRemoveSuccessVisible,
   ] = useState(false);
 
-  const [
-    removingShopId,
-    setRemovingShopId,
-  ] = useState<number | null>(null);
+  const [removeModalError, setRemoveModalError] =
+    useState('');
 
-  const [
-    removeTarget,
-    setRemoveTarget,
-  ] = useState<CustomerShop | null>(null);
-
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] = useState('');
-
-  const [
-    successMessage,
-    setSuccessMessage,
-  ] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   const hasLoadedOnce = useRef(false);
+
+  /* ========================================================
+     LOAD SAVED SHOPS
+     ======================================================== */
 
   const loadSavedShops = useCallback(
     async (
@@ -168,7 +155,6 @@ export default function CustomerSavedShopsScreen() {
         setShops([]);
         setIsLoading(false);
         setIsRefreshing(false);
-
         return;
       }
 
@@ -181,14 +167,9 @@ export default function CustomerSavedShopsScreen() {
       setErrorMessage('');
 
       try {
-        const response = await getCustomerSavedShops(
-          token,
-        );
+        const response = await getCustomerSavedShops(token);
 
-        setShops(
-          response.data.shops,
-        );
-
+        setShops(response.data.shops);
         hasLoadedOnce.current = true;
       } catch (error) {
         setErrorMessage(
@@ -215,91 +196,94 @@ export default function CustomerSavedShopsScreen() {
     }, [loadSavedShops]),
   );
 
+  /* ========================================================
+     SAVED SHOPS SUMMARY
+     ======================================================== */
+
   const savedSummary = useMemo(
     () => ({
       total: shops.length,
 
       bookable: shops.filter(
-        (shop) =>
-          shop.availability.accepts_appointments,
+        (shop) => shop.availability.accepts_appointments,
       ).length,
 
       reviewed: shops.filter(
-        (shop) =>
-          shop.rating.review_count > 0,
+        (shop) => shop.rating.review_count > 0,
       ).length,
     }),
     [shops],
   );
 
-  const filteredShops = useMemo(
-    () => {
-      const query = searchText
-        .trim()
-        .toLowerCase();
+  /* ========================================================
+     SEARCH AND FILTER
+     ======================================================== */
 
-      return shops.filter(
-        (shop) => {
-          if (
-            typeFilter !== 'all'
-            && shop.type !== typeFilter
-          ) {
-            return false;
-          }
+  const filteredShops = useMemo(() => {
+    const query = searchText.trim().toLowerCase();
 
-          if (!query) {
-            return true;
-          }
+    return shops.filter((shop) => {
+      if (
+        typeFilter !== 'all' &&
+        shop.type !== typeFilter
+      ) {
+        return false;
+      }
 
-          return [
-            shop.name,
-            shop.type_label,
-            shop.address,
-            shop.city,
-            shop.province,
-          ]
-            .filter(Boolean)
-            .some(
-              (value) =>
-                value
-                  .toLowerCase()
-                  .includes(query),
-            );
-        },
-      );
-    },
-    [
-      searchText,
-      shops,
-      typeFilter,
-    ],
+      if (!query) {
+        return true;
+      }
+
+      return [
+        shop.name,
+        shop.type_label,
+        shop.address,
+        shop.city,
+        shop.province,
+      ]
+        .filter(Boolean)
+        .some((value) =>
+          value.toLowerCase().includes(query),
+        );
+    });
+  }, [searchText, shops, typeFilter]);
+
+  const hasActiveFilter = Boolean(
+    searchText.trim() || typeFilter !== 'all',
   );
 
-  function openShop(
-    shopId: number,
-  ): void {
-    router.push({
-      pathname:
-        '/(customer)/shop/[shopId]',
+  /* ========================================================
+     NAVIGATION
+     ======================================================== */
 
+  function openShop(shopId: number): void {
+    router.push({
+      pathname: '/(customer)/shop/[shopId]',
       params: {
-        shopId:
-          String(shopId),
+        shopId: String(shopId),
       },
     });
   }
 
-  function requestRemove(
-    shop: CustomerShop,
-  ): void {
+  /* ========================================================
+     OPEN REMOVE SAVED SHOP MODAL
+     ======================================================== */
+
+  function requestRemove(shop: CustomerShop): void {
     if (removingShopId !== null) {
       return;
     }
 
     setErrorMessage('');
     setSuccessMessage('');
+    setRemoveModalError('');
+    setRemoveSuccessVisible(false);
     setRemoveTarget(shop);
   }
+
+  /* ========================================================
+     CLOSE REMOVE CONFIRMATION
+     ======================================================== */
 
   function closeRemoveModal(): void {
     if (removingShopId !== null) {
@@ -307,53 +291,78 @@ export default function CustomerSavedShopsScreen() {
     }
 
     setRemoveTarget(null);
+    setRemoveModalError('');
   }
+
+  /* ========================================================
+     CLOSE SHARED MODAL
+     ======================================================== */
+
+  function closeSavedShopsModal(): void {
+    if (removingShopId !== null) {
+      return;
+    }
+
+    if (removeSuccessVisible) {
+      setRemoveSuccessVisible(false);
+      setRemoveTarget(null);
+      return;
+    }
+
+    closeRemoveModal();
+  }
+
+  /* ========================================================
+     REMOVE SAVED SHOP USING LARAVEL
+     ======================================================== */
 
   async function confirmRemove(): Promise<void> {
     if (
-      !token
-      || !removeTarget
-      || removingShopId !== null
+      !token ||
+      !removeTarget ||
+      removingShopId !== null
     ) {
       return;
     }
 
-    const shopToRemove =
-      removeTarget;
+    const shopToRemove = removeTarget;
 
-    setRemovingShopId(
-      shopToRemove.id,
-    );
-
+    setRemovingShopId(shopToRemove.id);
+    setRemoveModalError('');
     setErrorMessage('');
     setSuccessMessage('');
 
     try {
-      const response =
-        await removeCustomerSavedShop(
-          token,
-          shopToRemove.id,
-        );
+      const response = await removeCustomerSavedShop(
+        token,
+        shopToRemove.id,
+      );
 
-      setShops(
-        (current) =>
-          current.filter(
-            (shop) =>
-              shop.id
-              !== shopToRemove.id,
-          ),
+      /* Update list only after Laravel confirms success. */
+
+      setShops((current) =>
+        current.filter(
+          (shop) => shop.id !== shopToRemove.id,
+        ),
       );
 
       setRemoveTarget(null);
 
       setSuccessMessage(
-        response.message
-        ?? `${shopToRemove.name} was removed from your saved shops.`,
+        response.message ??
+          `${shopToRemove.name} was removed from your saved shops.`,
       );
-    } catch (error) {
-      setRemoveTarget(null);
 
-      setErrorMessage(
+      /* Switch from danger modal to green success. */
+
+      setRemoveSuccessVisible(true);
+    } catch (error) {
+      /*
+       * Keep the confirmation modal open.
+       * Display the backend error inside it.
+       */
+
+      setRemoveModalError(
         error instanceof ApiError
           ? error.message
           : 'Unable to remove the saved shop.',
@@ -363,61 +372,43 @@ export default function CustomerSavedShopsScreen() {
     }
   }
 
-  const hasActiveFilter =
-    Boolean(
-      searchText.trim()
-      || typeFilter !== 'all',
-    );
+  /* ========================================================
+     MAIN SCREEN
+     ======================================================== */
 
   return (
     <SafeAreaView
+      edges={['top', 'bottom']}
       style={styles.safeArea}
     >
       <StatusBar
         barStyle="dark-content"
-        backgroundColor={
-          COLORS.background
-        }
+        backgroundColor={COLORS.background}
+        translucent={false}
       />
 
       <ScrollView
-        showsVerticalScrollIndicator={
-          false
-        }
+        showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
-            refreshing={
-              isRefreshing
-            }
-            onRefresh={() =>
-              void loadSavedShops(
-                true,
-              )
-            }
-            tintColor={
-              COLORS.navy
-            }
-            colors={[
-              COLORS.navy,
-            ]}
+            refreshing={isRefreshing}
+            onRefresh={() => void loadSavedShops(true)}
+            tintColor={COLORS.navy}
+            colors={[COLORS.navy]}
           />
         }
-        contentContainerStyle={
-          styles.container
-        }
+        contentContainerStyle={styles.container}
       >
+        {/* TOP NAVIGATION */}
+
         <View style={styles.topBar}>
           <TouchableOpacity
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel="Go back"
-            onPress={() =>
-              router.back()
-            }
-            style={
-              styles.topIconButton
-            }
+            onPress={() => router.back()}
+            style={styles.topIconButton}
           >
             <Ionicons
               name="arrow-back"
@@ -426,24 +417,12 @@ export default function CustomerSavedShopsScreen() {
             />
           </TouchableOpacity>
 
-          <View
-            style={
-              styles.topBarTitleBlock
-            }
-          >
-            <Text
-              style={
-                styles.topBarTitle
-              }
-            >
+          <View style={styles.topBarTitleBlock}>
+            <Text style={styles.topBarTitle}>
               Saved shops
             </Text>
 
-            <Text
-              style={
-                styles.topBarCaption
-              }
-            >
+            <Text style={styles.topBarCaption}>
               Your StyleHub shortlist
             </Text>
           </View>
@@ -453,13 +432,9 @@ export default function CustomerSavedShopsScreen() {
             accessibilityRole="button"
             accessibilityLabel="Open Discover"
             onPress={() =>
-              router.push(
-                '/(customer)/customer/shops',
-              )
+              router.push('/(customer)/customer/shops')
             }
-            style={
-              styles.topIconButton
-            }
+            style={styles.topIconButton}
           >
             <Ionicons
               name="storefront-outline"
@@ -468,6 +443,8 @@ export default function CustomerSavedShopsScreen() {
             />
           </TouchableOpacity>
         </View>
+
+        {/* HEADER */}
 
         <View style={styles.header}>
           <Text style={styles.eyebrow}>
@@ -479,9 +456,13 @@ export default function CustomerSavedShopsScreen() {
           </Text>
 
           <Text style={styles.subtitle}>
-            Saved shops stay here until you remove them, making it easier to compare availability, ratings, services, and locations later.
+            Saved shops stay here until you remove them,
+            making it easier to compare availability,
+            ratings, services, and locations later.
           </Text>
         </View>
+
+        {/* ERROR FEEDBACK */}
 
         {errorMessage ? (
           <MessageBox
@@ -491,41 +472,21 @@ export default function CustomerSavedShopsScreen() {
           />
         ) : null}
 
-        {successMessage ? (
-          <MessageBox
-            type="success"
-            title="Saved shops updated"
-            message={successMessage}
-          />
-        ) : null}
+        {/* SUMMARY CARD */}
 
-        <View
-          style={styles.summaryCard}
-        >
-          <View
-            style={styles.summaryTopRow}
-          >
+        <View style={styles.summaryCard}>
+          <View style={styles.summaryTopRow}>
             <View>
-              <Text
-                style={
-                  styles.summaryLabel
-                }
-              >
+              <Text style={styles.summaryLabel}>
                 Shops saved
               </Text>
 
-              <Text
-                style={
-                  styles.summaryValue
-                }
-              >
+              <Text style={styles.summaryValue}>
                 {savedSummary.total}
               </Text>
             </View>
 
-            <View
-              style={styles.summaryIcon}
-            >
+            <View style={styles.summaryIcon}>
               <Ionicons
                 name="bookmark"
                 size={24}
@@ -534,50 +495,32 @@ export default function CustomerSavedShopsScreen() {
             </View>
           </View>
 
-          <View
-            style={styles.summaryStats}
-          >
+          <View style={styles.summaryStats}>
             <SummaryItem
               label="Bookable"
-              value={String(
-                savedSummary.bookable,
-              )}
+              value={String(savedSummary.bookable)}
             />
 
-            <View
-              style={
-                styles.summaryDivider
-              }
-            />
+            <View style={styles.summaryDivider} />
 
             <SummaryItem
               label="With reviews"
-              value={String(
-                savedSummary.reviewed,
-              )}
+              value={String(savedSummary.reviewed)}
             />
 
-            <View
-              style={
-                styles.summaryDivider
-              }
-            />
+            <View style={styles.summaryDivider} />
 
             <SummaryItem
               label="Showing"
-              value={String(
-                filteredShops.length,
-              )}
+              value={String(filteredShops.length)}
             />
           </View>
         </View>
 
-        <View
-          style={styles.searchCard}
-        >
-          <View
-            style={styles.searchBox}
-          >
+        {/* SEARCH AND FILTER */}
+
+        <View style={styles.searchCard}>
+          <View style={styles.searchBox}>
             <Ionicons
               name="search-outline"
               size={19}
@@ -588,14 +531,10 @@ export default function CustomerSavedShopsScreen() {
               value={searchText}
               onChangeText={setSearchText}
               placeholder="Search saved shops or location..."
-              placeholderTextColor={
-                COLORS.textLight
-              }
+              placeholderTextColor={COLORS.textLight}
               autoCorrect={false}
               returnKeyType="search"
-              style={
-                styles.searchInput
-              }
+              style={styles.searchInput}
             />
 
             {searchText !== '' ? (
@@ -603,19 +542,13 @@ export default function CustomerSavedShopsScreen() {
                 activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel="Clear saved shops search"
-                onPress={() =>
-                  setSearchText('')
-                }
-                style={
-                  styles.searchClearButton
-                }
+                onPress={() => setSearchText('')}
+                style={styles.searchClearButton}
               >
                 <Ionicons
                   name="close-circle"
                   size={18}
-                  color={
-                    COLORS.textLight
-                  }
+                  color={COLORS.textLight}
                 />
               </TouchableOpacity>
             ) : null}
@@ -623,148 +556,104 @@ export default function CustomerSavedShopsScreen() {
 
           <ScrollView
             horizontal
-            showsHorizontalScrollIndicator={
-              false
-            }
-            contentContainerStyle={
-              styles.typeFilterRow
-            }
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.typeFilterRow}
           >
-            {TYPE_FILTERS.map(
-              (filter) => {
-                const selected =
-                  typeFilter
-                  === filter.value;
+            {TYPE_FILTERS.map((filter) => {
+              const selected =
+                typeFilter === filter.value;
 
-                return (
-                  <TouchableOpacity
-                    key={
-                      filter.value
-                    }
-                    activeOpacity={
-                      0.78
-                    }
-                    accessibilityRole="button"
-                    accessibilityState={{
-                      selected,
-                    }}
-                    onPress={() =>
-                      setTypeFilter(
-                        filter.value,
-                      )
-                    }
-                    style={[
-                      styles.typeFilterChip,
-
+              return (
+                <TouchableOpacity
+                  key={filter.value}
+                  activeOpacity={0.78}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() =>
+                    setTypeFilter(filter.value)
+                  }
+                  style={[
+                    styles.typeFilterChip,
+                    selected &&
+                      styles.typeFilterChipSelected,
+                  ]}
+                >
+                  <Ionicons
+                    name={filter.icon}
+                    size={14}
+                    color={
                       selected
-                      &&
-                        styles.typeFilterChipSelected,
+                        ? COLORS.white
+                        : COLORS.textMuted
+                    }
+                  />
+
+                  <Text
+                    style={[
+                      styles.typeFilterText,
+                      selected &&
+                        styles.typeFilterTextSelected,
                     ]}
                   >
-                    <Ionicons
-                      name={
-                        filter.icon
-                      }
-                      size={14}
-                      color={
-                        selected
-                          ? COLORS.white
-                          : COLORS.textMuted
-                      }
-                    />
-
-                    <Text
-                      style={[
-                        styles.typeFilterText,
-
-                        selected
-                        &&
-                          styles.typeFilterTextSelected,
-                      ]}
-                    >
-                      {filter.label}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              },
-            )}
+                    {filter.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
         </View>
 
-        <View
-          style={styles.resultsHeading}
-        >
-          <View
-            style={
-              styles.resultsHeadingCopy
-            }
-          >
-            <Text
-              style={styles.sectionTitle}
-            >
+        {/* SAVED COLLECTION */}
+
+        <View style={styles.resultsHeading}>
+          <View style={styles.resultsHeadingCopy}>
+            <Text style={styles.sectionTitle}>
               Saved collection
             </Text>
 
-            <Text
-              style={
-                styles.sectionSubtitle
-              }
-            >
+            <Text style={styles.sectionSubtitle}>
               {hasActiveFilter
                 ? `${filteredShops.length} of ${shops.length} saved shops match your current filter.`
-                : `${shops.length} saved shop${shops.length === 1 ? '' : 's'} in your collection.`}
+                : `${shops.length} saved shop${
+                    shops.length === 1 ? '' : 's'
+                  } in your collection.`}
             </Text>
           </View>
 
           {!isLoading ? (
-            <View
-              style={
-                styles.resultCountBadge
-              }
-            >
-              <Text
-                style={
-                  styles.resultCountText
-                }
-              >
+            <View style={styles.resultCountBadge}>
+              <Text style={styles.resultCountText}>
                 {filteredShops.length}
               </Text>
             </View>
           ) : null}
         </View>
 
+        {/* LOADING STATE */}
+
         {isLoading ? (
-          <View
-            style={styles.loadingCard}
-          >
-            <View
-              style={styles.loadingIcon}
-            >
+          <View style={styles.loadingCard}>
+            <View style={styles.loadingIcon}>
               <ActivityIndicator
                 size="small"
                 color={COLORS.navy}
               />
             </View>
 
-            <Text
-              style={styles.loadingTitle}
-            >
+            <Text style={styles.loadingTitle}>
               Loading saved shops
             </Text>
 
-            <Text
-              style={styles.loadingText}
-            >
-              Getting the shops currently saved to your StyleHub account.
+            <Text style={styles.loadingText}>
+              Getting the shops currently saved to your
+              StyleHub account.
             </Text>
           </View>
         ) : shops.length === 0 ? (
-          <View
-            style={styles.emptyCard}
-          >
-            <View
-              style={styles.emptyIcon}
-            >
+          /* EMPTY COLLECTION */
+
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIcon}>
               <Ionicons
                 name="bookmark-outline"
                 size={28}
@@ -772,16 +661,13 @@ export default function CustomerSavedShopsScreen() {
               />
             </View>
 
-            <Text
-              style={styles.emptyTitle}
-            >
+            <Text style={styles.emptyTitle}>
               No saved shops yet
             </Text>
 
-            <Text
-              style={styles.emptyText}
-            >
-              Save shops from Discover or Shop Details and they will appear here for quick access.
+            <Text style={styles.emptyText}>
+              Save shops from Discover or Shop Details
+              and they will appear here for quick access.
             </Text>
 
             <TouchableOpacity
@@ -789,13 +675,9 @@ export default function CustomerSavedShopsScreen() {
               accessibilityRole="button"
               accessibilityLabel="Explore shops"
               onPress={() =>
-                router.push(
-                  '/(customer)/customer/shops',
-                )
+                router.push('/(customer)/customer/shops')
               }
-              style={
-                styles.emptyButton
-              }
+              style={styles.emptyButton}
             >
               <Ionicons
                 name="storefront-outline"
@@ -803,23 +685,16 @@ export default function CustomerSavedShopsScreen() {
                 color={COLORS.white}
               />
 
-              <Text
-                style={
-                  styles.emptyButtonText
-                }
-              >
+              <Text style={styles.emptyButtonText}>
                 Explore shops
               </Text>
             </TouchableOpacity>
           </View>
-        ) : filteredShops.length
-          === 0 ? (
-          <View
-            style={styles.emptyCard}
-          >
-            <View
-              style={styles.emptyIcon}
-            >
+        ) : filteredShops.length === 0 ? (
+          /* NO FILTER MATCHES */
+
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIcon}>
               <Ionicons
                 name="search-outline"
                 size={28}
@@ -827,16 +702,13 @@ export default function CustomerSavedShopsScreen() {
               />
             </View>
 
-            <Text
-              style={styles.emptyTitle}
-            >
+            <Text style={styles.emptyTitle}>
               No saved shops match
             </Text>
 
-            <Text
-              style={styles.emptyText}
-            >
-              Try another search or clear the current shop-type filter.
+            <Text style={styles.emptyText}>
+              Try another search or clear the current
+              shop-type filter.
             </Text>
 
             <TouchableOpacity
@@ -845,169 +717,115 @@ export default function CustomerSavedShopsScreen() {
                 setSearchText('');
                 setTypeFilter('all');
               }}
-              style={
-                styles.clearFiltersButton
-              }
+              style={styles.clearFiltersButton}
             >
-              <Text
-                style={
-                  styles.clearFiltersText
-                }
-              >
+              <Text style={styles.clearFiltersText}>
                 Clear filters
               </Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <View
-            style={styles.shopList}
-          >
-            {filteredShops.map(
-              (shop) => (
-                <SavedShopCard
-                  key={shop.id}
-                  shop={shop}
-                  removing={
-                    removingShopId
-                    === shop.id
-                  }
-                  onPress={() =>
-                    openShop(
-                      shop.id,
-                    )
-                  }
-                  onRemove={() =>
-                    requestRemove(
-                      shop,
-                    )
-                  }
-                />
-              ),
-            )}
+          /* SAVED SHOP CARDS */
+
+          <View style={styles.shopList}>
+            {filteredShops.map((shop) => (
+              <SavedShopCard
+                key={shop.id}
+                shop={shop}
+                removing={removingShopId === shop.id}
+                onPress={() => openShop(shop.id)}
+                onRemove={() => requestRemove(shop)}
+              />
+            ))}
           </View>
         )}
       </ScrollView>
 
-      <Modal
+      {/* ================================================
+          SHARED STYLEHUB MODAL
+
+          Danger: Remove saved shop confirmation
+          Success: Shop removed
+          ================================================ */}
+
+      <StyleHubModal
         visible={
-          removeTarget !== null
+          removeTarget !== null ||
+          removeSuccessVisible
         }
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={
-          closeRemoveModal
+        onClose={closeSavedShopsModal}
+        title={
+          removeSuccessVisible
+            ? 'Shop removed'
+            : 'Remove saved shop?'
+        }
+        message={
+          removeSuccessVisible
+            ? successMessage
+            : removeTarget
+              ? `${removeTarget.name} will be removed from your saved shops. You can save it again from Shop Details.`
+              : 'This shop will be removed from your saved shops.'
+        }
+        tone={
+          removeSuccessVisible
+            ? 'success'
+            : 'danger'
+        }
+        icon={
+          removeSuccessVisible
+            ? 'checkmark-circle-outline'
+            : 'bookmark-outline'
+        }
+        dismissOnBackdrop={false}
+        actions={
+          removeSuccessVisible
+            ? [
+                {
+                  label: 'Done',
+                  variant: 'primary',
+                  icon: 'checkmark-outline',
+                  onPress: closeSavedShopsModal,
+                },
+              ]
+            : [
+                {
+                  label: 'Keep saved',
+                  variant: 'secondary',
+                  onPress: closeRemoveModal,
+                },
+                {
+                  label: 'Remove shop',
+                  variant: 'danger',
+                  icon: 'bookmark-outline',
+                  loading: removingShopId !== null,
+                  onPress: () => void confirmRemove(),
+                },
+              ]
         }
       >
-        <View
-          style={styles.modalOverlay}
-        >
-          <View
-            style={styles.modalCard}
-          >
-            <View
-              style={styles.modalIcon}
-            >
-              <Ionicons
-                name="bookmark-outline"
-                size={23}
-                color={COLORS.danger}
-              />
-            </View>
+        {/* SHOW LARAVEL ERRORS INSIDE MODAL */}
 
-            <Text
-              style={styles.modalTitle}
-            >
-              Remove saved shop?
+        {!removeSuccessVisible && removeModalError ? (
+          <View style={styles.removeModalError}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={17}
+              color={COLORS.danger}
+            />
+
+            <Text style={styles.removeModalErrorText}>
+              {removeModalError}
             </Text>
-
-            <Text
-              style={styles.modalText}
-            >
-              {removeTarget
-                ? `${removeTarget.name} will be removed from your saved shops. You can save it again later from Shop Details.`
-                : 'This shop will be removed from your saved shops.'}
-            </Text>
-
-            <View
-              style={styles.modalActions}
-            >
-              <TouchableOpacity
-                activeOpacity={0.78}
-                disabled={
-                  removingShopId
-                  !== null
-                }
-                onPress={
-                  closeRemoveModal
-                }
-                style={
-                  styles.modalSecondaryButton
-                }
-              >
-                <Text
-                  style={
-                    styles.modalSecondaryText
-                  }
-                >
-                  Keep saved
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.82}
-                disabled={
-                  removingShopId
-                  !== null
-                }
-                onPress={() =>
-                  void confirmRemove()
-                }
-                style={[
-                  styles.modalDangerButton,
-
-                  removingShopId
-                  !== null
-                  &&
-                    styles.disabledButton,
-                ]}
-              >
-                {removingShopId
-                !== null ? (
-                  <ActivityIndicator
-                    size="small"
-                    color={
-                      COLORS.white
-                    }
-                  />
-                ) : (
-                  <Ionicons
-                    name="bookmark-outline"
-                    size={17}
-                    color={
-                      COLORS.white
-                    }
-                  />
-                )}
-
-                <Text
-                  style={
-                    styles.modalDangerText
-                  }
-                >
-                  {removingShopId
-                  !== null
-                    ? 'Removing...'
-                    : 'Remove shop'}
-                </Text>
-              </TouchableOpacity>
-            </View>
           </View>
-        </View>
-      </Modal>
+        ) : null}
+      </StyleHubModal>
     </SafeAreaView>
   );
 }
+
+/* ==========================================================
+   SUMMARY ITEM
+   ========================================================== */
 
 function SummaryItem({
   label,
@@ -1018,24 +836,20 @@ function SummaryItem({
 }) {
   return (
     <View style={styles.summaryItem}>
-      <Text
-        style={
-          styles.summaryItemLabel
-        }
-      >
+      <Text style={styles.summaryItemLabel}>
         {label}
       </Text>
 
-      <Text
-        style={
-          styles.summaryItemValue
-        }
-      >
+      <Text style={styles.summaryItemValue}>
         {value}
       </Text>
     </View>
   );
 }
+
+/* ==========================================================
+   SAVED SHOP CARD
+   ========================================================== */
 
 function SavedShopCard({
   shop,
@@ -1048,10 +862,9 @@ function SavedShopCard({
   onPress: () => void;
   onRemove: () => void;
 }) {
-  const availability =
-    availabilityPresentation(
-      shop.availability.status,
-    );
+  const availability = availabilityPresentation(
+    shop.availability.status,
+  );
 
   return (
     <TouchableOpacity
@@ -1061,28 +874,23 @@ function SavedShopCard({
       onPress={onPress}
       style={styles.shopCard}
     >
+      {/* SHOP HEADER */}
+
       <View style={styles.shopHeader}>
         <ShopOwnerAvatar
           shop={shop}
           size={58}
           iconSize={23}
           fallbackIcon={
-            shop.type
-            === 'barber_shop'
+            shop.type === 'barber_shop'
               ? 'cut-outline'
               : 'sparkles-outline'
           }
-          containerStyle={
-            styles.shopAvatar
-          }
-          imageStyle={
-            styles.shopAvatarImage
-          }
+          containerStyle={styles.shopAvatar}
+          imageStyle={styles.shopAvatarImage}
         />
 
-        <View
-          style={styles.shopHeading}
-        >
+        <View style={styles.shopHeading}>
           <Text
             numberOfLines={1}
             style={styles.shopName}
@@ -1090,12 +898,12 @@ function SavedShopCard({
             {shop.name}
           </Text>
 
-          <Text
-            style={styles.shopType}
-          >
+          <Text style={styles.shopType}>
             {shop.type_label}
           </Text>
         </View>
+
+        {/* REMOVE SAVED SHOP BUTTON */}
 
         <TouchableOpacity
           activeOpacity={0.7}
@@ -1104,12 +912,9 @@ function SavedShopCard({
           accessibilityLabel={`Remove ${shop.name} from saved shops`}
           onPress={(event) => {
             event.stopPropagation();
-
             onRemove();
           }}
-          style={
-            styles.removeButton
-          }
+          style={styles.removeButton}
         >
           {removing ? (
             <ActivityIndicator
@@ -1126,25 +931,21 @@ function SavedShopCard({
         </TouchableOpacity>
       </View>
 
-      {shop.description?.trim()
-        ? (
-          <Text
-            numberOfLines={2}
-            style={
-              styles.shopDescription
-            }
-          >
-            {shop.description}
-          </Text>
-        )
-        : null}
+      {/* DESCRIPTION */}
 
-      <View
-        style={styles.locationCard}
-      >
-        <View
-          style={styles.locationIcon}
+      {shop.description?.trim() ? (
+        <Text
+          numberOfLines={2}
+          style={styles.shopDescription}
         >
+          {shop.description}
+        </Text>
+      ) : null}
+
+      {/* LOCATION */}
+
+      <View style={styles.locationCard}>
+        <View style={styles.locationIcon}>
           <Ionicons
             name="location-outline"
             size={17}
@@ -1152,29 +953,25 @@ function SavedShopCard({
           />
         </View>
 
-        <View
-          style={styles.locationCopy}
-        >
-          <Text
-            style={
-              styles.locationLabel
-            }
-          >
+        <View style={styles.locationCopy}>
+          <Text style={styles.locationLabel}>
             Location
           </Text>
 
           <Text
             numberOfLines={2}
-            style={
-              styles.locationValue
-            }
+            style={styles.locationValue}
           >
             {shop.address}, {shop.city}, {shop.province}
           </Text>
         </View>
       </View>
 
+      {/* SHOP DETAILS */}
+
       <View style={styles.metaRow}>
+        {/* RATING */}
+
         <View style={styles.metaPill}>
           <Ionicons
             name="star"
@@ -1182,76 +979,50 @@ function SavedShopCard({
             color={COLORS.warning}
           />
 
-          <Text
-            style={
-              styles.metaPrimaryText
-            }
-          >
-            {shop.rating.average
-            === null
+          <Text style={styles.metaPrimaryText}>
+            {shop.rating.average === null
               ? 'New'
-              : shop.rating.average.toFixed(
-                  1,
-                )}
+              : shop.rating.average.toFixed(1)}
           </Text>
 
-          {shop.rating.review_count
-          > 0 ? (
-            <Text
-              style={
-                styles.metaMutedText
-              }
-            >
+          {shop.rating.review_count > 0 ? (
+            <Text style={styles.metaMutedText}>
               ({shop.rating.review_count})
             </Text>
           ) : null}
         </View>
 
-        {typeof shop
-          .active_services_count
-          === 'number' ? (
-            <View
-              style={styles.metaPill}
-            >
-              <Ionicons
-                name="cut-outline"
-                size={13}
-                color={
-                  COLORS.textMuted
-                }
-              />
+        {/* SERVICE COUNT */}
 
-              <Text
-                style={
-                  styles.metaPrimaryText
-                }
-              >
-                {shop.active_services_count}
-              </Text>
+        {typeof shop.active_services_count ===
+        'number' ? (
+          <View style={styles.metaPill}>
+            <Ionicons
+              name="cut-outline"
+              size={13}
+              color={COLORS.textMuted}
+            />
 
-              <Text
-                style={
-                  styles.metaMutedText
-                }
-              >
-                service
-                {
-                  shop.active_services_count
-                  === 1
-                    ? ''
-                    : 's'
-                }
-              </Text>
-            </View>
-          ) : null}
+            <Text style={styles.metaPrimaryText}>
+              {shop.active_services_count}
+            </Text>
+
+            <Text style={styles.metaMutedText}>
+              service
+              {shop.active_services_count === 1
+                ? ''
+                : 's'}
+            </Text>
+          </View>
+        ) : null}
+
+        {/* AVAILABILITY */}
 
         <View
           style={[
             styles.statusPill,
-
             {
-              backgroundColor:
-                availability.background,
+              backgroundColor: availability.background,
             },
           ]}
         >
@@ -1264,41 +1035,27 @@ function SavedShopCard({
           <Text
             style={[
               styles.statusPillText,
-
               {
-                color:
-                  availability.color,
+                color: availability.color,
               },
             ]}
           >
-            {
-              shop.availability
-                .status_label
-            }
+            {shop.availability.status_label}
           </Text>
         </View>
       </View>
 
+      {/* VIEW SHOP */}
+
       <View style={styles.shopFooter}>
-        <Text
-          style={styles.shopFooterText}
-        >
-          {shop.availability
-            .accepts_appointments
+        <Text style={styles.shopFooterText}>
+          {shop.availability.accepts_appointments
             ? 'Appointments are currently available.'
             : 'Open the shop to check services and current availability.'}
         </Text>
 
-        <View
-          style={
-            styles.shopFooterAction
-          }
-        >
-          <Text
-            style={
-              styles.shopFooterActionText
-            }
-          >
+        <View style={styles.shopFooterAction}>
+          <Text style={styles.shopFooterActionText}>
             View shop
           </Text>
 
@@ -1313,6 +1070,10 @@ function SavedShopCard({
   );
 }
 
+/* ==========================================================
+   STATUS MESSAGE
+   ========================================================== */
+
 function MessageBox({
   type,
   title,
@@ -1322,25 +1083,20 @@ function MessageBox({
   title: string;
   message: string;
 }) {
-  const success =
-    type === 'success';
+  const success = type === 'success';
 
   return (
     <View
       style={[
         styles.messageBox,
-
         {
-          backgroundColor:
-            success
-              ? COLORS.successSoft
-              : COLORS.dangerSoft,
+          backgroundColor: success
+            ? COLORS.successSoft
+            : COLORS.dangerSoft,
         },
       ]}
     >
-      <View
-        style={styles.messageIcon}
-      >
+      <View style={styles.messageIcon}>
         <Ionicons
           name={
             success
@@ -1356,33 +1112,31 @@ function MessageBox({
         />
       </View>
 
-      <View
-        style={styles.messageContent}
-      >
+      <View style={styles.messageContent}>
         <Text
           style={[
             styles.messageTitle,
-
             {
-              color:
-                success
-                  ? COLORS.success
-                  : COLORS.danger,
+              color: success
+                ? COLORS.success
+                : COLORS.danger,
             },
           ]}
         >
           {title}
         </Text>
 
-        <Text
-          style={styles.messageText}
-        >
+        <Text style={styles.messageText}>
           {message}
         </Text>
       </View>
     </View>
   );
 }
+
+/* ==========================================================
+   COMPLETE SCREEN STYLES
+   ========================================================== */
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -1395,9 +1149,11 @@ const styles = StyleSheet.create({
     maxWidth: LAYOUT.contentMaxWidth,
     alignSelf: 'center',
     paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingTop: 40,
     paddingBottom: 48,
   },
+
+  /* TOP BAR */
 
   topBar: {
     minHeight: 48,
@@ -1432,6 +1188,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  /* HEADER */
+
   header: {
     marginTop: SPACING.lg,
   },
@@ -1460,6 +1218,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.body,
     lineHeight: 21,
   },
+
+  /* STATUS MESSAGES */
 
   messageBox: {
     marginTop: SPACING.lg,
@@ -1494,6 +1254,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 18,
   },
+
+  /* SUMMARY CARD */
 
   summaryCard: {
     marginTop: SPACING.xl,
@@ -1564,6 +1326,8 @@ const styles = StyleSheet.create({
     marginHorizontal: 11,
     backgroundColor: COLORS.navyMuted,
   },
+
+  /* SEARCH CARD */
 
   searchCard: {
     marginTop: 12,
@@ -1636,6 +1400,8 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
 
+  /* RESULTS HEADING */
+
   resultsHeading: {
     marginTop: SPACING.xxl,
     marginBottom: 12,
@@ -1678,6 +1444,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
+  /* LOADING STATE */
+
   loadingCard: {
     alignItems: 'center',
     paddingHorizontal: 24,
@@ -1712,6 +1480,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     textAlign: 'center',
   },
+
+  /* EMPTY STATE */
 
   emptyCard: {
     alignItems: 'center',
@@ -1784,6 +1554,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
+  /* SAVED SHOP LIST */
+
   shopList: {
     gap: 11,
   },
@@ -1829,6 +1601,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  /* BOOKMARK REMOVE BUTTON */
+
   removeButton: {
     width: LAYOUT.iconButtonSize,
     height: LAYOUT.iconButtonSize,
@@ -1846,6 +1620,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.body,
     lineHeight: 20,
   },
+
+  /* LOCATION */
 
   locationCard: {
     marginTop: 13,
@@ -1884,6 +1660,8 @@ const styles = StyleSheet.create({
     lineHeight: 17,
     fontWeight: '700',
   },
+
+  /* SHOP METADATA */
 
   metaRow: {
     marginTop: 12,
@@ -1928,6 +1706,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
+  /* SHOP CARD FOOTER */
+
   shopFooter: {
     marginTop: 13,
     paddingTop: 12,
@@ -1958,87 +1738,23 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  modalOverlay: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 18,
-    backgroundColor: 'rgba(0, 0, 0, 0.42)',
-  },
+  /* MODAL ERROR */
 
-  modalCard: {
+  removeModalError: {
     width: '100%',
-    maxWidth: 500,
-    padding: 18,
-    borderRadius: RADII.xl,
-    backgroundColor: COLORS.surface,
-    ...SHADOWS.floating,
-  },
-
-  modalIcon: {
-    width: 50,
-    height: 50,
-    alignSelf: 'center',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 17,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: 11,
+    borderRadius: RADII.md,
     backgroundColor: COLORS.dangerSoft,
   },
 
-  modalTitle: {
-    marginTop: 13,
-    color: COLORS.text,
-    fontSize: TYPOGRAPHY.section,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-
-  modalText: {
-    marginTop: 6,
-    color: COLORS.textMuted,
-    fontSize: TYPOGRAPHY.body,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-
-  modalActions: {
-    marginTop: 16,
-    flexDirection: 'row',
-    gap: 8,
-  },
-
-  modalSecondaryButton: {
+  removeModalErrorText: {
     flex: 1,
-    minHeight: LAYOUT.compactButtonHeight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.surfaceSoft,
-  },
-
-  modalSecondaryText: {
-    color: COLORS.navy,
-    fontSize: TYPOGRAPHY.secondary,
-    fontWeight: '800',
-  },
-
-  modalDangerButton: {
-    flex: 1.15,
-    minHeight: LAYOUT.compactButtonHeight,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.danger,
-  },
-
-  modalDangerText: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.secondary,
-    fontWeight: '800',
+    color: COLORS.danger,
+    fontSize: TYPOGRAPHY.caption,
+    lineHeight: 18,
   },
 
   disabledButton: {

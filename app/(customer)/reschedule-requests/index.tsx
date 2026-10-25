@@ -1,19 +1,11 @@
+
 import { Ionicons } from '@expo/vector-icons';
-import {
-  router,
-  useFocusEffect,
-} from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import type { ComponentProps } from 'react';
-import {
-  useCallback,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -21,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '@/src/constants/colors';
 import {
@@ -40,12 +33,9 @@ import type {
   RescheduleRequestStatus,
 } from '@/src/types/customer';
 
-type IconName =
-  ComponentProps<typeof Ionicons>['name'];
+type IconName = ComponentProps<typeof Ionicons>['name'];
 
-type RequestFilter =
-  | 'all'
-  | RescheduleRequestStatus;
+type RequestFilter = 'all' | RescheduleRequestStatus;
 
 type StatusPresentation = {
   icon: IconName;
@@ -85,126 +75,85 @@ const FILTERS: {
   },
 ];
 
+/* STATUS PRESENTATION */
+
 function statusPresentation(
   status: RescheduleRequestStatus,
 ): StatusPresentation {
   switch (status) {
     case 'approved':
       return {
-        icon:
-          'checkmark-circle-outline',
-
-        color:
-          COLORS.green,
-
-        background:
-          COLORS.greenSoft,
+        icon: 'checkmark-circle-outline',
+        color: COLORS.green,
+        background: COLORS.greenSoft,
       };
 
     case 'pending':
       return {
-        icon:
-          'time-outline',
-
-        color:
-          COLORS.warning,
-
-        background:
-          COLORS.warningSoft,
+        icon: 'time-outline',
+        color: COLORS.warning,
+        background: COLORS.warningSoft,
       };
 
     case 'withdrawn':
       return {
-        icon:
-          'arrow-undo-outline',
-
-        color:
-          COLORS.textMuted,
-
-        background:
-          COLORS.surfaceSoft,
+        icon: 'arrow-undo-outline',
+        color: COLORS.textMuted,
+        background: COLORS.surfaceSoft,
       };
 
     case 'rejected':
     default:
       return {
-        icon:
-          'close-circle-outline',
-
-        color:
-          COLORS.danger,
-
-        background:
-          COLORS.dangerSoft,
+        icon: 'close-circle-outline',
+        color: COLORS.danger,
+        background: COLORS.dangerSoft,
       };
   }
 }
 
-function formatDate(
-  value: string,
-): string {
-  const date =
-    new Date(
-      `${value}T12:00:00+08:00`,
-    );
+/* DATE FORMATTING */
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
+function formatDate(value: string): string {
+  const date = new Date(`${value}T12:00:00+08:00`);
+
+  if (Number.isNaN(date.getTime())) {
     return value;
   }
 
   try {
-    return new Intl.DateTimeFormat(
-      'en-PH',
-      {
-        weekday: 'short',
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        timeZone: 'Asia/Manila',
-      },
-    ).format(date);
+    return new Intl.DateTimeFormat('en-PH', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'Asia/Manila',
+    }).format(date);
   } catch {
     return value;
   }
 }
 
-function formatTime(
-  value: string,
-): string {
-  const match =
-    value.match(
-      /^(\d{1,2}):(\d{2})/,
-    );
+function formatTime(value: string): string {
+  const match = value.match(/^(\d{1,2}):(\d{2})/);
 
   if (!match) {
     return value;
   }
 
-  const hour24 =
-    Number(match[1]);
-
-  const minute =
-    match[2];
+  const hour24 = Number(match[1]);
+  const minute = match[2];
 
   if (
-    Number.isNaN(hour24)
-    || hour24 < 0
-    || hour24 > 23
+    Number.isNaN(hour24) ||
+    hour24 < 0 ||
+    hour24 > 23
   ) {
     return value;
   }
 
-  const suffix =
-    hour24 >= 12
-      ? 'PM'
-      : 'AM';
-
-  const hour12 =
-    hour24 % 12 || 12;
+  const suffix = hour24 >= 12 ? 'PM' : 'AM';
+  const hour12 = hour24 % 12 || 12;
 
   return `${hour12}:${minute} ${suffix}`;
 }
@@ -216,186 +165,128 @@ function formatCreatedAt(
     return null;
   }
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return value;
   }
 
   try {
-    return new Intl.DateTimeFormat(
-      'en-PH',
-      {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        timeZone: 'Asia/Manila',
-      },
-    ).format(date);
+    return new Intl.DateTimeFormat('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'Asia/Manila',
+    }).format(date);
   } catch {
     return value;
   }
 }
 
+/* MAIN SCREEN */
+
 export default function CustomerRescheduleRequestsScreen() {
   const { token } = useAuth();
 
-  const [
-    requests,
-    setRequests,
-  ] =
-    useState<CustomerRescheduleRequest[]>(
-      [],
-    );
+  const [requests, setRequests] =
+    useState<CustomerRescheduleRequest[]>([]);
 
-  const [
-    selectedFilter,
-    setSelectedFilter,
-  ] =
-    useState<RequestFilter>(
-      'all',
-    );
+  const [selectedFilter, setSelectedFilter] =
+    useState<RequestFilter>('all');
 
-  const [
-    isLoading,
-    setIsLoading,
-  ] =
-    useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const [
-    isRefreshing,
-    setIsRefreshing,
-  ] =
-    useState(false);
+  const hasLoadedOnce = useRef(false);
 
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] =
-    useState('');
+  /* LOAD REQUESTS */
 
-  const hasLoadedOnce =
-    useRef(false);
+  const loadRequests = useCallback(
+    async (
+      refreshing = false,
+      silent = false,
+    ): Promise<void> => {
+      if (!token) {
+        setRequests([]);
+        setIsLoading(false);
+        setIsRefreshing(false);
+        return;
+      }
 
-  const loadRequests =
-    useCallback(
-      async (
-        refreshing = false,
-        silent = false,
-      ): Promise<void> => {
-        if (!token) {
-          setRequests([]);
-          setIsLoading(false);
-          setIsRefreshing(false);
+      if (refreshing) {
+        setIsRefreshing(true);
+      } else if (!silent) {
+        setIsLoading(true);
+      }
 
-          return;
-        }
+      setErrorMessage('');
 
-        if (refreshing) {
-          setIsRefreshing(true);
-        } else if (!silent) {
-          setIsLoading(true);
-        }
+      try {
+        const response =
+          await getCustomerRescheduleRequests(token);
 
-        setErrorMessage('');
-
-        try {
-          const response =
-            await getCustomerRescheduleRequests(
-              token,
-            );
-
-          setRequests(
-            response
-              .data
-              .reschedule_requests,
-          );
-
-          hasLoadedOnce.current =
-            true;
-        } catch (error) {
-          setErrorMessage(
-            error instanceof ApiError
-              ? error.message
-              : 'Unable to load reschedule requests.',
-          );
-        } finally {
-          setIsLoading(false);
-          setIsRefreshing(false);
-        }
-      },
-      [token],
-    );
+        setRequests(response.data.reschedule_requests);
+        hasLoadedOnce.current = true;
+      } catch (error) {
+        setErrorMessage(
+          error instanceof ApiError
+            ? error.message
+            : 'Unable to load reschedule requests.',
+        );
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [token],
+  );
 
   useFocusEffect(
     useCallback(() => {
-      void loadRequests(
-        false,
-        hasLoadedOnce.current,
-      );
+      void loadRequests(false, hasLoadedOnce.current);
 
       return undefined;
     }, [loadRequests]),
   );
 
-  const counts =
-    useMemo(
-      () => ({
-        pending:
-          requests.filter(
+  /* REQUEST STATUS COUNTS */
+
+  const counts = useMemo(
+    () => ({
+      pending: requests.filter(
+        (request) => request.status === 'pending',
+      ).length,
+
+      approved: requests.filter(
+        (request) => request.status === 'approved',
+      ).length,
+
+      rejected: requests.filter(
+        (request) => request.status === 'rejected',
+      ).length,
+
+      withdrawn: requests.filter(
+        (request) => request.status === 'withdrawn',
+      ).length,
+    }),
+    [requests],
+  );
+
+  /* FILTERED REQUESTS */
+
+  const filteredRequests = useMemo(
+    () =>
+      selectedFilter === 'all'
+        ? requests
+        : requests.filter(
             (request) =>
-              request.status
-              === 'pending',
-          ).length,
+              request.status === selectedFilter,
+          ),
+    [requests, selectedFilter],
+  );
 
-        approved:
-          requests.filter(
-            (request) =>
-              request.status
-              === 'approved',
-          ).length,
-
-        rejected:
-          requests.filter(
-            (request) =>
-              request.status
-              === 'rejected',
-          ).length,
-
-        withdrawn:
-          requests.filter(
-            (request) =>
-              request.status
-              === 'withdrawn',
-          ).length,
-      }),
-      [requests],
-    );
-
-  const filteredRequests =
-    useMemo(
-      () =>
-        selectedFilter === 'all'
-          ? requests
-          : requests.filter(
-              (request) =>
-                request.status
-                === selectedFilter,
-            ),
-      [
-        requests,
-        selectedFilter,
-      ],
-    );
-
-  function filterCount(
-    filter: RequestFilter,
-  ): number {
+  function filterCount(filter: RequestFilter): number {
     if (filter === 'all') {
       return requests.length;
     }
@@ -403,59 +294,51 @@ export default function CustomerRescheduleRequestsScreen() {
     return counts[filter];
   }
 
-  function openRequest(
-    requestId: number,
-  ): void {
+  /* OPEN REQUEST DETAILS */
+
+  function openRequest(requestId: number): void {
     router.push({
       pathname:
         '/(customer)/reschedule-requests/[requestId]',
-
       params: {
-        requestId:
-          String(requestId),
+        requestId: String(requestId),
       },
     });
   }
 
+  /* RENDER */
+
   return (
     <SafeAreaView
+      edges={['top', 'bottom']}
       style={styles.safeArea}
     >
       <StatusBar
         barStyle="dark-content"
-        backgroundColor={
-          COLORS.background
-        }
+        backgroundColor={COLORS.background}
+        translucent={false}
       />
 
       <ScrollView
-        showsVerticalScrollIndicator={
-          false
-        }
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={
-              isRefreshing
-            }
-            onRefresh={() =>
-              void loadRequests(true)
-            }
+            refreshing={isRefreshing}
+            onRefresh={() => void loadRequests(true)}
             tintColor={COLORS.navy}
             colors={[COLORS.navy]}
           />
         }
-        contentContainerStyle={
-          styles.container
-        }
+        contentContainerStyle={styles.container}
       >
+        {/* TOP NAVIGATION */}
+
         <View style={styles.topBar}>
           <TouchableOpacity
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel="Go back"
-            onPress={() =>
-              router.back()
-            }
+            onPress={() => router.back()}
             style={styles.topIconButton}
           >
             <Ionicons
@@ -465,24 +348,12 @@ export default function CustomerRescheduleRequestsScreen() {
             />
           </TouchableOpacity>
 
-          <View
-            style={
-              styles.topBarTitleBlock
-            }
-          >
-            <Text
-              style={
-                styles.topBarTitle
-              }
-            >
+          <View style={styles.topBarTitleBlock}>
+            <Text style={styles.topBarTitle}>
               Reschedule requests
             </Text>
 
-            <Text
-              style={
-                styles.topBarCaption
-              }
-            >
+            <Text style={styles.topBarCaption}>
               Track schedule-change decisions
             </Text>
           </View>
@@ -491,21 +362,12 @@ export default function CustomerRescheduleRequestsScreen() {
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel="Refresh reschedule requests"
-            disabled={
-              isLoading
-              || isRefreshing
-            }
-            onPress={() =>
-              void loadRequests(true)
-            }
+            disabled={isLoading || isRefreshing}
+            onPress={() => void loadRequests(true)}
             style={[
               styles.topIconButton,
-
-              (
-                isLoading
-                || isRefreshing
-              )
-              && styles.disabledButton,
+              (isLoading || isRefreshing) &&
+                styles.disabledButton,
             ]}
           >
             {isRefreshing ? (
@@ -523,52 +385,40 @@ export default function CustomerRescheduleRequestsScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* HEADER */}
+
         <View style={styles.header}>
           <Text style={styles.eyebrow}>
             SCHEDULE REQUESTS
           </Text>
 
           <Text style={styles.title}>
-            Follow every request from
-            submission to the Shop Owner&apos;s
-            decision
+            Follow every request from submission to the Shop
+            Owner&apos;s decision
           </Text>
 
           <Text style={styles.subtitle}>
-            Pending requests can still be
-            withdrawn. Approved, rejected, and
-            withdrawn requests remain available
+            Pending requests can still be withdrawn. Approved,
+            rejected, and withdrawn requests remain available
             here as your request history.
           </Text>
         </View>
 
-        <View
-          style={styles.overviewCard}
-        >
-          <View
-            style={styles.overviewTopRow}
-          >
+        {/* OVERVIEW CARD */}
+
+        <View style={styles.overviewCard}>
+          <View style={styles.overviewTopRow}>
             <View>
-              <Text
-                style={
-                  styles.overviewLabel
-                }
-              >
+              <Text style={styles.overviewLabel}>
                 Pending decisions
               </Text>
 
-              <Text
-                style={
-                  styles.overviewValue
-                }
-              >
+              <Text style={styles.overviewValue}>
                 {counts.pending}
               </Text>
             </View>
 
-            <View
-              style={styles.overviewIcon}
-            >
+            <View style={styles.overviewIcon}>
               <Ionicons
                 name="swap-horizontal-outline"
                 size={24}
@@ -577,55 +427,33 @@ export default function CustomerRescheduleRequestsScreen() {
             </View>
           </View>
 
-          <View
-            style={styles.overviewStats}
-          >
+          <View style={styles.overviewStats}>
             <SummaryItem
               label="Approved"
-              value={
-                String(
-                  counts.approved,
-                )
-              }
+              value={String(counts.approved)}
             />
 
-            <View
-              style={
-                styles.overviewDivider
-              }
-            />
+            <View style={styles.overviewDivider} />
 
             <SummaryItem
               label="Rejected"
-              value={
-                String(
-                  counts.rejected,
-                )
-              }
+              value={String(counts.rejected)}
             />
 
-            <View
-              style={
-                styles.overviewDivider
-              }
-            />
+            <View style={styles.overviewDivider} />
 
             <SummaryItem
               label="Withdrawn"
-              value={
-                String(
-                  counts.withdrawn,
-                )
-              }
+              value={String(counts.withdrawn)}
             />
           </View>
         </View>
 
+        {/* ERROR MESSAGE */}
+
         {errorMessage ? (
           <View style={styles.errorBox}>
-            <View
-              style={styles.errorIcon}
-            >
+            <View style={styles.errorIcon}>
               <Ionicons
                 name="alert-circle-outline"
                 size={19}
@@ -633,179 +461,128 @@ export default function CustomerRescheduleRequestsScreen() {
               />
             </View>
 
-            <View
-              style={styles.errorCopy}
-            >
-              <Text
-                style={styles.errorTitle}
-              >
+            <View style={styles.errorCopy}>
+              <Text style={styles.errorTitle}>
                 Requests need attention
               </Text>
 
-              <Text
-                style={styles.errorText}
-              >
+              <Text style={styles.errorText}>
                 {errorMessage}
               </Text>
             </View>
           </View>
         ) : null}
 
-        <View
-          style={styles.sectionHeading}
-        >
-          <View
-            style={
-              styles.sectionHeadingCopy
-            }
-          >
-            <Text
-              style={
-                styles.sectionTitle
-              }
-            >
+        {/* REQUEST HISTORY HEADING */}
+
+        <View style={styles.sectionHeading}>
+          <View style={styles.sectionHeadingCopy}>
+            <Text style={styles.sectionTitle}>
               Request history
             </Text>
 
-            <Text
-              style={
-                styles.sectionSubtitle
-              }
-            >
-              Filter by the status returned by
-              Laravel.
+            <Text style={styles.sectionSubtitle}>
+              Filter by the status returned by Laravel.
             </Text>
           </View>
 
           {!isLoading ? (
-            <View
-              style={styles.totalBadge}
-            >
-              <Text
-                style={
-                  styles.totalBadgeText
-                }
-              >
+            <View style={styles.totalBadge}>
+              <Text style={styles.totalBadgeText}>
                 {requests.length}
               </Text>
             </View>
           ) : null}
         </View>
 
+        {/* STATUS FILTERS */}
+
         <ScrollView
           horizontal
-          showsHorizontalScrollIndicator={
-            false
-          }
-          contentContainerStyle={
-            styles.filterRow
-          }
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.filterRow}
         >
-          {FILTERS.map(
-            (filter) => {
-              const selected =
-                selectedFilter
-                === filter.value;
+          {FILTERS.map((filter) => {
+            const selected = selectedFilter === filter.value;
 
-              return (
-                <TouchableOpacity
-                  key={filter.value}
-                  activeOpacity={0.78}
-                  accessibilityRole="button"
-                  accessibilityState={{
-                    selected,
-                  }}
-                  onPress={() =>
-                    setSelectedFilter(
-                      filter.value,
-                    )
-                  }
-                  style={[
-                    styles.filterChip,
-
+            return (
+              <TouchableOpacity
+                key={filter.value}
+                activeOpacity={0.78}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+                onPress={() =>
+                  setSelectedFilter(filter.value)
+                }
+                style={[
+                  styles.filterChip,
+                  selected && styles.filterChipSelected,
+                ]}
+              >
+                <Ionicons
+                  name={filter.icon}
+                  size={14}
+                  color={
                     selected
-                    && styles.filterChipSelected,
+                      ? COLORS.white
+                      : COLORS.textMuted
+                  }
+                />
+
+                <Text
+                  style={[
+                    styles.filterChipText,
+                    selected && styles.filterChipTextSelected,
                   ]}
                 >
-                  <Ionicons
-                    name={filter.icon}
-                    size={14}
-                    color={
-                      selected
-                        ? COLORS.white
-                        : COLORS.textMuted
-                    }
-                  />
+                  {filter.label}
+                </Text>
 
+                <View
+                  style={[
+                    styles.filterCount,
+                    selected && styles.filterCountSelected,
+                  ]}
+                >
                   <Text
                     style={[
-                      styles.filterChipText,
-
-                      selected
-                      && styles.filterChipTextSelected,
+                      styles.filterCountText,
+                      selected && styles.filterCountTextSelected,
                     ]}
                   >
-                    {filter.label}
+                    {filterCount(filter.value)}
                   </Text>
-
-                  <View
-                    style={[
-                      styles.filterCount,
-
-                      selected
-                      && styles.filterCountSelected,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.filterCountText,
-
-                        selected
-                        && styles.filterCountTextSelected,
-                      ]}
-                    >
-                      {filterCount(
-                        filter.value,
-                      )}
-                    </Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            },
-          )}
+                </View>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
 
+        {/* REQUEST CONTENT */}
+
         {isLoading ? (
-          <View
-            style={styles.loadingCard}
-          >
-            <View
-              style={styles.loadingIcon}
-            >
+          <View style={styles.loadingCard}>
+            <View style={styles.loadingIcon}>
               <ActivityIndicator
                 size="small"
                 color={COLORS.navy}
               />
             </View>
 
-            <Text
-              style={styles.loadingTitle}
-            >
+            <Text style={styles.loadingTitle}>
               Loading requests
             </Text>
 
-            <Text
-              style={styles.loadingText}
-            >
-              Getting your pending and past
-              schedule-change requests.
+            <Text style={styles.loadingText}>
+              Getting your pending and past schedule-change
+              requests.
             </Text>
           </View>
         ) : requests.length === 0 ? (
+          /* NO REQUESTS */
+
           <View style={styles.emptyCard}>
-            <View
-              style={styles.emptyIcon}
-            >
+            <View style={styles.emptyIcon}>
               <Ionicons
                 name="swap-horizontal-outline"
                 size={27}
@@ -813,18 +590,13 @@ export default function CustomerRescheduleRequestsScreen() {
               />
             </View>
 
-            <Text
-              style={styles.emptyTitle}
-            >
+            <Text style={styles.emptyTitle}>
               No reschedule requests yet
             </Text>
 
-            <Text
-              style={styles.emptyText}
-            >
-              Requests you submit from an
-              eligible appointment will appear
-              here.
+            <Text style={styles.emptyText}>
+              Requests you submit from an eligible
+              appointment will appear here.
             </Text>
 
             <TouchableOpacity
@@ -842,27 +614,16 @@ export default function CustomerRescheduleRequestsScreen() {
                 color={COLORS.white}
               />
 
-              <Text
-                style={
-                  styles.emptyButtonText
-                }
-              >
+              <Text style={styles.emptyButtonText}>
                 Open bookings
               </Text>
             </TouchableOpacity>
           </View>
-        ) : filteredRequests.length
-          === 0 ? (
-          <View
-            style={
-              styles.filteredEmptyCard
-            }
-          >
-            <View
-              style={
-                styles.filteredEmptyIcon
-              }
-            >
+        ) : filteredRequests.length === 0 ? (
+          /* EMPTY FILTER */
+
+          <View style={styles.filteredEmptyCard}>
+            <View style={styles.filteredEmptyIcon}>
               <Ionicons
                 name="filter-outline"
                 size={22}
@@ -870,60 +631,44 @@ export default function CustomerRescheduleRequestsScreen() {
               />
             </View>
 
-            <Text
-              style={
-                styles.filteredEmptyTitle
-              }
-            >
+            <Text style={styles.filteredEmptyTitle}>
               No requests with this status
             </Text>
 
-            <Text
-              style={
-                styles.filteredEmptyText
-              }
-            >
-              Choose another filter to view the
-              rest of your request history.
+            <Text style={styles.filteredEmptyText}>
+              Choose another filter to view the rest of your
+              request history.
             </Text>
 
             <TouchableOpacity
               activeOpacity={0.75}
-              onPress={() =>
-                setSelectedFilter('all')
-              }
+              onPress={() => setSelectedFilter('all')}
               style={styles.showAllButton}
             >
-              <Text
-                style={
-                  styles.showAllButtonText
-                }
-              >
+              <Text style={styles.showAllButtonText}>
                 Show all requests
               </Text>
             </TouchableOpacity>
           </View>
         ) : (
+          /* REQUEST LIST */
+
           <View style={styles.list}>
-            {filteredRequests.map(
-              (request) => (
-                <RequestCard
-                  key={request.id}
-                  request={request}
-                  onPress={() =>
-                    openRequest(
-                      request.id,
-                    )
-                  }
-                />
-              ),
-            )}
+            {filteredRequests.map((request) => (
+              <RequestCard
+                key={request.id}
+                request={request}
+                onPress={() => openRequest(request.id)}
+              />
+            ))}
           </View>
         )}
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+/* SUMMARY ITEM */
 
 function SummaryItem({
   label,
@@ -945,6 +690,8 @@ function SummaryItem({
   );
 }
 
+/* REQUEST CARD */
+
 function RequestCard({
   request,
   onPress,
@@ -952,15 +699,8 @@ function RequestCard({
   request: CustomerRescheduleRequest;
   onPress: () => void;
 }) {
-  const status =
-    statusPresentation(
-      request.status,
-    );
-
-  const createdAt =
-    formatCreatedAt(
-      request.created_at,
-    );
+  const status = statusPresentation(request.status);
+  const createdAt = formatCreatedAt(request.created_at);
 
   return (
     <TouchableOpacity
@@ -973,19 +713,14 @@ function RequestCard({
       <View
         style={[
           styles.requestAccent,
-          {
-            backgroundColor:
-              status.color,
-          },
+          { backgroundColor: status.color },
         ]}
       />
 
-      <View
-        style={styles.requestHeader}
-      >
-        <View
-          style={styles.requestIcon}
-        >
+      {/* REQUEST HEADING */}
+
+      <View style={styles.requestHeader}>
+        <View style={styles.requestIcon}>
           <Ionicons
             name="swap-horizontal-outline"
             size={20}
@@ -993,42 +728,26 @@ function RequestCard({
           />
         </View>
 
-        <View
-          style={styles.requestHeading}
-        >
+        <View style={styles.requestHeading}>
           <Text
             numberOfLines={1}
             style={styles.requestShop}
           >
-            {
-              request
-                .appointment
-                ?.shop
-                .name
-              ?? 'StyleHub Shop'
-            }
+            {request.appointment?.shop.name ?? 'StyleHub Shop'}
           </Text>
 
           <Text
             numberOfLines={1}
             style={styles.requestService}
           >
-            {
-              request
-                .appointment
-                ?.service_name
-              ?? 'Appointment'
-            }
+            {request.appointment?.service_name ?? 'Appointment'}
           </Text>
         </View>
 
         <View
           style={[
             styles.statusBadge,
-            {
-              backgroundColor:
-                status.background,
-            },
+            { backgroundColor: status.background },
           ]}
         >
           <Ionicons
@@ -1040,10 +759,7 @@ function RequestCard({
           <Text
             style={[
               styles.statusText,
-              {
-                color:
-                  status.color,
-              },
+              { color: status.color },
             ]}
           >
             {request.status_label}
@@ -1051,12 +767,10 @@ function RequestCard({
         </View>
       </View>
 
-      <View
-        style={styles.scheduleCard}
-      >
-        <View
-          style={styles.scheduleIcon}
-        >
+      {/* REQUESTED SCHEDULE */}
+
+      <View style={styles.scheduleCard}>
+        <View style={styles.scheduleIcon}>
           <Ionicons
             name="calendar-outline"
             size={18}
@@ -1064,81 +778,53 @@ function RequestCard({
           />
         </View>
 
-        <View
-          style={styles.scheduleCopy}
-        >
-          <Text
-            style={styles.scheduleLabel}
-          >
+        <View style={styles.scheduleCopy}>
+          <Text style={styles.scheduleLabel}>
             Requested schedule
           </Text>
 
-          <Text
-            style={styles.scheduleDate}
-          >
-            {formatDate(
-              request.requested_date,
-            )}
+          <Text style={styles.scheduleDate}>
+            {formatDate(request.requested_date)}
           </Text>
 
-          <Text
-            style={styles.scheduleTime}
-          >
-            {formatTime(
-              request.requested_starts_at,
-            )}{' '}
-            –{' '}
-            {formatTime(
-              request.requested_ends_at,
-            )}
+          <Text style={styles.scheduleTime}>
+            {formatTime(request.requested_starts_at)}
+            {' – '}
+            {formatTime(request.requested_ends_at)}
           </Text>
         </View>
       </View>
 
-      {request.customer_reason?.trim()
-        ? (
-          <View
-            style={styles.reasonPreview}
+      {/* CUSTOMER REASON */}
+
+      {request.customer_reason?.trim() ? (
+        <View style={styles.reasonPreview}>
+          <Ionicons
+            name="chatbubble-ellipses-outline"
+            size={15}
+            color={COLORS.textMuted}
+          />
+
+          <Text
+            numberOfLines={2}
+            style={styles.reasonPreviewText}
           >
-            <Ionicons
-              name="chatbubble-ellipses-outline"
-              size={15}
-              color={COLORS.textMuted}
-            />
+            {request.customer_reason}
+          </Text>
+        </View>
+      ) : null}
 
-            <Text
-              numberOfLines={2}
-              style={
-                styles.reasonPreviewText
-              }
-            >
-              {request.customer_reason}
-            </Text>
-          </View>
-        )
-        : null}
+      {/* REQUEST FOOTER */}
 
-      <View
-        style={styles.requestFooter}
-      >
-        <Text
-          style={styles.requestFooterText}
-        >
+      <View style={styles.requestFooter}>
+        <Text style={styles.requestFooterText}>
           {createdAt
             ? `Submitted ${createdAt}`
             : `Request #${request.id}`}
         </Text>
 
-        <View
-          style={
-            styles.requestFooterAction
-          }
-        >
-          <Text
-            style={
-              styles.requestFooterActionText
-            }
-          >
+        <View style={styles.requestFooterAction}>
+          <Text style={styles.requestFooterActionText}>
             View request
           </Text>
 
@@ -1153,6 +839,8 @@ function RequestCard({
   );
 }
 
+/* STYLES */
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -1164,7 +852,7 @@ const styles = StyleSheet.create({
     maxWidth: LAYOUT.contentMaxWidth,
     alignSelf: 'center',
     paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingTop: 40,
     paddingBottom: 48,
   },
 

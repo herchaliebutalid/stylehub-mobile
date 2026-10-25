@@ -1,3 +1,4 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import {
   router,
@@ -5,17 +6,11 @@ import {
   useLocalSearchParams,
 } from 'expo-router';
 import type { ComponentProps } from 'react';
-import {
-  useCallback,
-  useMemo,
-  useState,
-} from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
-  Modal,
   Platform,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -24,7 +19,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
+import StyleHubModal from '@/src/components/StyleHubModal';
 import { COLORS } from '@/src/constants/colors';
 import {
   LAYOUT,
@@ -43,6 +40,16 @@ import {
 import type { CustomerAppointment } from '@/src/types/customer';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
+
+type RescheduleModal =
+  | 'requestSuccess'
+  | 'cancel'
+  | 'cancelSuccess'
+  | null;
+
+/* ==========================================================
+   HELPERS
+   ========================================================== */
 
 function getRouteValue(
   value: string | string[] | undefined,
@@ -78,20 +85,18 @@ function formatTime(value: string): string {
   }
 
   const hour24 = Number(match[1]);
-  const minute = match[2];
 
   if (
-    Number.isNaN(hour24)
-    || hour24 < 0
-    || hour24 > 23
+    !Number.isFinite(hour24) ||
+    hour24 < 0 ||
+    hour24 > 23
   ) {
     return value;
   }
 
-  const suffix = hour24 >= 12 ? 'PM' : 'AM';
-  const hour12 = hour24 % 12 || 12;
-
-  return `${hour12}:${minute} ${suffix}`;
+  return `${hour24 % 12 || 12}:${match[2]} ${
+    hour24 >= 12 ? 'PM' : 'AM'
+  }`;
 }
 
 function appointmentStatusPresentation(
@@ -155,6 +160,10 @@ function requestedSchedulePreview(
   };
 }
 
+/* ==========================================================
+   CUSTOMER RESCHEDULE SCREEN
+   ========================================================== */
+
 export default function CustomerRescheduleScreen() {
   const params = useLocalSearchParams<{
     appointmentId?: string | string[];
@@ -166,97 +175,67 @@ export default function CustomerRescheduleScreen() {
     getRouteValue(params.appointmentId),
   );
 
-  const [
-    appointment,
-    setAppointment,
-  ] = useState<CustomerAppointment | null>(null);
+  /* Appointment data */
 
-  const [
-    requestedDate,
-    setRequestedDate,
-  ] = useState('');
+  const [appointment, setAppointment] =
+    useState<CustomerAppointment | null>(null);
 
-  const [
-    requestedStartsAt,
-    setRequestedStartsAt,
-  ] = useState('');
+  /* Reschedule request form */
 
-  const [
-    reason,
-    setReason,
-  ] = useState('');
+  const [requestedDate, setRequestedDate] = useState('');
+  const [requestedStartsAt, setRequestedStartsAt] =
+    useState('');
+  const [reason, setReason] = useState('');
 
-  const [
-    isLoading,
-    setIsLoading,
-  ] = useState(true);
+  /* Loading and errors */
 
-  const [
-    isSubmitting,
-    setIsSubmitting,
-  ] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const [
-    isCancelling,
-    setIsCancelling,
-  ] = useState(false);
+  /* Shared modal */
 
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] = useState('');
+  const [activeModal, setActiveModal] =
+    useState<RescheduleModal>(null);
 
-  const [
-    successVisible,
-    setSuccessVisible,
-  ] = useState(false);
+  /* Reschedule request success */
 
-  const [
-    successMessage,
-    setSuccessMessage,
-  ] = useState(
+  const [successMessage, setSuccessMessage] = useState(
     'Your reschedule request was submitted successfully.',
   );
 
-  const [
-    submittedRequestId,
-    setSubmittedRequestId,
-  ] = useState<number | null>(null);
+  const [submittedRequestId, setSubmittedRequestId] =
+    useState<number | null>(null);
 
-  const [
-    cancelModalVisible,
-    setCancelModalVisible,
-  ] = useState(false);
+  /* Cancellation */
 
-  const [
-    cancellationReason,
-    setCancellationReason,
-  ] = useState('');
+  const [cancellationReason, setCancellationReason] =
+    useState('');
 
-  const [
-    cancelSuccessVisible,
-    setCancelSuccessVisible,
-  ] = useState(false);
+  const [cancelModalError, setCancelModalError] =
+    useState('');
 
-  const [
-    cancelSuccessMessage,
-    setCancelSuccessMessage,
-  ] = useState(
-    'Your appointment was cancelled successfully.',
-  );
+  const [cancelSuccessMessage, setCancelSuccessMessage] =
+    useState(
+      'Your appointment was cancelled successfully.',
+    );
+
+  /* ========================================================
+     LOAD APPOINTMENT
+     ======================================================== */
 
   const loadAppointment = useCallback(
     async (): Promise<void> => {
       if (
-        !token
-        || !Number.isInteger(appointmentId)
-        || appointmentId < 1
+        !token ||
+        !Number.isInteger(appointmentId) ||
+        appointmentId < 1
       ) {
         setIsLoading(false);
         setErrorMessage(
           'The selected appointment is invalid.',
         );
-
         return;
       }
 
@@ -264,15 +243,12 @@ export default function CustomerRescheduleScreen() {
       setErrorMessage('');
 
       try {
-        const response =
-          await getCustomerAppointment(
-            token,
-            appointmentId,
-          );
-
-        setAppointment(
-          response.data.appointment,
+        const response = await getCustomerAppointment(
+          token,
+          appointmentId,
         );
+
+        setAppointment(response.data.appointment);
       } catch (error) {
         setErrorMessage(
           error instanceof ApiError
@@ -283,30 +259,29 @@ export default function CustomerRescheduleScreen() {
         setIsLoading(false);
       }
     },
-    [
-      appointmentId,
-      token,
-    ],
+    [appointmentId, token],
   );
 
   useFocusEffect(
     useCallback(() => {
       void loadAppointment();
-
       return undefined;
     }, [loadAppointment]),
   );
 
-  const canRequest =
-    appointment?.status === 'pending'
-    || appointment?.status === 'confirmed';
+  /* ========================================================
+     BOOKING STATE
+     ======================================================== */
 
-  const appointmentStatus =
-    appointment
-      ? appointmentStatusPresentation(
-          appointment.status,
-        )
-      : null;
+  const canRequest =
+    appointment?.status === 'pending' ||
+    appointment?.status === 'confirmed';
+
+  const appointmentStatus = appointment
+    ? appointmentStatusPresentation(
+        appointment.status,
+      )
+    : null;
 
   const preview = useMemo(
     () =>
@@ -314,17 +289,18 @@ export default function CustomerRescheduleScreen() {
         requestedDate,
         requestedStartsAt,
       ),
-    [
-      requestedDate,
-      requestedStartsAt,
-    ],
+    [requestedDate, requestedStartsAt],
   );
 
   const hasDraft = Boolean(
-    requestedDate.trim()
-    || requestedStartsAt.trim()
-    || reason.trim(),
+    requestedDate.trim() ||
+      requestedStartsAt.trim() ||
+      reason.trim(),
   );
+
+  /* ========================================================
+     RESET RESCHEDULE FORM
+     ======================================================== */
 
   function resetForm(): void {
     setRequestedDate('');
@@ -333,20 +309,23 @@ export default function CustomerRescheduleScreen() {
     setErrorMessage('');
   }
 
+  /* ========================================================
+     SUBMIT RESCHEDULE REQUEST
+     ======================================================== */
+
   async function handleSubmit(): Promise<void> {
     if (
-      !token
-      || !appointment
-      || isSubmitting
-      || isCancelling
+      !token ||
+      !appointment ||
+      isSubmitting ||
+      isCancelling
     ) {
       return;
     }
 
     setErrorMessage('');
 
-    const cleanRequestedDate =
-      requestedDate.trim();
+    const cleanRequestedDate = requestedDate.trim();
 
     if (
       !/^\d{4}-\d{2}-\d{2}$/.test(
@@ -356,7 +335,6 @@ export default function CustomerRescheduleScreen() {
       setErrorMessage(
         'Enter the requested date as YYYY-MM-DD.',
       );
-
       return;
     }
 
@@ -371,20 +349,15 @@ export default function CustomerRescheduleScreen() {
       setErrorMessage(
         'Enter the requested start time as HH:MM.',
       );
-
       return;
     }
 
-    const cleanReason =
-      reason.trim();
+    const cleanReason = reason.trim();
 
-    if (
-      cleanReason.length > 1000
-    ) {
+    if (cleanReason.length > 1000) {
       setErrorMessage(
         'The reason may not exceed 1000 characters.',
       );
-
       return;
     }
 
@@ -396,32 +369,27 @@ export default function CustomerRescheduleScreen() {
           token,
           appointment.id,
           {
-            requestedDate:
-              cleanRequestedDate,
-
+            requestedDate: cleanRequestedDate,
             requestedStartsAt:
               cleanRequestedStartsAt,
-
-            reason:
-              cleanReason,
+            reason: cleanReason,
           },
         );
 
-      const requestId =
-        response.data.reschedule_request.id;
-
       setSubmittedRequestId(
-        requestId,
+        response.data.reschedule_request.id,
       );
 
       setSuccessMessage(
-        response.message
-        ?? 'Your reschedule request was submitted successfully.',
+        response.message ??
+          'Your reschedule request was submitted successfully.',
       );
 
       resetForm();
 
-      setSuccessVisible(true);
+      /* Open green shared success modal */
+
+      setActiveModal('requestSuccess');
     } catch (error) {
       setErrorMessage(
         error instanceof ApiError
@@ -433,67 +401,82 @@ export default function CustomerRescheduleScreen() {
     }
   }
 
+  /* ========================================================
+     SUCCESS NAVIGATION
+     ======================================================== */
+
   function handleViewRequest(): void {
     if (!submittedRequestId) {
       return;
     }
 
-    setSuccessVisible(false);
+    setActiveModal(null);
 
     router.replace({
       pathname:
         '/(customer)/reschedule-requests/[requestId]',
-
       params: {
-        requestId:
-          String(submittedRequestId),
+        requestId: String(submittedRequestId),
       },
     });
   }
 
   function handleDone(): void {
-    setSuccessVisible(false);
+    setActiveModal(null);
 
     router.replace({
       pathname:
         '/(customer)/customer-appointment/[appointmentId]',
-
       params: {
-        appointmentId:
-          String(appointmentId),
+        appointmentId: String(appointmentId),
       },
     });
   }
 
+  /* ========================================================
+     OPEN CANCELLATION MODAL
+     ======================================================== */
+
   function openCancelModal(): void {
     if (
-      !appointment
-      || !canRequest
-      || isSubmitting
-      || isCancelling
+      !appointment ||
+      !canRequest ||
+      isSubmitting ||
+      isCancelling
     ) {
       return;
     }
 
     setErrorMessage('');
     setCancellationReason('');
-    setCancelModalVisible(true);
+    setCancelModalError('');
+
+    setActiveModal('cancel');
   }
+
+  /* ========================================================
+     CLOSE CANCELLATION MODAL
+     ======================================================== */
 
   function closeCancelModal(): void {
     if (isCancelling) {
       return;
     }
 
-    setCancelModalVisible(false);
+    setActiveModal(null);
     setCancellationReason('');
+    setCancelModalError('');
   }
+
+  /* ========================================================
+     CANCEL APPOINTMENT
+     ======================================================== */
 
   async function handleCancelAppointment(): Promise<void> {
     if (
-      !token
-      || !appointment
-      || isCancelling
+      !token ||
+      !appointment ||
+      isCancelling
     ) {
       return;
     }
@@ -501,28 +484,22 @@ export default function CustomerRescheduleScreen() {
     const cleanReason =
       cancellationReason.trim();
 
-    if (
-      cleanReason.length < 5
-    ) {
-      setErrorMessage(
+    if (cleanReason.length < 5) {
+      setCancelModalError(
         'Cancellation reason must contain at least 5 characters.',
       );
-
       return;
     }
 
-    if (
-      cleanReason.length > 1000
-    ) {
-      setErrorMessage(
+    if (cleanReason.length > 1000) {
+      setCancelModalError(
         'Cancellation reason may not exceed 1000 characters.',
       );
-
       return;
     }
 
     setIsCancelling(true);
-    setErrorMessage('');
+    setCancelModalError('');
 
     try {
       const response =
@@ -532,21 +509,21 @@ export default function CustomerRescheduleScreen() {
           cleanReason,
         );
 
-      setAppointment(
-        response.data.appointment,
-      );
-
-      setCancelModalVisible(false);
+      setAppointment(response.data.appointment);
       setCancellationReason('');
 
       setCancelSuccessMessage(
-        response.message
-        ?? 'Your appointment was cancelled successfully.',
+        response.message ??
+          'Your appointment was cancelled successfully.',
       );
 
-      setCancelSuccessVisible(true);
+      /* Red confirmation becomes green success */
+
+      setActiveModal('cancelSuccess');
     } catch (error) {
-      setErrorMessage(
+      /* Keep Laravel errors inside the modal */
+
+      setCancelModalError(
         error instanceof ApiError
           ? error.message
           : 'Unable to cancel the appointment.',
@@ -556,50 +533,62 @@ export default function CustomerRescheduleScreen() {
     }
   }
 
+  /* ========================================================
+     VIEW BOOKINGS
+     ======================================================== */
+
   function handleViewBookings(): void {
-    setCancelSuccessVisible(false);
+    setActiveModal(null);
 
     router.replace(
       '/(customer)/customer/appointments',
     );
   }
 
-  if (
-    isLoading
-    && !appointment
-  ) {
+  /* ========================================================
+     HANDLE ANDROID BACK BUTTON
+     ======================================================== */
+
+  function handleModalClose(): void {
+    if (isCancelling) {
+      return;
+    }
+
+    if (activeModal === 'requestSuccess') {
+      handleDone();
+    } else if (activeModal === 'cancelSuccess') {
+      handleViewBookings();
+    } else {
+      closeCancelModal();
+    }
+  }
+
+  /* ========================================================
+     LOADING SCREEN
+     ======================================================== */
+
+  if (isLoading && !appointment) {
     return (
-      <SafeAreaView
-        style={styles.safeArea}
-      >
+      <SafeAreaView style={styles.safeArea}>
         <StatusBar
           barStyle="dark-content"
-          backgroundColor={
-            COLORS.background
-          }
+          backgroundColor={COLORS.background}
+          translucent={false}
         />
 
-        <View
-          style={styles.loadingContainer}
-        >
-          <View
-            style={styles.loadingIcon}
-          >
+        <View style={styles.loadingContainer}>
+          <View style={styles.loadingIcon}>
             <ActivityIndicator
               size="small"
               color={COLORS.navy}
             />
           </View>
 
-          <Text
-            style={styles.loadingTitle}
-          >
+          <Text style={styles.loadingTitle}>
             Preparing reschedule request
           </Text>
 
-          <Text
-            style={styles.loadingText}
-          >
+          <Text style={styles.loadingText}>
             Getting the latest appointment
             schedule and status.
           </Text>
@@ -608,21 +597,20 @@ export default function CustomerRescheduleScreen() {
     );
   }
 
+  /* ========================================================
+     APPOINTMENT UNAVAILABLE
+     ======================================================== */
+
   if (!appointment) {
     return (
-      <SafeAreaView
-        style={styles.safeArea}
-      >
+      <SafeAreaView style={styles.safeArea}>
         <StatusBar
           barStyle="dark-content"
-          backgroundColor={
-            COLORS.background
-          }
+          backgroundColor={COLORS.background}
+          translucent={false}
         />
 
-        <View
-          style={styles.unavailableContainer}
-        >
+        <View style={styles.unavailableContainer}>
           <TouchableOpacity
             activeOpacity={0.7}
             accessibilityRole="button"
@@ -637,12 +625,8 @@ export default function CustomerRescheduleScreen() {
             />
           </TouchableOpacity>
 
-          <View
-            style={styles.unavailableContent}
-          >
-            <View
-              style={styles.unavailableIcon}
-            >
+          <View style={styles.unavailableContent}>
+            <View style={styles.unavailableIcon}>
               <Ionicons
                 name="swap-horizontal-outline"
                 size={30}
@@ -650,17 +634,13 @@ export default function CustomerRescheduleScreen() {
               />
             </View>
 
-            <Text
-              style={styles.unavailableTitle}
-            >
+            <Text style={styles.unavailableTitle}>
               Reschedule unavailable
             </Text>
 
-            <Text
-              style={styles.unavailableText}
-            >
-              {errorMessage
-                || 'Unable to display this appointment.'}
+            <Text style={styles.unavailableText}>
+              {errorMessage ||
+                'Unable to display this appointment.'}
             </Text>
           </View>
         </View>
@@ -668,15 +648,16 @@ export default function CustomerRescheduleScreen() {
     );
   }
 
+  /* ========================================================
+     MAIN SCREEN
+     ======================================================== */
+
   return (
-    <SafeAreaView
-      style={styles.safeArea}
-    >
+    <SafeAreaView style={styles.safeArea}>
       <StatusBar
         barStyle="dark-content"
-        backgroundColor={
-          COLORS.background
-        }
+        backgroundColor={COLORS.background}
+        translucent={false}
       />
 
       <KeyboardAvoidingView
@@ -689,21 +670,18 @@ export default function CustomerRescheduleScreen() {
       >
         <ScrollView
           keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={
-            false
-          }
-          contentContainerStyle={
-            styles.container
-          }
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.container}
         >
+          {/* TOP NAVIGATION */}
+
           <View style={styles.topBar}>
             <TouchableOpacity
               activeOpacity={0.7}
               accessibilityRole="button"
               accessibilityLabel="Go back"
               disabled={
-                isSubmitting
-                || isCancelling
+                isSubmitting || isCancelling
               }
               onPress={() => router.back()}
               style={styles.topIconButton}
@@ -715,18 +693,12 @@ export default function CustomerRescheduleScreen() {
               />
             </TouchableOpacity>
 
-            <View
-              style={styles.topBarTitleBlock}
-            >
-              <Text
-                style={styles.topBarTitle}
-              >
+            <View style={styles.topBarTitleBlock}>
+              <Text style={styles.topBarTitle}>
                 Request reschedule
               </Text>
 
-              <Text
-                style={styles.topBarCaption}
-              >
+              <Text style={styles.topBarCaption}>
                 Appointment #{appointment.id}
               </Text>
             </View>
@@ -736,8 +708,7 @@ export default function CustomerRescheduleScreen() {
               accessibilityRole="button"
               accessibilityLabel="Open reschedule requests"
               disabled={
-                isSubmitting
-                || isCancelling
+                isSubmitting || isCancelling
               }
               onPress={() =>
                 router.push(
@@ -754,25 +725,29 @@ export default function CustomerRescheduleScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* PAGE HEADER */}
+
           <View style={styles.header}>
             <Text style={styles.eyebrow}>
               SCHEDULE CHANGE
             </Text>
 
             <Text style={styles.title}>
-              Ask the shop to move your
-              appointment to a new schedule
+              Ask the shop to move your appointment
+              to a new schedule
             </Text>
 
             <Text style={styles.subtitle}>
               Your current appointment stays
               unchanged until the Shop Owner
               approves this request. Laravel
-              still validates the requested
-              date, time, conflicts, operating
-              hours, and booking rules.
+              still validates the requested date,
+              time, conflicts, operating hours,
+              and booking rules.
             </Text>
           </View>
+
+          {/* ERROR MESSAGE */}
 
           {errorMessage ? (
             <MessageBox
@@ -781,17 +756,15 @@ export default function CustomerRescheduleScreen() {
             />
           ) : null}
 
+          {/* CURRENT BOOKING */}
+
           <View style={styles.currentCard}>
-            <View
-              style={styles.currentTopRow}
-            >
-              <View
-                style={styles.currentIcon}
-              >
+            <View style={styles.currentTopRow}>
+              <View style={styles.currentIcon}>
                 <Ionicons
                   name={
-                    appointment.shop?.type
-                    === 'barber_shop'
+                    appointment.shop?.type ===
+                    'barber_shop'
                       ? 'cut-outline'
                       : 'sparkles-outline'
                   }
@@ -811,13 +784,9 @@ export default function CustomerRescheduleScreen() {
                   ]}
                 >
                   <Ionicons
-                    name={
-                      appointmentStatus.icon
-                    }
+                    name={appointmentStatus.icon}
                     size={14}
-                    color={
-                      appointmentStatus.color
-                    }
+                    color={appointmentStatus.color}
                   />
 
                   <Text
@@ -835,26 +804,16 @@ export default function CustomerRescheduleScreen() {
               ) : null}
             </View>
 
-            <Text
-              style={styles.currentService}
-            >
-              {
-                appointment
-                  .service_snapshot
-                  .name
-              }
+            <Text style={styles.currentService}>
+              {appointment.service_snapshot.name}
             </Text>
 
             <Text style={styles.currentShop}>
-              {
-                appointment.shop?.name
-                ?? 'StyleHub Shop'
-              }
+              {appointment.shop?.name ??
+                'StyleHub Shop'}
             </Text>
 
-            <View
-              style={styles.currentDetails}
-            >
+            <View style={styles.currentDetails}>
               <ScheduleSummary
                 label="Current date"
                 value={formatDate(
@@ -862,9 +821,7 @@ export default function CustomerRescheduleScreen() {
                 )}
               />
 
-              <View
-                style={styles.currentDivider}
-              />
+              <View style={styles.currentDivider} />
 
               <ScheduleSummary
                 label="Current time"
@@ -877,11 +834,11 @@ export default function CustomerRescheduleScreen() {
             </View>
           </View>
 
+          {/* RESCHEDULE AVAILABILITY */}
+
           {!canRequest ? (
             <View style={styles.warningCard}>
-              <View
-                style={styles.warningIcon}
-              >
+              <View style={styles.warningIcon}>
                 <Ionicons
                   name="alert-circle-outline"
                   size={20}
@@ -889,27 +846,23 @@ export default function CustomerRescheduleScreen() {
                 />
               </View>
 
-              <View
-                style={styles.warningCopy}
-              >
-                <Text
-                  style={styles.warningTitle}
-                >
+              <View style={styles.warningCopy}>
+                <Text style={styles.warningTitle}>
                   Reschedule request unavailable
                 </Text>
 
-                <Text
-                  style={styles.warningText}
-                >
+                <Text style={styles.warningText}>
                   Only pending or confirmed
                   appointments can request a new
                   schedule. The backend will also
-                  enforce the shop&apos;s
-                  reschedule cutoff.
+                  enforce the shop's reschedule
+                  cutoff.
                 </Text>
               </View>
             </View>
           ) : null}
+
+          {/* REQUESTED SCHEDULE */}
 
           <SectionHeading
             title="Requested schedule"
@@ -917,6 +870,8 @@ export default function CustomerRescheduleScreen() {
           />
 
           <View style={styles.formCard}>
+            {/* REQUESTED DATE */}
+
             <FieldHeader
               icon="calendar-outline"
               title="Requested date"
@@ -927,9 +882,9 @@ export default function CustomerRescheduleScreen() {
               value={requestedDate}
               onChangeText={setRequestedDate}
               editable={
-                canRequest
-                && !isSubmitting
-                && !isCancelling
+                canRequest &&
+                !isSubmitting &&
+                !isCancelling
               }
               maxLength={10}
               placeholder="YYYY-MM-DD"
@@ -943,9 +898,9 @@ export default function CustomerRescheduleScreen() {
               style={styles.input}
             />
 
-            <View
-              style={styles.formDivider}
-            />
+            <View style={styles.formDivider} />
+
+            {/* REQUESTED TIME */}
 
             <FieldHeader
               icon="time-outline"
@@ -955,13 +910,11 @@ export default function CustomerRescheduleScreen() {
 
             <TextInput
               value={requestedStartsAt}
-              onChangeText={
-                setRequestedStartsAt
-              }
+              onChangeText={setRequestedStartsAt}
               editable={
-                canRequest
-                && !isSubmitting
-                && !isCancelling
+                canRequest &&
+                !isSubmitting &&
+                !isCancelling
               }
               maxLength={5}
               placeholder="HH:MM"
@@ -975,9 +928,9 @@ export default function CustomerRescheduleScreen() {
               style={styles.input}
             />
 
-            <View
-              style={styles.formDivider}
-            />
+            <View style={styles.formDivider} />
+
+            {/* OPTIONAL REASON */}
 
             <FieldHeader
               icon="chatbubble-ellipses-outline"
@@ -989,9 +942,9 @@ export default function CustomerRescheduleScreen() {
               value={reason}
               onChangeText={setReason}
               editable={
-                canRequest
-                && !isSubmitting
-                && !isCancelling
+                canRequest &&
+                !isSubmitting &&
+                !isCancelling
               }
               maxLength={1000}
               multiline
@@ -1007,12 +960,12 @@ export default function CustomerRescheduleScreen() {
               ]}
             />
 
-            <Text
-              style={styles.counterText}
-            >
+            <Text style={styles.counterText}>
               {reason.length}/1000
             </Text>
           </View>
+
+          {/* REQUEST PREVIEW */}
 
           <SectionHeading
             title="Request preview"
@@ -1047,12 +1000,10 @@ export default function CustomerRescheduleScreen() {
             />
           </View>
 
-          <View
-            style={styles.pendingNotice}
-          >
-            <View
-              style={styles.pendingNoticeIcon}
-            >
+          {/* PENDING NOTICE */}
+
+          <View style={styles.pendingNotice}>
+            <View style={styles.pendingNoticeIcon}>
               <Ionicons
                 name="hourglass-outline"
                 size={20}
@@ -1060,47 +1011,40 @@ export default function CustomerRescheduleScreen() {
               />
             </View>
 
-            <View
-              style={styles.pendingNoticeCopy}
-            >
-              <Text
-                style={styles.pendingNoticeTitle}
-              >
+            <View style={styles.pendingNoticeCopy}>
+              <Text style={styles.pendingNoticeTitle}>
                 Approval is required
               </Text>
 
-              <Text
-                style={styles.pendingNoticeText}
-              >
+              <Text style={styles.pendingNoticeText}>
                 Submitting does not immediately
                 change your appointment. The
                 original schedule remains active
-                until the Shop Owner approves the
-                request.
+                until the Shop Owner approves
+                the request.
               </Text>
             </View>
           </View>
 
+          {/* SUBMIT REQUEST */}
+
           <TouchableOpacity
             activeOpacity={0.84}
             disabled={
-              !canRequest
-              || isSubmitting
-              || isCancelling
+              !canRequest ||
+              isSubmitting ||
+              isCancelling
             }
             accessibilityRole="button"
             accessibilityLabel="Submit reschedule request"
-            onPress={() =>
-              void handleSubmit()
-            }
+            onPress={() => void handleSubmit()}
             style={[
               styles.primaryButton,
               (
-                !canRequest
-                || isSubmitting
-                || isCancelling
-              )
-              && styles.disabledButton,
+                !canRequest ||
+                isSubmitting ||
+                isCancelling
+              ) && styles.disabledButton,
             ]}
           >
             {isSubmitting ? (
@@ -1116,21 +1060,21 @@ export default function CustomerRescheduleScreen() {
               />
             )}
 
-            <Text
-              style={styles.primaryButtonText}
-            >
+            <Text style={styles.primaryButtonText}>
               {isSubmitting
                 ? 'Submitting request...'
                 : 'Submit reschedule request'}
             </Text>
           </TouchableOpacity>
 
+          {/* CLEAR FORM */}
+
           {hasDraft && canRequest ? (
             <TouchableOpacity
               activeOpacity={0.76}
               disabled={
-                isSubmitting
-                || isCancelling
+                isSubmitting ||
+                isCancelling
               }
               onPress={resetForm}
               style={styles.resetButton}
@@ -1141,22 +1085,18 @@ export default function CustomerRescheduleScreen() {
                 color={COLORS.navy}
               />
 
-              <Text
-                style={styles.resetButtonText}
-              >
+              <Text style={styles.resetButtonText}>
                 Clear request form
               </Text>
             </TouchableOpacity>
           ) : null}
 
+          {/* CANCEL APPOINTMENT OPTION */}
+
           {canRequest ? (
             <View style={styles.cancelCard}>
-              <View
-                style={styles.cancelCardHeader}
-              >
-                <View
-                  style={styles.cancelCardIcon}
-                >
+              <View style={styles.cancelCardHeader}>
+                <View style={styles.cancelCardIcon}>
                   <Ionicons
                     name="close-circle-outline"
                     size={20}
@@ -1164,23 +1104,17 @@ export default function CustomerRescheduleScreen() {
                   />
                 </View>
 
-                <View
-                  style={styles.cancelCardCopy}
-                >
-                  <Text
-                    style={styles.cancelCardTitle}
-                  >
+                <View style={styles.cancelCardCopy}>
+                  <Text style={styles.cancelCardTitle}>
                     Need to cancel instead?
                   </Text>
 
-                  <Text
-                    style={styles.cancelCardText}
-                  >
+                  <Text style={styles.cancelCardText}>
                     You can still cancel this
                     appointment from here. Laravel
                     will verify whether cancellation
-                    is allowed by the shop&apos;s
-                    cutoff rules.
+                    is allowed by the shop's cutoff
+                    rules.
                   </Text>
                 </View>
               </View>
@@ -1188,8 +1122,8 @@ export default function CustomerRescheduleScreen() {
               <TouchableOpacity
                 activeOpacity={0.82}
                 disabled={
-                  isSubmitting
-                  || isCancelling
+                  isSubmitting ||
+                  isCancelling
                 }
                 onPress={openCancelModal}
                 style={
@@ -1215,289 +1149,176 @@ export default function CustomerRescheduleScreen() {
         </ScrollView>
       </KeyboardAvoidingView>
 
-      <Modal
-        visible={successVisible}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={handleDone}
+      {/* ==================================================
+          SHARED STYLEHUB MODAL
+          ================================================== */}
+
+      <StyleHubModal
+        visible={activeModal !== null}
+        onClose={handleModalClose}
+        title={
+          activeModal === 'requestSuccess'
+            ? 'Request submitted'
+            : activeModal === 'cancelSuccess'
+              ? 'Appointment cancelled'
+              : 'Cancel appointment?'
+        }
+        message={
+          activeModal === 'requestSuccess'
+            ? successMessage
+            : activeModal === 'cancelSuccess'
+              ? cancelSuccessMessage
+              : 'Tell the shop why you need to cancel. Laravel will verify whether cancellation is allowed.'
+        }
+        tone={
+          activeModal === 'cancel'
+            ? 'danger'
+            : 'success'
+        }
+        icon={
+          activeModal === 'cancel'
+            ? 'close-circle-outline'
+            : 'checkmark-circle-outline'
+        }
+        dismissOnBackdrop={false}
+        actions={
+          activeModal === 'requestSuccess'
+            ? [
+                {
+                  label: 'Back to booking',
+                  variant: 'secondary',
+                  onPress: handleDone,
+                },
+                {
+                  label: 'View request',
+                  variant: 'primary',
+                  icon: 'arrow-forward',
+                  onPress: handleViewRequest,
+                  disabled: !submittedRequestId,
+                },
+              ]
+            : activeModal === 'cancelSuccess'
+              ? [
+                  {
+                    label: 'View bookings',
+                    variant: 'primary',
+                    icon: 'arrow-forward',
+                    onPress: handleViewBookings,
+                  },
+                ]
+              : activeModal === 'cancel'
+                ? [
+                    {
+                      label: 'Keep booking',
+                      variant: 'secondary',
+                      onPress: closeCancelModal,
+                    },
+                    {
+                      label: 'Cancel booking',
+                      variant: 'danger',
+                      icon: 'close-circle-outline',
+                      disabled:
+                        cancellationReason.trim()
+                          .length < 5,
+                      loading: isCancelling,
+                      onPress: () =>
+                        void handleCancelAppointment(),
+                    },
+                  ]
+                : []
+        }
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.successIcon}>
-              <Ionicons
-                name="checkmark"
-                size={30}
-                color={COLORS.white}
-              />
-            </View>
+        {/* RESCHEDULE SUCCESS NOTICE */}
 
-            <Text style={styles.modalTitle}>
-              Request submitted
+        {activeModal === 'requestSuccess' ? (
+          <View style={styles.modalNotice}>
+            <Ionicons
+              name="time-outline"
+              size={17}
+              color={COLORS.violet}
+            />
+
+            <Text style={styles.modalNoticeText}>
+              Your original appointment stays
+              unchanged until the Shop Owner
+              approves your request.
+            </Text>
+          </View>
+        ) : null}
+
+        {/* CANCEL APPOINTMENT FORM */}
+
+        {activeModal === 'cancel' ? (
+          <View style={styles.cancelModalContent}>
+            <Text style={styles.modalLabel}>
+              Cancellation reason{' '}
+              <Text style={styles.requiredMark}>
+                *
+              </Text>
             </Text>
 
-            <Text
-              style={styles.modalDescription}
-            >
-              {successMessage}
-            </Text>
+            <TextInput
+              value={cancellationReason}
+              onChangeText={(value) => {
+                setCancellationReason(value);
 
-            <View style={styles.modalNotice}>
-              <Ionicons
-                name="time-outline"
-                size={18}
-                color={COLORS.violet}
-              />
-
-              <Text
-                style={styles.modalNoticeText}
-              >
-                Your original appointment remains
-                unchanged while this request waits
-                for the Shop Owner&apos;s decision.
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              activeOpacity={0.84}
-              onPress={handleViewRequest}
-              style={styles.modalPrimaryButton}
-            >
-              <Text
-                style={styles.modalPrimaryText}
-              >
-                View request
-              </Text>
-
-              <Ionicons
-                name="arrow-forward"
-                size={17}
-                color={COLORS.white}
-              />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.72}
-              onPress={handleDone}
-              style={
-                styles.modalSecondaryButton
+                if (cancelModalError) {
+                  setCancelModalError('');
+                }
+              }}
+              editable={!isCancelling}
+              maxLength={1000}
+              multiline
+              textAlignVertical="top"
+              placeholder="Why do you need to cancel?"
+              placeholderTextColor={
+                COLORS.textLight
               }
-            >
-              <Text
-                style={styles.modalSecondaryText}
-              >
-                Back to appointment
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+              selectionColor={COLORS.navy}
+              accessibilityLabel="Cancellation reason"
+              style={[
+                styles.cancelReasonInput,
+                cancelModalError
+                  ? styles.cancelReasonInvalid
+                  : null,
+              ]}
+            />
 
-      <Modal
-        visible={cancelModalVisible}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={closeCancelModal}
-      >
-        <KeyboardAvoidingView
-          style={styles.modalKeyboardView}
-          behavior={
-            Platform.OS === 'ios'
-              ? 'padding'
-              : undefined
-          }
-        >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalCard}>
-              <View style={styles.modalHeader}>
-                <View style={styles.cancelIcon}>
-                  <Ionicons
-                    name="close-circle-outline"
-                    size={23}
-                    color={COLORS.danger}
-                  />
-                </View>
-
-                <View
-                  style={styles.modalHeaderCopy}
-                >
-                  <Text
-                    style={styles.modalTitle}
-                  >
-                    Cancel appointment?
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.modalDescriptionLeft
-                    }
-                  >
-                    Tell the shop why you need to
-                    cancel. The backend still
-                    decides whether the
-                    cancellation cutoff allows it.
-                  </Text>
-                </View>
-              </View>
-
-              <Text style={styles.modalLabel}>
-                Cancellation reason
+            <View style={styles.modalCounterRow}>
+              <Text style={styles.modalHelp}>
+                Minimum 5 characters
               </Text>
 
-              <TextInput
-                value={cancellationReason}
-                onChangeText={
-                  setCancellationReason
-                }
-                editable={!isCancelling}
-                maxLength={1000}
-                multiline
-                textAlignVertical="top"
-                placeholder="Enter your cancellation reason"
-                placeholderTextColor={
-                  COLORS.textLight
-                }
-                selectionColor={COLORS.navy}
-                style={
-                  styles.cancelReasonInput
-                }
-              />
-
-              <Text
-                style={styles.modalCounter}
-              >
+              <Text style={styles.modalCounter}>
                 {cancellationReason.length}/1000
-                {' · '}minimum 5 characters
               </Text>
+            </View>
 
-              {errorMessage ? (
-                <View
-                  style={styles.modalErrorBox}
-                >
-                  <Ionicons
-                    name="alert-circle-outline"
-                    size={16}
-                    color={COLORS.danger}
-                  />
+            {/* LARAVEL ERROR INSIDE MODAL */}
 
-                  <Text
-                    style={
-                      styles.modalErrorText
-                    }
-                  >
-                    {errorMessage}
-                  </Text>
-                </View>
-              ) : null}
+            {cancelModalError ? (
+              <View style={styles.modalErrorBox}>
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={16}
+                  color={COLORS.danger}
+                />
 
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  activeOpacity={0.78}
-                  disabled={isCancelling}
-                  onPress={closeCancelModal}
-                  style={
-                    styles.modalKeepButton
-                  }
-                >
-                  <Text
-                    style={styles.modalKeepText}
-                  >
-                    Keep booking
-                  </Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  activeOpacity={0.82}
-                  disabled={isCancelling}
-                  onPress={() =>
-                    void handleCancelAppointment()
-                  }
-                  style={[
-                    styles.modalDangerButton,
-                    isCancelling
-                    && styles.disabledButton,
-                  ]}
-                >
-                  {isCancelling ? (
-                    <ActivityIndicator
-                      size="small"
-                      color={COLORS.white}
-                    />
-                  ) : (
-                    <Ionicons
-                      name="close-circle-outline"
-                      size={17}
-                      color={COLORS.white}
-                    />
-                  )}
-
-                  <Text
-                    style={styles.modalDangerText}
-                  >
-                    {isCancelling
-                      ? 'Cancelling...'
-                      : 'Cancel appointment'}
-                  </Text>
-                </TouchableOpacity>
+                <Text style={styles.modalErrorText}>
+                  {cancelModalError}
+                </Text>
               </View>
-            </View>
+            ) : null}
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      <Modal
-        visible={cancelSuccessVisible}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={handleViewBookings}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View
-              style={styles.cancelSuccessIcon}
-            >
-              <Ionicons
-                name="checkmark"
-                size={30}
-                color={COLORS.white}
-              />
-            </View>
-
-            <Text style={styles.modalTitle}>
-              Appointment cancelled
-            </Text>
-
-            <Text
-              style={styles.modalDescription}
-            >
-              {cancelSuccessMessage}
-            </Text>
-
-            <TouchableOpacity
-              activeOpacity={0.84}
-              onPress={handleViewBookings}
-              style={styles.modalPrimaryButton}
-            >
-              <Text
-                style={styles.modalPrimaryText}
-              >
-                View bookings
-              </Text>
-
-              <Ionicons
-                name="arrow-forward"
-                size={17}
-                color={COLORS.white}
-              />
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+        ) : null}
+      </StyleHubModal>
     </SafeAreaView>
   );
 }
+
+/* ==========================================================
+   REUSABLE SCREEN COMPONENTS
+   ========================================================== */
 
 function SectionHeading({
   title,
@@ -1528,9 +1349,7 @@ function ScheduleSummary({
 }) {
   return (
     <View style={styles.scheduleSummary}>
-      <Text
-        style={styles.scheduleSummaryLabel}
-      >
+      <Text style={styles.scheduleSummaryLabel}>
         {label}
       </Text>
 
@@ -1568,9 +1387,7 @@ function FieldHeader({
           {title}
         </Text>
 
-        <Text
-          style={styles.fieldDescription}
-        >
+        <Text style={styles.fieldDescription}>
           {description}
         </Text>
       </View>
@@ -1611,9 +1428,7 @@ function PreviewRow({
 }
 
 function PreviewDivider() {
-  return (
-    <View style={styles.previewDivider} />
-  );
+  return <View style={styles.previewDivider} />;
 }
 
 function MessageBox({
@@ -1646,6 +1461,10 @@ function MessageBox({
   );
 }
 
+/* ==========================================================
+   COMPLETE SCREEN STYLES
+   ========================================================== */
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -1661,9 +1480,11 @@ const styles = StyleSheet.create({
     maxWidth: LAYOUT.contentMaxWidth,
     alignSelf: 'center',
     paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingTop: 40,
     paddingBottom: 48,
   },
+
+  /* TOP BAR */
 
   topBar: {
     minHeight: 48,
@@ -1698,6 +1519,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  /* HEADER */
+
   header: {
     marginTop: SPACING.lg,
   },
@@ -1726,6 +1549,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.body,
     lineHeight: 21,
   },
+
+  /* ERROR BOX */
 
   errorBox: {
     marginTop: SPACING.lg,
@@ -1762,6 +1587,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 18,
   },
+
+  /* CURRENT APPOINTMENT */
 
   currentCard: {
     marginTop: SPACING.xl,
@@ -1851,6 +1678,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.navyMuted,
   },
 
+  /* AVAILABILITY NOTICE */
+
   warningCard: {
     marginTop: 12,
     flexDirection: 'row',
@@ -1887,6 +1716,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
+  /* SECTION HEADINGS */
+
   sectionHeading: {
     marginTop: SPACING.xxl,
     marginBottom: 12,
@@ -1905,6 +1736,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 17,
   },
+
+  /* REQUEST FORM */
 
   formCard: {
     padding: 16,
@@ -1979,6 +1812,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.border,
   },
 
+  /* REQUEST PREVIEW */
+
   previewCard: {
     overflow: 'hidden',
     borderWidth: 1,
@@ -2029,6 +1864,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.border,
   },
 
+  /* PENDING APPROVAL NOTICE */
+
   pendingNotice: {
     marginTop: 12,
     flexDirection: 'row',
@@ -2065,6 +1902,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
+  /* SUBMIT BUTTON */
+
   primaryButton: {
     minHeight: LAYOUT.buttonHeight,
     marginTop: 14,
@@ -2082,6 +1921,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.body,
     fontWeight: '800',
   },
+
+  /* CLEAR FORM */
 
   resetButton: {
     minHeight: LAYOUT.compactButtonHeight,
@@ -2101,6 +1942,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.secondary,
     fontWeight: '800',
   },
+
+  /* CANCEL OPTION */
 
   cancelCard: {
     marginTop: SPACING.xxl,
@@ -2162,92 +2005,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  modalKeyboardView: {
-    flex: 1,
-  },
-
-  modalOverlay: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 18,
-    backgroundColor:
-      'rgba(0, 0, 0, 0.42)',
-  },
-
-  modalCard: {
-    width: '100%',
-    maxWidth: 520,
-    padding: 18,
-    borderRadius: RADII.xl,
-    backgroundColor: COLORS.surface,
-    ...SHADOWS.floating,
-  },
-
-  successIcon: {
-    width: 58,
-    height: 58,
-    alignSelf: 'center',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 29,
-    backgroundColor: COLORS.green,
-  },
-
-  cancelSuccessIcon: {
-    width: 58,
-    height: 58,
-    alignSelf: 'center',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 29,
-    backgroundColor: COLORS.danger,
-  },
-
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 11,
-  },
-
-  modalHeaderCopy: {
-    flex: 1,
-  },
-
-  cancelIcon: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 14,
-    backgroundColor: COLORS.dangerSoft,
-  },
-
-  modalTitle: {
-    marginTop: 13,
-    color: COLORS.text,
-    fontSize: TYPOGRAPHY.section,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-
-  modalDescription: {
-    marginTop: 6,
-    color: COLORS.textMuted,
-    fontSize: TYPOGRAPHY.body,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-
-  modalDescriptionLeft: {
-    marginTop: 3,
-    color: COLORS.textMuted,
-    fontSize: TYPOGRAPHY.caption,
-    lineHeight: 18,
-  },
+  /* SHARED MODAL CUSTOM CONTENT */
 
   modalNotice: {
-    marginTop: 15,
+    width: '100%',
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: 8,
@@ -2263,12 +2024,19 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 
+  cancelModalContent: {
+    width: '100%',
+  },
+
   modalLabel: {
-    marginTop: 15,
-    marginBottom: 7,
+    marginBottom: 8,
     color: COLORS.text,
     fontSize: TYPOGRAPHY.secondary,
     fontWeight: '800',
+  },
+
+  requiredMark: {
+    color: COLORS.danger,
   },
 
   cancelReasonInput: {
@@ -2285,10 +2053,26 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
+  cancelReasonInvalid: {
+    borderColor: COLORS.danger,
+  },
+
+  modalCounterRow: {
+    marginTop: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+
+  modalHelp: {
+    color: COLORS.textMuted,
+    fontSize: 10,
+  },
+
   modalCounter: {
-    marginTop: 6,
     color: COLORS.textLight,
-    fontSize: 9,
+    fontSize: 10,
     textAlign: 'right',
   },
 
@@ -2309,75 +2093,7 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 
-  modalActions: {
-    marginTop: 15,
-    flexDirection: 'row',
-    gap: 8,
-  },
-
-  modalKeepButton: {
-    flex: 1,
-    minHeight: LAYOUT.compactButtonHeight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.surfaceSoft,
-  },
-
-  modalKeepText: {
-    color: COLORS.navy,
-    fontSize: TYPOGRAPHY.secondary,
-    fontWeight: '800',
-  },
-
-  modalDangerButton: {
-    flex: 1.3,
-    minHeight: LAYOUT.compactButtonHeight,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.danger,
-  },
-
-  modalDangerText: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.secondary,
-    fontWeight: '800',
-  },
-
-  modalPrimaryButton: {
-    minHeight: LAYOUT.buttonHeight,
-    marginTop: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.primary,
-  },
-
-  modalPrimaryText: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.body,
-    fontWeight: '800',
-  },
-
-  modalSecondaryButton: {
-    minHeight: LAYOUT.compactButtonHeight,
-    marginTop: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  modalSecondaryText: {
-    color: COLORS.navy,
-    fontSize: TYPOGRAPHY.secondary,
-    fontWeight: '800',
-  },
+  /* LOADING */
 
   loadingContainer: {
     flex: 1,
@@ -2411,10 +2127,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  /* UNAVAILABLE */
+
   unavailableContainer: {
     flex: 1,
     paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingTop: 40,
   },
 
   unavailableContent: {

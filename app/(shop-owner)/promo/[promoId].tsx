@@ -1,16 +1,9 @@
+
 import { Ionicons } from '@expo/vector-icons';
-import {
-  router,
-  useLocalSearchParams,
-} from 'expo-router';
-import {
-  useCallback,
-  useEffect,
-  useState,
-} from 'react';
+import { router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   SafeAreaView,
@@ -26,6 +19,7 @@ import ShopOwnerPromoForm, {
   isValidPromoDateTime,
   validatePromoDiscount,
 } from '@/src/components/ShopOwnerPromoForm';
+import StyleHubModal from '@/src/components/StyleHubModal';
 import { COLORS } from '@/src/constants/colors';
 import {
   LAYOUT,
@@ -46,436 +40,242 @@ import type {
   ShopOwnerService,
 } from '@/src/types/shop-owner';
 
+/* ==========================================================
+   HELPERS
+   ========================================================== */
+
 function routeValue(
-  value:
-    | string
-    | string[]
-    | undefined,
+  value: string | string[] | undefined,
 ): string | undefined {
-  return Array.isArray(value)
-    ? value[0]
-    : value;
+  return Array.isArray(value) ? value[0] : value;
 }
 
-function isoToManilaInput(
-  value: string | null,
-): string {
-  if (!value) {
-    return '';
-  }
+function isoToManilaInput(value: string | null): string {
+  if (!value) return '';
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
-    return '';
-  }
+  if (Number.isNaN(date.getTime())) return '';
 
   try {
-    const formatter =
-      new Intl.DateTimeFormat(
-        'en-CA',
-        {
-          timeZone:
-            'Asia/Manila',
+    const formatter = new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Manila',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    });
 
-          year:
-            'numeric',
+    const parts = formatter.formatToParts(date);
 
-          month:
-            '2-digit',
-
-          day:
-            '2-digit',
-
-          hour:
-            '2-digit',
-
-          minute:
-            '2-digit',
-
-          second:
-            '2-digit',
-
-          hourCycle:
-            'h23',
-        },
-      );
-
-    const parts =
-      formatter.formatToParts(
-        date,
-      );
-
-    const get =
-      (type: string) =>
-        parts.find(
-          (part) =>
-            part.type === type,
-        )?.value ?? '';
+    const get = (type: string) =>
+      parts.find((part) => part.type === type)?.value ?? '';
 
     return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')}`;
   } catch {
-    return value
-      .slice(0, 19)
-      .replace(
-        'T',
-        ' ',
-      );
+    return value.slice(0, 19).replace('T', ' ');
   }
 }
 
+/* ==========================================================
+   SHOP OWNER PROMOTION DETAILS
+   ========================================================== */
+
 export default function ShopOwnerPromoDetailScreen() {
-  const params =
-    useLocalSearchParams<{
-      promoId?:
-        | string
-        | string[];
+  const params = useLocalSearchParams<{
+    promoId?: string | string[];
+    created?: string | string[];
+  }>();
 
-      created?:
-        | string
-        | string[];
-    }>();
+  const { token } = useAuth();
 
-  const {
-    token,
-  } = useAuth();
+  const promoId = Number(routeValue(params.promoId));
+  const createdNow = routeValue(params.created) === '1';
 
-  const promoId =
-    Number(
-      routeValue(
-        params.promoId,
-      ),
-    );
+  /* PROMOTION FORM */
 
-  const createdNow =
-    routeValue(
-      params.created,
-    ) === '1';
+  const [services, setServices] =
+    useState<ShopOwnerService[]>([]);
 
-  const [
-    services,
-    setServices,
-  ] = useState<ShopOwnerService[]>([]);
+  const [serviceId, setServiceId] =
+    useState<number | null>(null);
 
-  const [
-    serviceId,
-    setServiceId,
-  ] = useState<number | null>(null);
+  const [title, setTitle] = useState('');
+  const [description, setDescription] = useState('');
 
-  const [
-    title,
-    setTitle,
-  ] = useState('');
+  const [discountType, setDiscountType] =
+    useState<ShopOwnerPromoDiscountType>('percentage');
 
-  const [
-    description,
-    setDescription,
-  ] = useState('');
+  const [discountValue, setDiscountValue] = useState('');
+  const [startsAt, setStartsAt] = useState('');
+  const [endsAt, setEndsAt] = useState('');
+  const [isActive, setIsActive] = useState(true);
 
-  const [
-    discountType,
-    setDiscountType,
-  ] = useState<ShopOwnerPromoDiscountType>(
-    'percentage',
+  /* LOADING AND STATUS */
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  const [errorMessage, setErrorMessage] = useState('');
+
+  const [successMessage, setSuccessMessage] = useState(
+    createdNow ? 'Promotion created successfully.' : '',
   );
 
-  const [
-    discountValue,
-    setDiscountValue,
-  ] = useState('');
+  /* SHARED DELETE MODAL */
 
-  const [
-    startsAt,
-    setStartsAt,
-  ] = useState('');
+  const [deleteModalVisible, setDeleteModalVisible] =
+    useState(false);
 
-  const [
-    endsAt,
-    setEndsAt,
-  ] = useState('');
+  const [deleteModalError, setDeleteModalError] =
+    useState('');
 
-  const [
-    isActive,
-    setIsActive,
-  ] = useState(true);
+  const deleteInFlightRef = useRef(false);
 
-  const [
-    isLoading,
-    setIsLoading,
-  ] = useState(true);
+  /* ========================================================
+     LOAD PROMOTION
+     ======================================================== */
 
-  const [
-    isSaving,
-    setIsSaving,
-  ] = useState(false);
+  const loadPromo = useCallback(async (): Promise<void> => {
+    if (!token || !Number.isInteger(promoId) || promoId < 1) {
+      setIsLoading(false);
+      setErrorMessage('The selected promotion is invalid.');
+      return;
+    }
 
-  const [
-    isDeleting,
-    setIsDeleting,
-  ] = useState(false);
+    setIsLoading(true);
+    setErrorMessage('');
 
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] = useState('');
+    try {
+      const [promoResponse, servicesResponse] =
+        await Promise.all([
+          getShopOwnerPromo(token, promoId),
+          getShopOwnerServices(token),
+        ]);
 
-  const [
-    successMessage,
-    setSuccessMessage,
-  ] = useState(
-    createdNow
-      ? 'Promotion created successfully.'
-      : '',
-  );
+      const promo = promoResponse.data.promo;
 
-  const loadPromo =
-    useCallback(
-      async (): Promise<void> => {
-        if (
-          !token
-          ||
-          !Number.isInteger(
-            promoId,
-          )
-          ||
-          promoId < 1
-        ) {
-          setIsLoading(false);
+      setServices(servicesResponse.data.services);
 
-          setErrorMessage(
-            'The selected promotion is invalid.',
-          );
+      setServiceId(
+        promo.scope === 'shop_wide'
+          ? null
+          : promo.service?.id ?? null,
+      );
 
-          return;
-        }
+      setTitle(promo.title);
+      setDescription(promo.description ?? '');
+      setDiscountType(promo.discount.type);
+      setDiscountValue(String(promo.discount.value));
+      setStartsAt(isoToManilaInput(promo.starts_at));
+      setEndsAt(isoToManilaInput(promo.ends_at));
+      setIsActive(promo.is_active);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof ApiError
+          ? error.message
+          : 'Unable to load the promotion.',
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  }, [promoId, token]);
 
-        setIsLoading(true);
-        setErrorMessage('');
+  useEffect(() => {
+    void loadPromo();
+  }, [loadPromo]);
 
-        try {
-          const [
-            promoResponse,
-            servicesResponse,
-          ] =
-            await Promise.all([
-              getShopOwnerPromo(
-                token,
-                promoId,
-              ),
-
-              getShopOwnerServices(
-                token,
-              ),
-            ]);
-
-          const promo =
-            promoResponse.data.promo;
-
-          setServices(
-            servicesResponse.data.services,
-          );
-
-          setServiceId(
-            promo.scope === 'shop_wide'
-              ? null
-              : promo.service?.id ?? null,
-          );
-
-          setTitle(
-            promo.title,
-          );
-
-          setDescription(
-            promo.description ?? '',
-          );
-
-          setDiscountType(
-            promo.discount.type,
-          );
-
-          setDiscountValue(
-            String(
-              promo.discount.value,
-            ),
-          );
-
-          setStartsAt(
-            isoToManilaInput(
-              promo.starts_at,
-            ),
-          );
-
-          setEndsAt(
-            isoToManilaInput(
-              promo.ends_at,
-            ),
-          );
-
-          setIsActive(
-            promo.is_active,
-          );
-        } catch (error) {
-          setErrorMessage(
-            error instanceof ApiError
-              ? error.message
-              : 'Unable to load the promotion.',
-          );
-        } finally {
-          setIsLoading(false);
-        }
-      },
-      [
-        promoId,
-        token,
-      ],
-    );
-
-  useEffect(
-    () => {
-      void loadPromo();
-    },
-    [
-      loadPromo,
-    ],
-  );
+  /* ========================================================
+     CLEAR MESSAGES
+     ======================================================== */
 
   function clearMessages(): void {
     setErrorMessage('');
     setSuccessMessage('');
   }
 
+  /* ========================================================
+     SAVE PROMOTION
+     ======================================================== */
+
   async function handleSave(): Promise<void> {
-    if (
-      !token
-      ||
-      isSaving
-      ||
-      isDeleting
-    ) {
-      return;
-    }
+    if (!token || isSaving || isDeleting) return;
 
     clearMessages();
 
-    const cleanTitle =
-      title.trim();
+    const cleanTitle = title.trim();
+    const cleanDescription = description.trim();
+    const cleanStartsAt = startsAt.trim();
+    const cleanEndsAt = endsAt.trim();
 
-    const cleanDescription =
-      description.trim();
-
-    const cleanStartsAt =
-      startsAt.trim();
-
-    const cleanEndsAt =
-      endsAt.trim();
-
-    if (
-      cleanTitle.length < 2
-      ||
-      cleanTitle.length > 150
-    ) {
+    if (cleanTitle.length < 2 || cleanTitle.length > 150) {
       setErrorMessage(
         'Promotion title must contain between 2 and 150 characters.',
       );
-
       return;
     }
 
-    if (
-      cleanDescription.length > 5000
-    ) {
+    if (cleanDescription.length > 5000) {
       setErrorMessage(
         'Description may not exceed 5000 characters.',
       );
-
       return;
     }
 
-    const discountError =
-      validatePromoDiscount(
-        discountType,
-        discountValue,
-      );
+    const discountError = validatePromoDiscount(
+      discountType,
+      discountValue,
+    );
 
     if (discountError) {
-      setErrorMessage(
-        discountError,
-      );
-
+      setErrorMessage(discountError);
       return;
     }
 
-    if (
-      !isValidPromoDateTime(
-        cleanStartsAt,
-      )
-    ) {
+    if (!isValidPromoDateTime(cleanStartsAt)) {
       setErrorMessage(
         'Start date must use YYYY-MM-DD HH:MM:SS and contain a valid date and time.',
       );
-
       return;
     }
 
-    if (
-      !isValidPromoDateTime(
-        cleanEndsAt,
-      )
-    ) {
+    if (!isValidPromoDateTime(cleanEndsAt)) {
       setErrorMessage(
         'End date must use YYYY-MM-DD HH:MM:SS and contain a valid date and time.',
       );
-
       return;
     }
 
-    if (
-      cleanEndsAt <= cleanStartsAt
-    ) {
+    if (cleanEndsAt <= cleanStartsAt) {
       setErrorMessage(
         'Promotion end date must be later than its start date.',
       );
-
       return;
     }
 
     setIsSaving(true);
 
     try {
-      const response =
-        await updateShopOwnerPromo(
-          token,
-          promoId,
-          {
-            serviceId,
+      const response = await updateShopOwnerPromo(
+        token,
+        promoId,
+        {
+          serviceId,
+          title: cleanTitle,
+          description: cleanDescription,
+          discountType,
+          discountValue,
+          startsAt: cleanStartsAt,
+          endsAt: cleanEndsAt,
+          isActive,
+        },
+      );
 
-            title:
-              cleanTitle,
-
-            description:
-              cleanDescription,
-
-            discountType,
-
-            discountValue,
-
-            startsAt:
-              cleanStartsAt,
-
-            endsAt:
-              cleanEndsAt,
-
-            isActive,
-          },
-        );
-
-      const updated =
-        response.data.promo;
+      const updated = response.data.promo;
 
       setServiceId(
         updated.scope === 'shop_wide'
@@ -483,44 +283,16 @@ export default function ShopOwnerPromoDetailScreen() {
           : updated.service?.id ?? null,
       );
 
-      setTitle(
-        updated.title,
-      );
-
-      setDescription(
-        updated.description ?? '',
-      );
-
-      setDiscountType(
-        updated.discount.type,
-      );
-
-      setDiscountValue(
-        String(
-          updated.discount.value,
-        ),
-      );
-
-      setStartsAt(
-        isoToManilaInput(
-          updated.starts_at,
-        ),
-      );
-
-      setEndsAt(
-        isoToManilaInput(
-          updated.ends_at,
-        ),
-      );
-
-      setIsActive(
-        updated.is_active,
-      );
+      setTitle(updated.title);
+      setDescription(updated.description ?? '');
+      setDiscountType(updated.discount.type);
+      setDiscountValue(String(updated.discount.value));
+      setStartsAt(isoToManilaInput(updated.starts_at));
+      setEndsAt(isoToManilaInput(updated.ends_at));
+      setIsActive(updated.is_active);
 
       setSuccessMessage(
-        response.message
-        ??
-        'Promotion updated successfully.',
+        response.message ?? 'Promotion updated successfully.',
       );
     } catch (error) {
       setErrorMessage(
@@ -533,80 +305,87 @@ export default function ShopOwnerPromoDetailScreen() {
     }
   }
 
-  async function performDelete(): Promise<void> {
+  /* ========================================================
+     OPEN DELETE CONFIRMATION
+     ======================================================== */
+
+  function confirmDelete(): void {
     if (
-      !token
-      ||
-      isDeleting
-      ||
-      isSaving
+      isSaving ||
+      isDeleting ||
+      deleteInFlightRef.current
     ) {
       return;
     }
 
-    setIsDeleting(true);
+    setDeleteModalError('');
+    setDeleteModalVisible(true);
+  }
 
-    clearMessages();
+  /* ========================================================
+     CLOSE DELETE CONFIRMATION
+     ======================================================== */
+
+  function closeDeleteModal(): void {
+    if (isDeleting || deleteInFlightRef.current) {
+      return;
+    }
+
+    setDeleteModalError('');
+    setDeleteModalVisible(false);
+  }
+
+  /* ========================================================
+     DELETE PROMOTION
+     ======================================================== */
+
+  async function performDelete(): Promise<void> {
+    if (
+      !token ||
+      isDeleting ||
+      isSaving ||
+      deleteInFlightRef.current
+    ) {
+      return;
+    }
+
+    deleteInFlightRef.current = true;
+    setIsDeleting(true);
+    setDeleteModalError('');
 
     try {
-      await deleteShopOwnerPromo(
-        token,
-        promoId,
-      );
+      await deleteShopOwnerPromo(token, promoId);
 
-      router.replace(
-        '/(shop-owner)/shop-owner/promos',
-      );
+      setDeleteModalVisible(false);
+
+      router.replace('/(shop-owner)/shop-owner/promos');
     } catch (error) {
-      setErrorMessage(
+      /*
+       * Keep the confirmation open.
+       * Show the Laravel error inside the red modal.
+       */
+
+      setDeleteModalError(
         error instanceof ApiError
           ? error.message
           : 'Unable to delete the promotion.',
       );
-
+    } finally {
+      deleteInFlightRef.current = false;
       setIsDeleting(false);
     }
   }
 
-  function confirmDelete(): void {
-    Alert.alert(
-      'Delete Promotion?',
-      'This permanently removes the promotion from shop management. This action cannot be undone.',
-      [
-        {
-          text:
-            'Keep Promotion',
-
-          style:
-            'cancel',
-        },
-
-        {
-          text:
-            'Delete',
-
-          style:
-            'destructive',
-
-          onPress:
-            () => {
-              void performDelete();
-            },
-        },
-      ],
-    );
-  }
+  /* ========================================================
+     LOADING STATE
+     ======================================================== */
 
   if (isLoading) {
     return (
-      <SafeAreaView
-        style={styles.safeArea}
-      >
+      <SafeAreaView style={styles.safeArea}>
         <StatusBar
           barStyle="dark-content"
-          backgroundColor={
-            COLORS.background
-          }
+          backgroundColor={COLORS.background}
         />
 
         <View style={styles.loadingContainer}>
@@ -629,38 +408,25 @@ export default function ShopOwnerPromoDetailScreen() {
     );
   }
 
-  if (
-    !title
-    &&
-    errorMessage
-  ) {
+  /* ========================================================
+     PROMOTION UNAVAILABLE
+     ======================================================== */
+
+  if (!title && errorMessage) {
     return (
-      <SafeAreaView
-        style={styles.safeArea}
-      >
+      <SafeAreaView style={styles.safeArea}>
         <StatusBar
           barStyle="dark-content"
-          backgroundColor={
-            COLORS.background
-          }
+          backgroundColor={COLORS.background}
         />
 
-        <View
-          style={
-            styles.unavailableContainer
-          }
-        >
+        <View style={styles.unavailableContainer}>
           <TouchableOpacity
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel="Go back"
-            onPress={
-              () =>
-                router.back()
-            }
-            style={
-              styles.topIconButton
-            }
+            onPress={() => router.back()}
+            style={styles.topIconButton}
           >
             <Ionicons
               name="arrow-back"
@@ -669,16 +435,8 @@ export default function ShopOwnerPromoDetailScreen() {
             />
           </TouchableOpacity>
 
-          <View
-            style={
-              styles.unavailableContent
-            }
-          >
-            <View
-              style={
-                styles.unavailableIcon
-              }
-            >
+          <View style={styles.unavailableContent}>
+            <View style={styles.unavailableIcon}>
               <Ionicons
                 name="pricetag-outline"
                 size={30}
@@ -686,19 +444,11 @@ export default function ShopOwnerPromoDetailScreen() {
               />
             </View>
 
-            <Text
-              style={
-                styles.unavailableTitle
-              }
-            >
+            <Text style={styles.unavailableTitle}>
               Promotion unavailable
             </Text>
 
-            <Text
-              style={
-                styles.unavailableText
-              }
-            >
+            <Text style={styles.unavailableText}>
               {errorMessage}
             </Text>
           </View>
@@ -707,47 +457,39 @@ export default function ShopOwnerPromoDetailScreen() {
     );
   }
 
-  const isBusy =
-    isSaving || isDeleting;
+  const isBusy = isSaving || isDeleting;
+
+  /* ========================================================
+     MAIN SCREEN
+     ======================================================== */
 
   return (
-    <SafeAreaView
-      style={styles.safeArea}
-    >
+    <SafeAreaView style={styles.safeArea}>
       <StatusBar
         barStyle="dark-content"
-        backgroundColor={
-          COLORS.background
-        }
+        backgroundColor={COLORS.background}
       />
 
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={
-          Platform.OS === 'ios'
-            ? 'padding'
-            : undefined
+          Platform.OS === 'ios' ? 'padding' : undefined
         }
       >
         <ScrollView
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
-          contentContainerStyle={
-            styles.container
-          }
+          contentContainerStyle={styles.container}
         >
+          {/* TOP NAVIGATION */}
+
           <View style={styles.topBar}>
             <TouchableOpacity
               activeOpacity={0.7}
               accessibilityRole="button"
               accessibilityLabel="Back to promotions"
-              onPress={
-                () =>
-                  router.back()
-              }
-              style={
-                styles.topIconButton
-              }
+              onPress={() => router.back()}
+              style={styles.topIconButton}
             >
               <Ionicons
                 name="arrow-back"
@@ -756,24 +498,12 @@ export default function ShopOwnerPromoDetailScreen() {
               />
             </TouchableOpacity>
 
-            <View
-              style={
-                styles.topBarTitleBlock
-              }
-            >
-              <Text
-                style={
-                  styles.topBarTitle
-                }
-              >
+            <View style={styles.topBarTitleBlock}>
+              <Text style={styles.topBarTitle}>
                 Promotion details
               </Text>
 
-              <Text
-                style={
-                  styles.topBarCaption
-                }
-              >
+              <Text style={styles.topBarCaption}>
                 Edit campaign settings
               </Text>
             </View>
@@ -783,13 +513,8 @@ export default function ShopOwnerPromoDetailScreen() {
               accessibilityRole="button"
               accessibilityLabel="Refresh promotion"
               disabled={isBusy}
-              onPress={
-                () =>
-                  void loadPromo()
-              }
-              style={
-                styles.topIconButton
-              }
+              onPress={() => void loadPromo()}
+              style={styles.topIconButton}
             >
               <Ionicons
                 name="refresh-outline"
@@ -799,20 +524,26 @@ export default function ShopOwnerPromoDetailScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* PAGE HEADER */}
+
           <View style={styles.header}>
             <Text style={styles.eyebrow}>
               PROMOTION MANAGEMENT
             </Text>
 
             <Text style={styles.title}>
-              Keep the offer, schedule, and customer visibility accurate
+              Keep the offer, schedule, and customer
+              visibility accurate
             </Text>
 
             <Text style={styles.subtitle}>
-              Update which customers are eligible, the discount value,
-              campaign dates, and whether the promotion is enabled.
+              Update which customers are eligible,
+              the discount value, campaign dates,
+              and whether the promotion is enabled.
             </Text>
           </View>
+
+          {/* SUCCESS MESSAGE */}
 
           {successMessage ? (
             <MessageBox
@@ -822,21 +553,21 @@ export default function ShopOwnerPromoDetailScreen() {
                   ? 'Promotion created'
                   : 'Changes saved'
               }
-              message={
-                successMessage
-              }
+              message={successMessage}
             />
           ) : null}
+
+          {/* ERROR MESSAGE */}
 
           {errorMessage ? (
             <MessageBox
               type="error"
               title="Promotion needs attention"
-              message={
-                errorMessage
-              }
+              message={errorMessage}
             />
           ) : null}
+
+          {/* EXISTING PROMOTION FORM */}
 
           <View style={styles.formWrap}>
             <ShopOwnerPromoForm
@@ -851,56 +582,42 @@ export default function ShopOwnerPromoDetailScreen() {
               endsAt={endsAt}
               isActive={isActive}
               disabled={isBusy}
-              onServiceIdChange={
-                (value) => {
-                  setServiceId(value);
-                  clearMessages();
-                }
-              }
-              onTitleChange={
-                (value) => {
-                  setTitle(value);
-                  clearMessages();
-                }
-              }
-              onDescriptionChange={
-                (value) => {
-                  setDescription(value);
-                  clearMessages();
-                }
-              }
-              onDiscountTypeChange={
-                (value) => {
-                  setDiscountType(value);
-                  clearMessages();
-                }
-              }
-              onDiscountValueChange={
-                (value) => {
-                  setDiscountValue(value);
-                  clearMessages();
-                }
-              }
-              onStartsAtChange={
-                (value) => {
-                  setStartsAt(value);
-                  clearMessages();
-                }
-              }
-              onEndsAtChange={
-                (value) => {
-                  setEndsAt(value);
-                  clearMessages();
-                }
-              }
-              onActiveChange={
-                (value) => {
-                  setIsActive(value);
-                  clearMessages();
-                }
-              }
+              onServiceIdChange={(value) => {
+                setServiceId(value);
+                clearMessages();
+              }}
+              onTitleChange={(value) => {
+                setTitle(value);
+                clearMessages();
+              }}
+              onDescriptionChange={(value) => {
+                setDescription(value);
+                clearMessages();
+              }}
+              onDiscountTypeChange={(value) => {
+                setDiscountType(value);
+                clearMessages();
+              }}
+              onDiscountValueChange={(value) => {
+                setDiscountValue(value);
+                clearMessages();
+              }}
+              onStartsAtChange={(value) => {
+                setStartsAt(value);
+                clearMessages();
+              }}
+              onEndsAtChange={(value) => {
+                setEndsAt(value);
+                clearMessages();
+              }}
+              onActiveChange={(value) => {
+                setIsActive(value);
+                clearMessages();
+              }}
             />
           </View>
+
+          {/* SAVE PROMOTION */}
 
           <View style={styles.saveCard}>
             <View style={styles.saveHeader}>
@@ -918,8 +635,9 @@ export default function ShopOwnerPromoDetailScreen() {
                 </Text>
 
                 <Text style={styles.saveText}>
-                  Updated settings will be used when StyleHub decides
-                  whether this promotion is visible to customers.
+                  Updated settings will be used when
+                  StyleHub decides whether this promotion
+                  is visible to customers.
                 </Text>
               </View>
             </View>
@@ -929,15 +647,10 @@ export default function ShopOwnerPromoDetailScreen() {
               disabled={isBusy}
               accessibilityRole="button"
               accessibilityLabel="Save promotion changes"
-              onPress={
-                () =>
-                  void handleSave()
-              }
+              onPress={() => void handleSave()}
               style={[
                 styles.primaryButton,
-
-                isBusy &&
-                  styles.disabledButton,
+                isBusy && styles.disabledButton,
               ]}
             >
               {isSaving ? (
@@ -953,17 +666,15 @@ export default function ShopOwnerPromoDetailScreen() {
                 />
               )}
 
-              <Text
-                style={
-                  styles.primaryButtonText
-                }
-              >
+              <Text style={styles.primaryButtonText}>
                 {isSaving
                   ? 'Saving changes...'
                   : 'Save changes'}
               </Text>
             </TouchableOpacity>
           </View>
+
+          {/* DELETE PROMOTION */}
 
           <View style={styles.dangerCard}>
             <View style={styles.dangerHeader}>
@@ -981,8 +692,9 @@ export default function ShopOwnerPromoDetailScreen() {
                 </Text>
 
                 <Text style={styles.dangerText}>
-                  Permanently remove this promotion. Disable it instead
-                  if you may want to reuse the campaign later.
+                  Permanently remove this promotion.
+                  Disable it instead if you may want to
+                  reuse the campaign later.
                 </Text>
               </View>
             </View>
@@ -992,14 +704,10 @@ export default function ShopOwnerPromoDetailScreen() {
               disabled={isBusy}
               accessibilityRole="button"
               accessibilityLabel="Delete promotion"
-              onPress={
-                confirmDelete
-              }
+              onPress={confirmDelete}
               style={[
                 styles.deleteButton,
-
-                isBusy &&
-                  styles.disabledButton,
+                isBusy && styles.disabledButton,
               ]}
             >
               {isDeleting ? (
@@ -1024,38 +732,75 @@ export default function ShopOwnerPromoDetailScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* ==================================================
+          SHARED COMPACT DELETE CONFIRMATION
+          ================================================== */}
+
+      <StyleHubModal
+        visible={deleteModalVisible}
+        onClose={closeDeleteModal}
+        title="Delete promotion?"
+        message={`Permanently delete “${title}” from your shop? This action cannot be undone. You can disable it instead if you may want to reuse it.`}
+        tone="danger"
+        icon="trash-outline"
+        dismissOnBackdrop={false}
+        actions={[
+          {
+            label: 'Keep promotion',
+            variant: 'secondary',
+            onPress: closeDeleteModal,
+          },
+          {
+            label: 'Delete promotion',
+            variant: 'danger',
+            icon: 'trash-outline',
+            loading: isDeleting,
+            onPress: () => void performDelete(),
+          },
+        ]}
+      >
+        {deleteModalError ? (
+          <View style={styles.deleteModalError}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={17}
+              color={COLORS.danger}
+            />
+
+            <Text style={styles.deleteModalErrorText}>
+              {deleteModalError}
+            </Text>
+          </View>
+        ) : null}
+      </StyleHubModal>
     </SafeAreaView>
   );
 }
+
+/* ==========================================================
+   STATUS MESSAGE COMPONENT
+   ========================================================== */
 
 function MessageBox({
   type,
   title,
   message,
 }: {
-  type:
-    | 'success'
-    | 'error';
-
-  title:
-    string;
-
-  message:
-    string;
+  type: 'success' | 'error';
+  title: string;
+  message: string;
 }) {
-  const success =
-    type === 'success';
+  const success = type === 'success';
 
   return (
     <View
       style={[
         styles.messageBox,
-
         {
-          backgroundColor:
-            success
-              ? COLORS.successSoft
-              : COLORS.dangerSoft,
+          backgroundColor: success
+            ? COLORS.successSoft
+            : COLORS.dangerSoft,
         },
       ]}
     >
@@ -1079,12 +824,10 @@ function MessageBox({
         <Text
           style={[
             styles.messageTitle,
-
             {
-              color:
-                success
-                  ? COLORS.success
-                  : COLORS.danger,
+              color: success
+                ? COLORS.success
+                : COLORS.danger,
             },
           ]}
         >
@@ -1098,6 +841,10 @@ function MessageBox({
     </View>
   );
 }
+
+/* ==========================================================
+   COMPLETE SCREEN STYLES
+   ========================================================== */
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -1408,5 +1155,24 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.body,
     lineHeight: 20,
     textAlign: 'center',
+  },
+
+  /* INLINE LARAVEL ERROR IN THE SHARED MODAL */
+
+  deleteModalError: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: 11,
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.dangerSoft,
+  },
+
+  deleteModalErrorText: {
+    flex: 1,
+    color: COLORS.danger,
+    fontSize: TYPOGRAPHY.caption,
+    lineHeight: 18,
   },
 });

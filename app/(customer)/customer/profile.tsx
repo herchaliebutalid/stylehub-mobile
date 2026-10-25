@@ -1,25 +1,14 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
-import {
-  Href,
-  router,
-  useFocusEffect,
-} from 'expo-router';
-import type { ComponentProps } from 'react';
-import {
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from 'react';
+import { Href, router, useFocusEffect } from 'expo-router';
+import type { ComponentProps, ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
-  Modal,
   Platform,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -27,7 +16,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
+import StyleHubModal from '@/src/components/StyleHubModal';
 import { API_BASE_URL } from '@/src/config/api';
 import { COLORS } from '@/src/constants/colors';
 import {
@@ -46,67 +37,60 @@ import {
 } from '@/src/services/customer-profile-api';
 import type { AuthUser } from '@/src/types/auth';
 
-type IconName =
-  ComponentProps<typeof Ionicons>['name'];
+type IconName = ComponentProps<typeof Ionicons>['name'];
+
+type ProfileModal =
+  | 'photoOptions'
+  | 'photoPermission'
+  | 'removePhoto'
+  | 'logout'
+  | null;
+
+/* ==========================================================
+   PROFILE PHOTO HELPERS
+   ========================================================== */
 
 function resolveProfilePhotoUrl(
   value: string | null | undefined,
 ): string | null {
-  const cleanValue =
-    value?.trim();
+  const cleanValue = value?.trim();
 
   if (!cleanValue) {
     return null;
   }
 
-  if (
-    /^https?:\/\//i.test(
-      cleanValue,
-    )
-  ) {
+  if (/^https?:\/\//i.test(cleanValue)) {
     return cleanValue;
   }
 
-  const apiOrigin =
-    API_BASE_URL.replace(
-      /\/api\/v1\/?$/i,
-      '',
-    );
+  const apiOrigin = API_BASE_URL.replace(
+    /\/api\/v1\/?$/i,
+    '',
+  );
 
   return `${apiOrigin}${
-    cleanValue.startsWith('/')
-      ? ''
-      : '/'
+    cleanValue.startsWith('/') ? '' : '/'
   }${cleanValue}`;
 }
 
 function buildPhotoFormData(
-  asset:
-    ImagePicker.ImagePickerAsset,
+  asset: ImagePicker.ImagePickerAsset,
 ): FormData {
-  const formData =
-    new FormData();
+  const formData = new FormData();
 
   const fileName =
-    asset.fileName?.trim()
-    ||
+    asset.fileName?.trim() ||
     `stylehub-profile-${Date.now()}.jpg`;
 
   const mimeType =
-    asset.mimeType?.trim()
-    ||
-    'image/jpeg';
+    asset.mimeType?.trim() || 'image/jpeg';
 
   const webAsset =
     asset as ImagePicker.ImagePickerAsset & {
       file?: Blob | null;
     };
 
-  if (
-    Platform.OS === 'web'
-    &&
-    webAsset.file
-  ) {
+  if (Platform.OS === 'web' && webAsset.file) {
     formData.append(
       'photo',
       webAsset.file,
@@ -117,85 +101,55 @@ function buildPhotoFormData(
   }
 
   const nativePhoto = {
-    uri:
-      asset.uri,
-
-    name:
-      fileName,
-
-    type:
-      mimeType,
+    uri: asset.uri,
+    name: fileName,
+    type: mimeType,
   } as unknown as Blob;
 
-  formData.append(
-    'photo',
-    nativePhoto,
-  );
+  formData.append('photo', nativePhoto);
 
   return formData;
 }
 
+/* ==========================================================
+   ACCOUNT HELPERS
+   ========================================================== */
+
 function formatLastLogin(
-  value:
-    | string
-    | null
-    | undefined,
+  value: string | null | undefined,
 ): string {
   if (!value) {
     return 'Not available';
   }
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return value;
   }
 
   try {
-    return new Intl.DateTimeFormat(
-      'en-PH',
-      {
-        month:
-          'short',
-
-        day:
-          'numeric',
-
-        year:
-          'numeric',
-
-        hour:
-          'numeric',
-
-        minute:
-          '2-digit',
-
-        timeZone:
-          'Asia/Manila',
-      },
-    ).format(date);
+    return new Intl.DateTimeFormat('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'Asia/Manila',
+    }).format(date);
   } catch {
     return value;
   }
 }
 
 function buildCustomerName(
-  user:
-    AuthUser | null,
+  user: AuthUser | null,
 ): string {
   if (!user) {
     return 'StyleHub Customer';
   }
 
-  const fullName =
-    user
-      .full_name
-      ?.trim();
+  const fullName = user.full_name?.trim();
 
   if (fullName) {
     return fullName;
@@ -207,24 +161,19 @@ function buildCustomerName(
     user.last_name,
   ]
     .filter(
-      (
-        value,
-      ): value is string =>
-        typeof value ===
-          'string'
-        &&
-        value.trim() !==
-          '',
+      (value): value is string =>
+        typeof value === 'string' &&
+        value.trim() !== '',
     )
     .join(' ')
     .trim();
 
-  return (
-    composedName
-    ||
-    'StyleHub Customer'
-  );
+  return composedName || 'StyleHub Customer';
 }
+
+/* ==========================================================
+   CUSTOMER PROFILE
+   ========================================================== */
 
 export default function CustomerProfileScreen() {
   const {
@@ -232,467 +181,304 @@ export default function CustomerProfileScreen() {
     token,
     logout,
     isSubmitting,
-  } =
-    useAuth();
+  } = useAuth();
 
-  const [
-    accountUser,
-    setAccountUser,
-  ] =
-    useState<AuthUser | null>(
-      user,
-    );
+  const [accountUser, setAccountUser] =
+    useState<AuthUser | null>(user);
 
-  const [
-    isLoadingProfile,
-    setIsLoadingProfile,
-  ] =
+  const [isLoadingProfile, setIsLoadingProfile] =
     useState(true);
 
-  const [
-    isRefreshing,
-    setIsRefreshing,
-  ] =
+  const [isRefreshing, setIsRefreshing] =
     useState(false);
 
-  const [
-    isUploadingPhoto,
-    setIsUploadingPhoto,
-  ] =
+  const [isUploadingPhoto, setIsUploadingPhoto] =
     useState(false);
 
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] =
+  const [errorMessage, setErrorMessage] =
     useState('');
 
-  const [
-    successMessage,
-    setSuccessMessage,
-  ] =
+  const [successMessage, setSuccessMessage] =
     useState('');
 
-  const [
-    photoMenuVisible,
-    setPhotoMenuVisible,
-  ] =
-    useState(false);
+  /* Only one modal is active at a time. */
 
-  const [
-    logoutModalVisible,
-    setLogoutModalVisible,
-  ] =
-    useState(false);
+  const [activeModal, setActiveModal] =
+    useState<ProfileModal>(null);
 
-  const hasLoadedOnce =
-    useRef(false);
+  const hasLoadedOnce = useRef(false);
 
-  const loadCustomerProfile =
-    useCallback(
-      async (
-        refreshing = false,
-        silent = false,
-      ): Promise<void> => {
-        if (!token) {
-          setIsLoadingProfile(
-            false,
-          );
+  /* ========================================================
+     LOAD CUSTOMER PROFILE
+     ======================================================== */
 
-          setIsRefreshing(
-            false,
+  const loadCustomerProfile = useCallback(
+    async (
+      refreshing = false,
+      silent = false,
+    ): Promise<void> => {
+      if (!token) {
+        setIsLoadingProfile(false);
+        setIsRefreshing(false);
+        return;
+      }
+
+      if (refreshing) {
+        setIsRefreshing(true);
+      } else if (!silent) {
+        setIsLoadingProfile(true);
+      }
+
+      setErrorMessage('');
+
+      try {
+        const response =
+          await getCustomerProfile(token);
+
+        if (response.data.user.role !== 'customer') {
+          setErrorMessage(
+            'This account is not authorized as a Customer.',
           );
 
           return;
         }
 
-        if (refreshing) {
-          setIsRefreshing(
-            true,
-          );
-        } else if (!silent) {
-          setIsLoadingProfile(
-            true,
-          );
-        }
+        setAccountUser(response.data.user);
 
-        setErrorMessage('');
-
-        try {
-          const response =
-            await getCustomerProfile(
-              token,
-            );
-
-          if (
-            response
-              .data
-              .user
-              .role
-            !== 'customer'
-          ) {
-            setErrorMessage(
-              'This account is not authorized as a Customer.',
-            );
-
-            return;
-          }
-
-          setAccountUser(
-            response.data.user,
-          );
-
-          hasLoadedOnce.current =
-            true;
-        } catch (error) {
-          setErrorMessage(
-            error instanceof
-              ApiError
-              ?
-                error.message
-              :
-                'Unable to load your profile information.',
-          );
-        } finally {
-          setIsLoadingProfile(
-            false,
-          );
-
-          setIsRefreshing(
-            false,
-          );
-        }
-      },
-      [
-        token,
-      ],
-    );
-
-  useFocusEffect(
-    useCallback(
-      () => {
-        void loadCustomerProfile(
-          false,
-          hasLoadedOnce.current,
+        hasLoadedOnce.current = true;
+      } catch (error) {
+        setErrorMessage(
+          error instanceof ApiError
+            ? error.message
+            : 'Unable to load your profile information.',
         );
-
-        return undefined;
-      },
-      [
-        loadCustomerProfile,
-      ],
-    ),
-  );
-
-  useEffect(
-    () => {
-      if (
-        user?.role ===
-        'customer'
-      ) {
-        setAccountUser(
-          user,
-        );
+      } finally {
+        setIsLoadingProfile(false);
+        setIsRefreshing(false);
       }
     },
-    [
-      user,
-    ],
+    [token],
   );
 
-  const currentUser =
-    accountUser
-    ??
-    user;
+  useFocusEffect(
+    useCallback(() => {
+      void loadCustomerProfile(
+        false,
+        hasLoadedOnce.current,
+      );
+
+      return undefined;
+    }, [loadCustomerProfile]),
+  );
+
+  useEffect(() => {
+    if (user?.role === 'customer') {
+      setAccountUser(user);
+    }
+  }, [user]);
+
+  /* ========================================================
+     CUSTOMER ACCOUNT INFORMATION
+     ======================================================== */
+
+  const currentUser = accountUser ?? user;
 
   const customerName =
-    buildCustomerName(
-      currentUser,
-    );
+    buildCustomerName(currentUser);
 
   const customerEmail =
-    currentUser?.email
-    ||
-    '—';
+    currentUser?.email || '—';
 
   const customerPhone =
-    currentUser
-      ?.phone_number
-      ?.trim()
-    ||
-    '—';
+    currentUser?.phone_number?.trim() || '—';
 
   const accountStatus =
-    currentUser?.status ===
-    'active'
-      ?
-        'Active'
-      :
-        'Suspended';
+    currentUser?.status === 'active'
+      ? 'Active'
+      : 'Suspended';
 
   const phoneVerified =
-    currentUser
-      ?.phone_verified
-    === true;
+    currentUser?.phone_verified === true;
 
-  const profilePhotoUrl =
-    resolveProfilePhotoUrl(
-      currentUser
-        ?.profile_photo_url
-      ??
-      null,
-    );
+  const profilePhotoUrl = resolveProfilePhotoUrl(
+    currentUser?.profile_photo_url ?? null,
+  );
 
-  const lastLogin =
-    formatLastLogin(
-      currentUser
-        ?.last_login_at,
-    );
+  const lastLogin = formatLastLogin(
+    currentUser?.last_login_at,
+  );
+
+  /* ========================================================
+     CHOOSE PROFILE PHOTO
+     ======================================================== */
 
   async function chooseProfilePhoto(): Promise<void> {
-    if (
-      !token
-      ||
-      isUploadingPhoto
-    ) {
+    if (!token || isUploadingPhoto) {
       return;
     }
 
-    setPhotoMenuVisible(
-      false,
-    );
-
+    setActiveModal(null);
     setErrorMessage('');
     setSuccessMessage('');
 
     const permissionResult =
-      await ImagePicker
-        .requestMediaLibraryPermissionsAsync();
+      await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-    if (
-      !permissionResult.granted
-    ) {
-      Alert.alert(
-        'Photo Permission Required',
-        'StyleHub needs permission to access your photos so you can choose a profile picture.',
-      );
-
+    if (!permissionResult.granted) {
+      setActiveModal('photoPermission');
       return;
     }
 
     const result =
-      await ImagePicker
-        .launchImageLibraryAsync({
-          mediaTypes: [
-            'images',
-          ],
-
-          allowsEditing:
-            true,
-
-          aspect: [
-            1,
-            1,
-          ],
-
-          quality:
-            0.8,
-        });
+      await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
 
     if (
-      result.canceled
-      ||
-      result.assets.length ===
-        0
+      result.canceled ||
+      result.assets.length === 0
     ) {
       return;
     }
 
-    setIsUploadingPhoto(
-      true,
-    );
+    setIsUploadingPhoto(true);
 
     try {
       const response =
         await uploadCustomerProfilePhoto(
           token,
-
-          buildPhotoFormData(
-            result.assets[0],
-          ),
+          buildPhotoFormData(result.assets[0]),
         );
 
-      setAccountUser(
-        response.data.user,
-      );
+      setAccountUser(response.data.user);
 
       setSuccessMessage(
-        response.message
-        ??
-        'Your profile photo was updated.',
+        response.message ??
+          'Your profile photo was updated.',
       );
     } catch (error) {
       setErrorMessage(
-        error instanceof
-          ApiError
-          ?
-            error.message
-          :
-            'Unable to upload your profile photo.',
+        error instanceof ApiError
+          ? error.message
+          : 'Unable to upload your profile photo.',
       );
     } finally {
-      setIsUploadingPhoto(
-        false,
-      );
+      setIsUploadingPhoto(false);
     }
   }
 
+  /* ========================================================
+     REMOVE PROFILE PHOTO
+     ======================================================== */
+
   async function removeProfilePhoto(): Promise<void> {
-    if (
-      !token
-      ||
-      isUploadingPhoto
-    ) {
+    if (!token || isUploadingPhoto) {
       return;
     }
 
-    setPhotoMenuVisible(
-      false,
-    );
-
-    setIsUploadingPhoto(
-      true,
-    );
-
+    setActiveModal(null);
+    setIsUploadingPhoto(true);
     setErrorMessage('');
     setSuccessMessage('');
 
     try {
       const response =
-        await removeCustomerProfilePhoto(
-          token,
-        );
+        await removeCustomerProfilePhoto(token);
 
-      setAccountUser(
-        response.data.user,
-      );
+      setAccountUser(response.data.user);
 
       setSuccessMessage(
-        response.message
-        ??
-        'Your profile photo was removed.',
+        response.message ??
+          'Your profile photo was removed.',
       );
     } catch (error) {
       setErrorMessage(
-        error instanceof
-          ApiError
-          ?
-            error.message
-          :
-            'Unable to remove your profile photo.',
+        error instanceof ApiError
+          ? error.message
+          : 'Unable to remove your profile photo.',
       );
     } finally {
-      setIsUploadingPhoto(
-        false,
-      );
+      setIsUploadingPhoto(false);
     }
   }
+
+  /* ========================================================
+     PROFILE PHOTO ACTION
+     ======================================================== */
 
   function handleProfilePhotoPress(): void {
-    if (
-      isUploadingPhoto
-    ) {
+    if (isUploadingPhoto) {
       return;
     }
 
-    if (
-      !profilePhotoUrl
-    ) {
+    if (!profilePhotoUrl) {
       void chooseProfilePhoto();
-
       return;
     }
 
-    setPhotoMenuVisible(
-      true,
-    );
+    setActiveModal('photoOptions');
   }
 
+  /* ========================================================
+     SIGN OUT
+     ======================================================== */
+
   async function handleLogout(): Promise<void> {
-    if (
-      isSubmitting
-    ) {
+    if (isSubmitting) {
       return;
     }
 
-    setLogoutModalVisible(
-      false,
-    );
+    setActiveModal(null);
 
     await logout();
 
-    router.replace(
-      '/(auth)/role-selection',
-    );
+    router.replace('/(auth)/role-selection');
   }
+
+  /* ========================================================
+     RENDER PROFILE
+     ======================================================== */
 
   return (
     <SafeAreaView
+      edges={['top']}
       style={styles.safeArea}
     >
       <StatusBar
         barStyle="dark-content"
-        backgroundColor={
-          COLORS.background
-        }
+        backgroundColor={COLORS.background}
+        translucent={false}
       />
 
       <ScrollView
-        showsVerticalScrollIndicator={
-          false
-        }
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
-            refreshing={
-              isRefreshing
-            }
+            refreshing={isRefreshing}
             onRefresh={() =>
-              void loadCustomerProfile(
-                true,
-              )
+              void loadCustomerProfile(true)
             }
-            tintColor={
-              COLORS.navy
-            }
-            colors={[
-              COLORS.navy,
-            ]}
+            tintColor={COLORS.navy}
+            colors={[COLORS.navy]}
           />
         }
-        contentContainerStyle={
-          styles.container
-        }
+        contentContainerStyle={styles.container}
       >
+        {/* TOP BAR */}
+
         <View style={styles.topBar}>
-          <View
-            style={
-              styles.topBarTitleBlock
-            }
-          >
-            <Text
-              style={
-                styles.topBarTitle
-              }
-            >
+          <View style={styles.topBarTitleBlock}>
+            <Text style={styles.topBarTitle}>
               Profile
             </Text>
 
-            <Text
-              style={
-                styles.topBarCaption
-              }
-            >
-              Account, preferences & security
+            <Text style={styles.topBarCaption}>
+              Account, preferences &amp; security
             </Text>
           </View>
 
@@ -701,45 +487,36 @@ export default function CustomerProfileScreen() {
             accessibilityRole="button"
             accessibilityLabel="Refresh profile"
             disabled={
-              isRefreshing
-              ||
+              isRefreshing ||
               isLoadingProfile
             }
             onPress={() =>
-              void loadCustomerProfile(
-                true,
-              )
+              void loadCustomerProfile(true)
             }
             style={[
               styles.topActionButton,
-
               (
-                isRefreshing
-                ||
+                isRefreshing ||
                 isLoadingProfile
-              )
-              &&
-                styles.disabledButton,
+              ) && styles.disabledButton,
             ]}
           >
             {isRefreshing ? (
               <ActivityIndicator
                 size="small"
-                color={
-                  COLORS.navy
-                }
+                color={COLORS.navy}
               />
             ) : (
               <Ionicons
                 name="refresh-outline"
                 size={21}
-                color={
-                  COLORS.navy
-                }
+                color={COLORS.navy}
               />
             )}
           </TouchableOpacity>
         </View>
+
+        {/* PAGE HEADER */}
 
         <View style={styles.header}>
           <Text style={styles.eyebrow}>
@@ -751,17 +528,20 @@ export default function CustomerProfileScreen() {
           </Text>
 
           <Text style={styles.subtitle}>
-            Keep your personal information, profile photo, saved shops, booking requests, and account security easy to access.
+            Keep your personal information,
+            profile photo, saved shops, booking
+            requests, and account security
+            easy to access.
           </Text>
         </View>
+
+        {/* PROFILE MESSAGES */}
 
         {errorMessage ? (
           <MessageBox
             type="error"
             title="Profile needs attention"
-            message={
-              errorMessage
-            }
+            message={errorMessage}
           />
         ) : null}
 
@@ -769,160 +549,105 @@ export default function CustomerProfileScreen() {
           <MessageBox
             type="success"
             title="Profile updated"
-            message={
-              successMessage
-            }
+            message={successMessage}
           />
         ) : null}
 
-        <View
-          style={styles.profileHero}
-        >
+        {/* PROFILE HERO */}
+
+        <View style={styles.profileHero}>
           <TouchableOpacity
             activeOpacity={0.82}
-            disabled={
-              isUploadingPhoto
-            }
+            disabled={isUploadingPhoto}
             accessibilityRole="button"
             accessibilityLabel="Change profile photo"
-            onPress={
-              handleProfilePhotoPress
-            }
-            style={
-              styles.photoWrapper
-            }
+            onPress={handleProfilePhotoPress}
+            style={styles.photoWrapper}
           >
             {profilePhotoUrl ? (
               <Image
                 source={{
-                  uri:
-                    profilePhotoUrl,
+                  uri: profilePhotoUrl,
                 }}
                 resizeMode="cover"
-                style={
-                  styles.photo
-                }
+                style={styles.photo}
               />
             ) : (
-              <View
-                style={
-                  styles.photoPlaceholder
-                }
-              >
+              <View style={styles.photoPlaceholder}>
                 <Ionicons
                   name="person-outline"
                   size={38}
-                  color={
-                    COLORS.navy
-                  }
+                  color={COLORS.navy}
                 />
               </View>
             )}
 
             {isUploadingPhoto ? (
-              <View
-                style={
-                  styles.uploadingOverlay
-                }
-              >
+              <View style={styles.uploadingOverlay}>
                 <ActivityIndicator
                   size="small"
-                  color={
-                    COLORS.white
-                  }
+                  color={COLORS.white}
                 />
               </View>
             ) : (
-              <View
-                style={
-                  styles.photoActionBadge
-                }
-              >
+              <View style={styles.photoActionBadge}>
                 <Ionicons
                   name="camera-outline"
                   size={17}
-                  color={
-                    COLORS.white
-                  }
+                  color={COLORS.white}
                 />
               </View>
             )}
           </TouchableOpacity>
 
-          <View
-            style={
-              styles.heroIdentity
-            }
-          >
+          <View style={styles.heroIdentity}>
             <Text
               numberOfLines={2}
-              style={
-                styles.heroName
-              }
+              style={styles.heroName}
             >
               {customerName}
             </Text>
 
-            <Text
-              style={
-                styles.heroRole
-              }
-            >
+            <Text style={styles.heroRole}>
               StyleHub Customer
             </Text>
 
-            <View
-              style={
-                styles.heroBadges
-              }
-            >
+            <View style={styles.heroBadges}>
+              {/* ACCOUNT STATUS */}
+
               <View
                 style={[
                   styles.heroBadge,
-
                   {
                     backgroundColor:
-                      currentUser?.status ===
-                      'active'
-                        ?
-                          COLORS.greenSoft
-                        :
-                          COLORS.dangerSoft,
+                      currentUser?.status === 'active'
+                        ? COLORS.greenSoft
+                        : COLORS.dangerSoft,
                   },
                 ]}
               >
                 <Ionicons
                   name={
-                    currentUser?.status ===
-                    'active'
-                      ?
-                        'checkmark-circle-outline'
-                      :
-                        'alert-circle-outline'
+                    currentUser?.status === 'active'
+                      ? 'checkmark-circle-outline'
+                      : 'alert-circle-outline'
                   }
                   size={13}
                   color={
-                    currentUser?.status ===
-                    'active'
-                      ?
-                        COLORS.green
-                      :
-                        COLORS.danger
+                    currentUser?.status === 'active'
+                      ? COLORS.green
+                      : COLORS.danger
                   }
                 />
 
                 <Text
                   style={[
                     styles.heroBadgeText,
-
                     {
                       color:
-                        currentUser?.status ===
-                        'active'
-                          ?
-                            COLORS.green
-                          :
-                            COLORS.danger,
+                        currentUser?.status === 'active'
+                          ? COLORS.green
+                          : COLORS.danger,
                     },
                   ]}
                 >
@@ -930,88 +655,70 @@ export default function CustomerProfileScreen() {
                 </Text>
               </View>
 
+              {/* PHONE VERIFICATION */}
+
               <View
                 style={[
                   styles.heroBadge,
-
                   {
-                    backgroundColor:
-                      phoneVerified
-                        ?
-                          COLORS.blueSoft
-                        :
-                          COLORS.warningSoft,
+                    backgroundColor: phoneVerified
+                      ? COLORS.blueSoft
+                      : COLORS.warningSoft,
                   },
                 ]}
               >
                 <Ionicons
                   name={
                     phoneVerified
-                      ?
-                        'shield-checkmark-outline'
-                      :
-                        'time-outline'
+                      ? 'shield-checkmark-outline'
+                      : 'time-outline'
                   }
                   size={13}
                   color={
                     phoneVerified
-                      ?
-                        COLORS.blue
-                      :
-                        COLORS.warning
+                      ? COLORS.blue
+                      : COLORS.warning
                   }
                 />
 
                 <Text
                   style={[
                     styles.heroBadgeText,
-
                     {
-                      color:
-                        phoneVerified
-                          ?
-                            COLORS.blue
-                          :
-                            COLORS.warning,
+                      color: phoneVerified
+                        ? COLORS.blue
+                        : COLORS.warning,
                     },
                   ]}
                 >
                   {phoneVerified
-                    ?
-                      'Phone verified'
-                    :
-                      'Verification pending'}
+                    ? 'Phone verified'
+                    : 'Verification pending'}
                 </Text>
               </View>
             </View>
           </View>
         </View>
 
-        <View
-          style={styles.heroFooter}
-        >
+        {/* PROFILE HERO FOOTER */}
+
+        <View style={styles.heroFooter}>
           <HeroStat
             icon="mail-outline"
             label="Email"
-            value={
-              customerEmail
-            }
+            value={customerEmail}
           />
 
-          <View
-            style={
-              styles.heroFooterDivider
-            }
-          />
+          <View style={styles.heroFooterDivider} />
 
           <HeroStat
             icon="time-outline"
             label="Last sign-in"
-            value={
-              lastLogin
-            }
+            value={lastLogin}
           />
         </View>
+
+        {/* ACCOUNT INFORMATION */}
 
         <SectionHeading
           title="Account information"
@@ -1019,54 +726,31 @@ export default function CustomerProfileScreen() {
         />
 
         {isLoadingProfile ? (
-          <View
-            style={styles.loadingCard}
-          >
-            <View
-              style={
-                styles.loadingCardIcon
-              }
-            >
+          <View style={styles.loadingCard}>
+            <View style={styles.loadingCardIcon}>
               <ActivityIndicator
                 size="small"
-                color={
-                  COLORS.navy
-                }
+                color={COLORS.navy}
               />
             </View>
 
-            <View
-              style={
-                styles.loadingCardCopy
-              }
-            >
-              <Text
-                style={
-                  styles.loadingCardTitle
-                }
-              >
+            <View style={styles.loadingCardCopy}>
+              <Text style={styles.loadingCardTitle}>
                 Loading account information
               </Text>
 
-              <Text
-                style={
-                  styles.loadingCardText
-                }
-              >
-                Getting your latest customer profile from Laravel.
+              <Text style={styles.loadingCardText}>
+                Getting your latest customer
+                profile from Laravel.
               </Text>
             </View>
           </View>
         ) : (
-          <View
-            style={styles.infoCard}
-          >
+          <View style={styles.infoCard}>
             <InfoRow
               icon="person-outline"
               label="Full name"
-              value={
-                customerName
-              }
+              value={customerName}
             />
 
             <Divider />
@@ -1074,9 +758,7 @@ export default function CustomerProfileScreen() {
             <InfoRow
               icon="mail-outline"
               label="Email address"
-              value={
-                customerEmail
-              }
+              value={customerEmail}
             />
 
             <Divider />
@@ -1084,14 +766,10 @@ export default function CustomerProfileScreen() {
             <InfoRow
               icon="call-outline"
               label="Mobile number"
-              value={
-                customerPhone
-              }
+              value={customerPhone}
               trailing={
                 <VerificationBadge
-                  verified={
-                    phoneVerified
-                  }
+                  verified={phoneVerified}
                 />
               }
             />
@@ -1101,12 +779,12 @@ export default function CustomerProfileScreen() {
             <InfoRow
               icon="shield-checkmark-outline"
               label="Account status"
-              value={
-                accountStatus
-              }
+              value={accountStatus}
             />
           </View>
         )}
+
+        {/* EDIT PERSONAL INFORMATION */}
 
         <TouchableOpacity
           activeOpacity={0.82}
@@ -1117,54 +795,36 @@ export default function CustomerProfileScreen() {
               '/(customer)/edit-personal-information' as Href,
             )
           }
-          style={
-            styles.primaryActionCard
-          }
+          style={styles.primaryActionCard}
         >
-          <View
-            style={
-              styles.primaryActionIcon
-            }
-          >
+          <View style={styles.primaryActionIcon}>
             <Ionicons
               name="create-outline"
               size={20}
-              color={
-                COLORS.violet
-              }
+              color={COLORS.violet}
             />
           </View>
 
-          <View
-            style={
-              styles.primaryActionCopy
-            }
-          >
-            <Text
-              style={
-                styles.primaryActionTitle
-              }
-            >
+          <View style={styles.primaryActionCopy}>
+            <Text style={styles.primaryActionTitle}>
               Edit personal information
             </Text>
 
-            <Text
-              style={
-                styles.primaryActionText
-              }
-            >
-              Update your name, email address, or mobile number using the existing secure profile flow.
+            <Text style={styles.primaryActionText}>
+              Update your name, email address,
+              or mobile number using the
+              existing secure profile flow.
             </Text>
           </View>
 
           <Ionicons
             name="chevron-forward"
             size={19}
-            color={
-              COLORS.textLight
-            }
+            color={COLORS.textLight}
           />
         </TouchableOpacity>
+
+        {/* YOUR STYLEHUB */}
 
         <SectionHeading
           title="Your StyleHub"
@@ -1174,12 +834,8 @@ export default function CustomerProfileScreen() {
         <View style={styles.menuCard}>
           <MenuRow
             icon="bookmark-outline"
-            iconBackground={
-              COLORS.violetSoft
-            }
-            iconColor={
-              COLORS.violet
-            }
+            iconBackground={COLORS.violetSoft}
+            iconColor={COLORS.violet}
             title="Saved shops"
             description="Open the shops you bookmarked for quick access."
             onPress={() =>
@@ -1193,12 +849,8 @@ export default function CustomerProfileScreen() {
 
           <MenuRow
             icon="swap-horizontal-outline"
-            iconBackground={
-              COLORS.blueSoft
-            }
-            iconColor={
-              COLORS.blue
-            }
+            iconBackground={COLORS.blueSoft}
+            iconColor={COLORS.blue}
             title="Reschedule requests"
             description="Track pending, approved, rejected, and withdrawn requests."
             onPress={() =>
@@ -1212,12 +864,8 @@ export default function CustomerProfileScreen() {
 
           <MenuRow
             icon="notifications-outline"
-            iconBackground={
-              COLORS.orangeSoft
-            }
-            iconColor={
-              COLORS.orange
-            }
+            iconBackground={COLORS.orangeSoft}
+            iconColor={COLORS.orange}
             title="Notifications"
             description="Review your latest StyleHub account and booking updates."
             onPress={() =>
@@ -1227,6 +875,8 @@ export default function CustomerProfileScreen() {
             }
           />
         </View>
+
+        {/* ACCOUNT SECURITY */}
 
         <SectionHeading
           title="Account security"
@@ -1242,478 +892,323 @@ export default function CustomerProfileScreen() {
               '/(customer)/customer-security' as Href,
             )
           }
-          style={
-            styles.securityCard
-          }
+          style={styles.securityCard}
         >
-          <View
-            style={
-              styles.securityIcon
-            }
-          >
+          <View style={styles.securityIcon}>
             <Ionicons
               name="lock-closed-outline"
               size={21}
-              color={
-                COLORS.green
-              }
+              color={COLORS.green}
             />
           </View>
 
-          <View
-            style={
-              styles.securityCopy
-            }
-          >
-            <Text
-              style={
-                styles.securityTitle
-              }
-            >
-              Password & sessions
+          <View style={styles.securityCopy}>
+            <Text style={styles.securityTitle}>
+              Password &amp; sessions
             </Text>
 
-            <Text
-              style={
-                styles.securityText
-              }
-            >
-              Change your password and use the existing security flow to sign out other StyleHub sessions.
+            <Text style={styles.securityText}>
+              Change your password and use
+              the existing security flow to
+              sign out other StyleHub sessions.
             </Text>
           </View>
 
           <Ionicons
             name="chevron-forward"
             size={19}
-            color={
-              COLORS.textLight
-            }
+            color={COLORS.textLight}
           />
         </TouchableOpacity>
 
-        <View
-          style={
-            styles.securityNotice
-          }
-        >
+        {/* SECURITY NOTICE */}
+
+        <View style={styles.securityNotice}>
           <Ionicons
             name="shield-checkmark-outline"
             size={18}
-            color={
-              COLORS.green
-            }
+            color={COLORS.green}
           />
 
-          <Text
-            style={
-              styles.securityNoticeText
-            }
-          >
-            Your verification and account status come from Laravel. The mobile app does not mark an account verified or active on its own.
+          <Text style={styles.securityNoticeText}>
+            Your verification and account
+            status come from Laravel.
+            The mobile app does not mark
+            an account verified or active
+            on its own.
           </Text>
         </View>
 
+        {/* SIGN OUT BUTTON */}
+
         <TouchableOpacity
           activeOpacity={0.82}
-          disabled={
-            isSubmitting
-          }
+          disabled={isSubmitting}
           accessibilityRole="button"
           accessibilityLabel="Sign out"
-          onPress={() =>
-            setLogoutModalVisible(
-              true,
-            )
-          }
+          onPress={() => setActiveModal('logout')}
           style={[
             styles.logoutButton,
-
-            isSubmitting
-            &&
-              styles.disabledButton,
+            isSubmitting && styles.disabledButton,
           ]}
         >
           {isSubmitting ? (
             <ActivityIndicator
               size="small"
-              color={
-                COLORS.danger
-              }
+              color={COLORS.danger}
             />
           ) : (
             <Ionicons
               name="log-out-outline"
               size={18}
-              color={
-                COLORS.danger
-              }
+              color={COLORS.danger}
             />
           )}
 
-          <Text
-            style={styles.logoutText}
-          >
+          <Text style={styles.logoutText}>
             {isSubmitting
-              ?
-                'Signing out...'
-              :
-                'Sign out'}
+              ? 'Signing out...'
+              : 'Sign out'}
           </Text>
         </TouchableOpacity>
       </ScrollView>
 
-      <Modal
-        transparent
-        animationType="fade"
-        visible={
-          photoMenuVisible
+      {/* ==================================================
+          SHARED STYLEHUB MODAL
+
+          Handles:
+          - Photo options
+          - Photo permission warning
+          - Remove photo confirmation
+          - Sign out confirmation
+          ================================================== */}
+
+      <StyleHubModal
+        visible={activeModal !== null}
+        onClose={() => {
+          if (
+            !isSubmitting &&
+            !isUploadingPhoto
+          ) {
+            setActiveModal(null);
+          }
+        }}
+        title={
+          activeModal === 'photoOptions'
+            ? 'Profile photo'
+            : activeModal === 'photoPermission'
+              ? 'Photo access needed'
+              : activeModal === 'removePhoto'
+                ? 'Remove profile photo?'
+                : 'Sign out of StyleHub?'
         }
-        statusBarTranslucent
-        onRequestClose={() =>
-          setPhotoMenuVisible(
-            false,
-          )
+        message={
+          activeModal === 'photoOptions'
+            ? 'Choose what you would like to do with your photo.'
+            : activeModal === 'photoPermission'
+              ? 'Allow photo-library access in your phone settings to choose a profile picture.'
+              : activeModal === 'removePhoto'
+                ? 'Your current picture will be removed and the default profile icon will appear.'
+                : 'You will return to role selection and need to sign in again.'
+        }
+        tone={
+          activeModal === 'photoPermission'
+            ? 'warning'
+            : activeModal === 'removePhoto' ||
+                activeModal === 'logout'
+              ? 'danger'
+              : 'info'
+        }
+        icon={
+          activeModal === 'photoOptions'
+            ? 'camera-outline'
+            : activeModal === 'photoPermission'
+              ? 'images-outline'
+              : activeModal === 'removePhoto'
+                ? 'trash-outline'
+                : 'log-out-outline'
+        }
+        dismissOnBackdrop={
+          activeModal !== 'removePhoto' &&
+          activeModal !== 'logout' &&
+          !isSubmitting &&
+          !isUploadingPhoto
+        }
+        actions={
+          activeModal === 'photoOptions'
+            ? [
+                {
+                  label: 'Close',
+                  variant: 'secondary',
+                  onPress: () =>
+                    setActiveModal(null),
+                },
+              ]
+            : activeModal === 'photoPermission'
+              ? [
+                  {
+                    label: 'Got it',
+                    variant: 'primary',
+                    onPress: () =>
+                      setActiveModal(null),
+                  },
+                ]
+              : activeModal === 'removePhoto'
+                ? [
+                    {
+                      label: 'Keep photo',
+                      variant: 'secondary',
+                      onPress: () =>
+                        setActiveModal(null),
+                    },
+                    {
+                      label: 'Remove photo',
+                      variant: 'danger',
+                      icon: 'trash-outline',
+                      disabled: isUploadingPhoto,
+                      onPress: () =>
+                        void removeProfilePhoto(),
+                    },
+                  ]
+                : activeModal === 'logout'
+                  ? [
+                      {
+                        label: 'Stay signed in',
+                        variant: 'secondary',
+                        onPress: () =>
+                          setActiveModal(null),
+                      },
+                      {
+                        label: 'Sign out',
+                        variant: 'danger',
+                        icon: 'log-out-outline',
+                        loading: isSubmitting,
+                        onPress: () =>
+                          void handleLogout(),
+                      },
+                    ]
+                  : []
         }
       >
-        <View
-          style={styles.modalOverlay}
-        >
-          <View
-            style={styles.modalCard}
-          >
-            <View
-              style={styles.modalHeader}
-            >
-              <View
-                style={
-                  styles.modalPhotoIcon
-                }
-              >
-                <Ionicons
-                  name="camera-outline"
-                  size={22}
-                  color={
-                    COLORS.violet
-                  }
-                />
-              </View>
-
-              <View
-                style={
-                  styles.modalHeaderCopy
-                }
-              >
-                <Text
-                  style={
-                    styles.modalTitle
-                  }
-                >
-                  Profile photo
-                </Text>
-
-                <Text
-                  style={
-                    styles.modalTextLeft
-                  }
-                >
-                  Choose a new square profile photo or remove the current one.
-                </Text>
-              </View>
-            </View>
+        {activeModal === 'photoOptions' ? (
+          <View style={styles.photoOptionList}>
+            {/* CHOOSE NEW PHOTO */}
 
             <TouchableOpacity
-              activeOpacity={0.82}
-              disabled={
-                isUploadingPhoto
-              }
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Choose new profile photo"
+              disabled={isUploadingPhoto}
               onPress={() =>
                 void chooseProfilePhoto()
               }
-              style={
-                styles.modalOption
-              }
+              style={styles.photoOption}
             >
-              <View
-                style={
-                  styles.modalOptionIcon
-                }
-              >
+              <View style={styles.photoOptionIcon}>
                 <Ionicons
                   name="images-outline"
                   size={19}
-                  color={
-                    COLORS.navy
-                  }
+                  color={COLORS.navy}
                 />
               </View>
 
-              <View
-                style={
-                  styles.modalOptionCopy
-                }
-              >
-                <Text
-                  style={
-                    styles.modalOptionTitle
-                  }
-                >
+              <View style={styles.photoOptionTextBlock}>
+                <Text style={styles.photoOptionTitle}>
                   Choose new photo
                 </Text>
 
                 <Text
-                  style={
-                    styles.modalOptionText
-                  }
+                  style={styles.photoOptionDescription}
                 >
-                  Select and crop a new image from your photo library.
+                  Select a picture from your library.
                 </Text>
               </View>
 
               <Ionicons
                 name="chevron-forward"
-                size={18}
-                color={
-                  COLORS.textLight
-                }
+                size={17}
+                color={COLORS.textLight}
               />
             </TouchableOpacity>
 
+            {/* REMOVE EXISTING PHOTO */}
+
             <TouchableOpacity
-              activeOpacity={0.82}
-              disabled={
-                isUploadingPhoto
-              }
+              activeOpacity={0.8}
+              accessibilityRole="button"
+              accessibilityLabel="Remove current profile photo"
+              disabled={isUploadingPhoto}
               onPress={() =>
-                void removeProfilePhoto()
+                setActiveModal('removePhoto')
               }
-              style={
-                styles.modalDangerOption
-              }
+              style={[
+                styles.photoOption,
+                styles.photoOptionDanger,
+              ]}
             >
               <View
-                style={
-                  styles.modalDangerOptionIcon
-                }
+                style={[
+                  styles.photoOptionIcon,
+                  styles.photoOptionDangerIcon,
+                ]}
               >
                 <Ionicons
                   name="trash-outline"
                   size={19}
-                  color={
-                    COLORS.danger
-                  }
+                  color={COLORS.danger}
                 />
               </View>
 
-              <View
-                style={
-                  styles.modalOptionCopy
-                }
-              >
+              <View style={styles.photoOptionTextBlock}>
                 <Text
-                  style={
-                    styles.modalDangerOptionTitle
-                  }
+                  style={[
+                    styles.photoOptionTitle,
+                    {
+                      color: COLORS.danger,
+                    },
+                  ]}
                 >
                   Remove current photo
                 </Text>
 
                 <Text
-                  style={
-                    styles.modalOptionText
-                  }
+                  style={styles.photoOptionDescription}
                 >
-                  Return to the default customer profile icon.
+                  Use the default profile icon.
                 </Text>
               </View>
-            </TouchableOpacity>
 
-            <TouchableOpacity
-              activeOpacity={0.75}
-              disabled={
-                isUploadingPhoto
-              }
-              onPress={() =>
-                setPhotoMenuVisible(
-                  false,
-                )
-              }
-              style={
-                styles.modalCancelButton
-              }
-            >
-              <Text
-                style={
-                  styles.modalCancelText
-                }
-              >
-                Cancel
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        transparent
-        animationType="fade"
-        visible={
-          logoutModalVisible
-        }
-        statusBarTranslucent
-        onRequestClose={() =>
-          !isSubmitting
-          &&
-          setLogoutModalVisible(
-            false,
-          )
-        }
-      >
-        <View
-          style={styles.modalOverlay}
-        >
-          <View
-            style={styles.modalCard}
-          >
-            <View
-              style={
-                styles.logoutModalIcon
-              }
-            >
               <Ionicons
-                name="log-out-outline"
-                size={23}
-                color={
-                  COLORS.danger
-                }
+                name="chevron-forward"
+                size={17}
+                color={COLORS.danger}
               />
-            </View>
-
-            <Text
-              style={
-                styles.logoutModalTitle
-              }
-            >
-              Sign out of StyleHub?
-            </Text>
-
-            <Text
-              style={
-                styles.logoutModalText
-              }
-            >
-              You will return to the role selection screen and will need to sign in again to access your customer account.
-            </Text>
-
-            <View
-              style={
-                styles.logoutModalActions
-              }
-            >
-              <TouchableOpacity
-                activeOpacity={0.78}
-                disabled={
-                  isSubmitting
-                }
-                onPress={() =>
-                  setLogoutModalVisible(
-                    false,
-                  )
-                }
-                style={
-                  styles.modalSecondaryButton
-                }
-              >
-                <Text
-                  style={
-                    styles.modalSecondaryText
-                  }
-                >
-                  Stay signed in
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.82}
-                disabled={
-                  isSubmitting
-                }
-                onPress={() =>
-                  void handleLogout()
-                }
-                style={[
-                  styles.modalDangerButton,
-
-                  isSubmitting
-                  &&
-                    styles.disabledButton,
-                ]}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator
-                    size="small"
-                    color={
-                      COLORS.white
-                    }
-                  />
-                ) : (
-                  <Ionicons
-                    name="log-out-outline"
-                    size={17}
-                    color={
-                      COLORS.white
-                    }
-                  />
-                )}
-
-                <Text
-                  style={
-                    styles.modalDangerText
-                  }
-                >
-                  {isSubmitting
-                    ?
-                      'Signing out...'
-                    :
-                      'Sign out'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            </TouchableOpacity>
           </View>
-        </View>
-      </Modal>
+        ) : null}
+      </StyleHubModal>
     </SafeAreaView>
   );
 }
+
+/* ==========================================================
+   REUSABLE PROFILE COMPONENTS
+   ========================================================== */
 
 function SectionHeading({
   title,
   subtitle,
 }: {
-  title:
-    string;
-
-  subtitle:
-    string;
+  title: string;
+  subtitle: string;
 }) {
   return (
-    <View
-      style={
-        styles.sectionHeading
-      }
-    >
-      <Text
-        style={
-          styles.sectionTitle
-        }
-      >
+    <View style={styles.sectionHeading}>
+      <Text style={styles.sectionTitle}>
         {title}
       </Text>
 
-      <Text
-        style={
-          styles.sectionSubtitle
-        }
-      >
+      <Text style={styles.sectionSubtitle}>
         {subtitle}
       </Text>
     </View>
@@ -1725,48 +1220,27 @@ function HeroStat({
   label,
   value,
 }: {
-  icon:
-    IconName;
-
-  label:
-    string;
-
-  value:
-    string;
+  icon: IconName;
+  label: string;
+  value: string;
 }) {
   return (
-    <View
-      style={
-        styles.heroStat
-      }
-    >
-      <View
-        style={
-          styles.heroStatLabelRow
-        }
-      >
+    <View style={styles.heroStat}>
+      <View style={styles.heroStatLabelRow}>
         <Ionicons
           name={icon}
           size={13}
-          color={
-            COLORS.textLight
-          }
+          color={COLORS.textLight}
         />
 
-        <Text
-          style={
-            styles.heroStatLabel
-          }
-        >
+        <Text style={styles.heroStatLabel}>
           {label}
         </Text>
       </View>
 
       <Text
         numberOfLines={2}
-        style={
-          styles.heroStatValue
-        }
+        style={styles.heroStatValue}
       >
         {value}
       </Text>
@@ -1777,61 +1251,44 @@ function HeroStat({
 function VerificationBadge({
   verified,
 }: {
-  verified:
-    boolean;
+  verified: boolean;
 }) {
   return (
     <View
       style={[
         styles.verificationBadge,
-
         {
-          backgroundColor:
-            verified
-              ?
-                COLORS.greenSoft
-              :
-                COLORS.warningSoft,
+          backgroundColor: verified
+            ? COLORS.greenSoft
+            : COLORS.warningSoft,
         },
       ]}
     >
       <Ionicons
         name={
           verified
-            ?
-              'checkmark-circle-outline'
-            :
-              'time-outline'
+            ? 'checkmark-circle-outline'
+            : 'time-outline'
         }
         size={12}
         color={
           verified
-            ?
-              COLORS.green
-            :
-              COLORS.warning
+            ? COLORS.green
+            : COLORS.warning
         }
       />
 
       <Text
         style={[
           styles.verificationBadgeText,
-
           {
-            color:
-              verified
-                ?
-                  COLORS.green
-                :
-                  COLORS.warning,
+            color: verified
+              ? COLORS.green
+              : COLORS.warning,
           },
         ]}
       >
-        {verified
-          ?
-            'Verified'
-          :
-            'Pending'}
+        {verified ? 'Verified' : 'Pending'}
       </Text>
     </View>
   );
@@ -1843,25 +1300,14 @@ function InfoRow({
   value,
   trailing,
 }: {
-  icon:
-    IconName;
-
-  label:
-    string;
-
-  value:
-    string;
-
-  trailing?:
-    React.ReactNode;
+  icon: IconName;
+  label: string;
+  value: string;
+  trailing?: ReactNode;
 }) {
   return (
-    <View
-      style={styles.infoRow}
-    >
-      <View
-        style={styles.infoIcon}
-      >
+    <View style={styles.infoRow}>
+      <View style={styles.infoIcon}>
         <Ionicons
           name={icon}
           size={18}
@@ -1869,12 +1315,8 @@ function InfoRow({
         />
       </View>
 
-      <View
-        style={styles.infoContent}
-      >
-        <Text
-          style={styles.infoLabel}
-        >
+      <View style={styles.infoContent}>
+        <Text style={styles.infoLabel}>
           {label}
         </Text>
 
@@ -1887,11 +1329,7 @@ function InfoRow({
       </View>
 
       {trailing ? (
-        <View
-          style={
-            styles.infoTrailing
-          }
-        >
+        <View style={styles.infoTrailing}>
           {trailing}
         </View>
       ) : null}
@@ -1900,11 +1338,7 @@ function InfoRow({
 }
 
 function Divider() {
-  return (
-    <View
-      style={styles.divider}
-    />
-  );
+  return <View style={styles.divider} />;
 }
 
 function MenuRow({
@@ -1915,23 +1349,12 @@ function MenuRow({
   description,
   onPress,
 }: {
-  icon:
-    IconName;
-
-  iconBackground:
-    string;
-
-  iconColor:
-    string;
-
-  title:
-    string;
-
-  description:
-    string;
-
-  onPress:
-    () => void;
+  icon: IconName;
+  iconBackground: string;
+  iconColor: string;
+  title: string;
+  description: string;
+  onPress: () => void;
 }) {
   return (
     <TouchableOpacity
@@ -1943,10 +1366,8 @@ function MenuRow({
       <View
         style={[
           styles.menuIcon,
-
           {
-            backgroundColor:
-              iconBackground,
+            backgroundColor: iconBackground,
           },
         ]}
       >
@@ -1957,18 +1378,12 @@ function MenuRow({
         />
       </View>
 
-      <View
-        style={styles.menuCopy}
-      >
-        <Text
-          style={styles.menuTitle}
-        >
+      <View style={styles.menuCopy}>
+        <Text style={styles.menuTitle}>
           {title}
         </Text>
 
-        <Text
-          style={styles.menuText}
-        >
+        <Text style={styles.menuText}>
           {description}
         </Text>
       </View>
@@ -1976,22 +1391,14 @@ function MenuRow({
       <Ionicons
         name="chevron-forward"
         size={18}
-        color={
-          COLORS.textLight
-        }
+        color={COLORS.textLight}
       />
     </TouchableOpacity>
   );
 }
 
 function MenuDivider() {
-  return (
-    <View
-      style={
-        styles.menuDivider
-      }
-    />
-  );
+  return <View style={styles.menuDivider} />;
 }
 
 function MessageBox({
@@ -1999,86 +1406,54 @@ function MessageBox({
   title,
   message,
 }: {
-  type:
-    'success'
-    | 'error';
-
-  title:
-    string;
-
-  message:
-    string;
+  type: 'success' | 'error';
+  title: string;
+  message: string;
 }) {
-  const success =
-    type ===
-    'success';
+  const success = type === 'success';
 
   return (
     <View
       style={[
         styles.messageBox,
-
         {
-          backgroundColor:
-            success
-              ?
-                COLORS.successSoft
-              :
-                COLORS.dangerSoft,
+          backgroundColor: success
+            ? COLORS.successSoft
+            : COLORS.dangerSoft,
         },
       ]}
     >
-      <View
-        style={
-          styles.messageIcon
-        }
-      >
+      <View style={styles.messageIcon}>
         <Ionicons
           name={
             success
-              ?
-                'checkmark-circle-outline'
-              :
-                'alert-circle-outline'
+              ? 'checkmark-circle-outline'
+              : 'alert-circle-outline'
           }
           size={20}
           color={
             success
-              ?
-                COLORS.success
-              :
-                COLORS.danger
+              ? COLORS.success
+              : COLORS.danger
           }
         />
       </View>
 
-      <View
-        style={
-          styles.messageContent
-        }
-      >
+      <View style={styles.messageContent}>
         <Text
           style={[
             styles.messageTitle,
-
             {
-              color:
-                success
-                  ?
-                    COLORS.success
-                  :
-                    COLORS.danger,
+              color: success
+                ? COLORS.success
+                : COLORS.danger,
             },
           ]}
         >
           {title}
         </Text>
 
-        <Text
-          style={
-            styles.messageText
-          }
-        >
+        <Text style={styles.messageText}>
           {message}
         </Text>
       </View>
@@ -2086,1538 +1461,642 @@ function MessageBox({
   );
 }
 
-const styles =
-  StyleSheet.create({
-    safeArea: {
-      flex:
-        1,
-
-      backgroundColor:
-        COLORS.background,
-    },
-
-    container: {
-      width:
-        '100%',
-
-      maxWidth:
-        LAYOUT.contentMaxWidth,
-
-      alignSelf:
-        'center',
-
-      paddingHorizontal:
-        LAYOUT.screenPadding,
-
-      paddingTop:
-        SPACING.sm,
-
-      paddingBottom:
-        110,
-    },
-
-    topBar: {
-      minHeight:
-        52,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'space-between',
-    },
-
-    topBarTitleBlock: {
-      flex:
-        1,
-    },
-
-    topBarTitle: {
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.cardTitle,
-
-      fontWeight:
-        '800',
-    },
-
-    topBarCaption: {
-      marginTop:
-        1,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-    },
-
-    topActionButton: {
-      width:
-        LAYOUT.iconButtonSize,
-
-      height:
-        LAYOUT.iconButtonSize,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        14,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-    header: {
-      marginTop:
-        SPACING.lg,
-    },
-
-    eyebrow: {
-      color:
-        COLORS.accent,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      fontWeight:
-        '800',
-
-      letterSpacing:
-        1.2,
-    },
-
-    title: {
-      maxWidth:
-        590,
-
-      marginTop:
-        5,
-
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.title,
-
-      lineHeight:
-        30,
-
-      fontWeight:
-        '800',
-
-      letterSpacing:
-        -0.6,
-    },
-
-    subtitle: {
-      maxWidth:
-        620,
-
-      marginTop:
-        8,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.body,
-
-      lineHeight:
-        21,
-    },
-
-    messageBox: {
-      marginTop:
-        SPACING.lg,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'flex-start',
-
-      gap:
-        10,
-
-      padding:
-        14,
-
-      borderRadius:
-        RADII.md,
-    },
-
-    messageIcon: {
-      width:
-        31,
-
-      height:
-        31,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        10,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-    messageContent: {
-      flex:
-        1,
-    },
-
-    messageTitle: {
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      fontWeight:
-        '800',
-    },
-
-    messageText: {
-      marginTop:
-        3,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.caption,
-
-      lineHeight:
-        18,
-    },
-
-    profileHero: {
-      marginTop:
-        SPACING.xl,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      gap:
-        15,
-
-      padding:
-        18,
-
-      paddingBottom:
-        16,
-
-      borderTopLeftRadius:
-        RADII.xl,
-
-      borderTopRightRadius:
-        RADII.xl,
-
-      backgroundColor:
-        COLORS.primary,
-
-      ...SHADOWS.card,
-    },
-
-    photoWrapper: {
-      width:
-        84,
-
-      height:
-        84,
-
-      position:
-        'relative',
-
-      flexShrink:
-        0,
-    },
-
-    photo: {
-      width:
-        84,
-
-      height:
-        84,
-
-      borderWidth:
-        3,
-
-      borderColor:
-        COLORS.navyMuted,
-
-      borderRadius:
-        28,
-    },
-
-    photoPlaceholder: {
-      width:
-        84,
-
-      height:
-        84,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderWidth:
-        3,
-
-      borderColor:
-        COLORS.navyMuted,
-
-      borderRadius:
-        28,
-
-      backgroundColor:
-        COLORS.accentSoft,
-    },
-
-    uploadingOverlay: {
-      ...StyleSheet.absoluteFillObject,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        28,
-
-      backgroundColor:
-        'rgba(23, 33, 43, 0.62)',
-    },
-
-    photoActionBadge: {
-      position:
-        'absolute',
-
-      right:
-        -2,
-
-      bottom:
-        -2,
-
-      width:
-        34,
-
-      height:
-        34,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderWidth:
-        3,
-
-      borderColor:
-        COLORS.primary,
-
-      borderRadius:
-        17,
-
-      backgroundColor:
-        COLORS.violet,
-    },
-
-    heroIdentity: {
-      flex:
-        1,
-
-      minWidth:
-        0,
-    },
-
-    heroName: {
-      color:
-        COLORS.white,
-
-      fontSize:
-        21,
-
-      lineHeight:
-        27,
-
-      fontWeight:
-        '800',
-
-      letterSpacing:
-        -0.4,
-    },
-
-    heroRole: {
-      marginTop:
-        3,
-
-      color:
-        '#D4DAE1',
-
-      fontSize:
-        TYPOGRAPHY.caption,
-
-      fontWeight:
-        '600',
-    },
-
-    heroBadges: {
-      marginTop:
-        11,
-
-      flexDirection:
-        'row',
-
-      flexWrap:
-        'wrap',
-
-      gap:
-        6,
-    },
-
-    heroBadge: {
-      minHeight:
-        28,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      gap:
-        4,
-
-      paddingHorizontal:
-        8,
-
-      borderRadius:
-        RADII.pill,
-    },
-
-    heroBadgeText: {
-      fontSize:
-        9,
-
-      fontWeight:
-        '800',
-    },
-
-    heroFooter: {
-      flexDirection:
-        'row',
-
-      alignItems:
-        'stretch',
-
-      paddingHorizontal:
-        18,
-
-      paddingTop:
-        14,
-
-      paddingBottom:
-        16,
-
-      borderBottomLeftRadius:
-        RADII.xl,
-
-      borderBottomRightRadius:
-        RADII.xl,
-
-      backgroundColor:
-        COLORS.primarySoft,
-    },
-
-    heroStat: {
-      flex:
-        1,
-
-      minWidth:
-        0,
-    },
-
-    heroStatLabelRow: {
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      gap:
-        5,
-    },
-
-    heroStatLabel: {
-      color:
-        '#AEB8C5',
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      fontWeight:
-        '600',
-    },
-
-    heroStatValue: {
-      marginTop:
-        4,
-
-      color:
-        COLORS.white,
-
-      fontSize:
-        TYPOGRAPHY.caption,
-
-      lineHeight:
-        18,
-
-      fontWeight:
-        '700',
-    },
-
-    heroFooterDivider: {
-      width:
-        1,
-
-      marginHorizontal:
-        13,
-
-      backgroundColor:
-        COLORS.navyMuted,
-    },
-
-    sectionHeading: {
-      marginTop:
-        SPACING.xxl,
-
-      marginBottom:
-        12,
-    },
-
-    sectionTitle: {
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.section,
-
-      fontWeight:
-        '800',
-
-      letterSpacing:
-        -0.3,
-    },
-
-    sectionSubtitle: {
-      marginTop:
-        3,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.caption,
-
-      lineHeight:
-        17,
-    },
-
-    loadingCard: {
-      minHeight:
-        84,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      gap:
-        11,
-
-      padding:
-        14,
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.lg,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-    loadingCardIcon: {
-      width:
-        42,
-
-      height:
-        42,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        14,
-
-      backgroundColor:
-        COLORS.accentSoft,
-    },
-
-    loadingCardCopy: {
-      flex:
-        1,
-    },
-
-    loadingCardTitle: {
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      fontWeight:
-        '800',
-    },
-
-    loadingCardText: {
-      marginTop:
-        3,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      lineHeight:
-        16,
-    },
-
-    infoCard: {
-      overflow:
-        'hidden',
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.xl,
-
-      backgroundColor:
-        COLORS.surface,
-
-      ...SHADOWS.card,
-    },
-
-    infoRow: {
-      minHeight:
-        68,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      gap:
-        11,
-
-      paddingHorizontal:
-        14,
-
-      paddingVertical:
-        10,
-    },
-
-    infoIcon: {
-      width:
-        38,
-
-      height:
-        38,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        12,
-
-      backgroundColor:
-        COLORS.accentSoft,
-    },
-
-    infoContent: {
-      flex:
-        1,
-
-      minWidth:
-        0,
-    },
-
-    infoLabel: {
-      color:
-        COLORS.textLight,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      fontWeight:
-        '600',
-    },
-
-    infoValue: {
-      marginTop:
-        3,
-
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.body,
-
-      lineHeight:
-        19,
-
-      fontWeight:
-        '700',
-    },
-
-    infoTrailing: {
-      flexShrink:
-        0,
-    },
-
-    verificationBadge: {
-      minHeight:
-        28,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      gap:
-        4,
-
-      paddingHorizontal:
-        8,
-
-      borderRadius:
-        RADII.pill,
-    },
-
-    verificationBadgeText: {
-      fontSize:
-        9,
-
-      fontWeight:
-        '800',
-    },
-
-    divider: {
-      height:
-        1,
-
-      marginLeft:
-        63,
-
-      backgroundColor:
-        COLORS.border,
-    },
-
-    primaryActionCard: {
-      minHeight:
-        82,
-
-      marginTop:
-        11,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      gap:
-        11,
-
-      padding:
-        14,
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.lg,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-    primaryActionIcon: {
-      width:
-        42,
-
-      height:
-        42,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        14,
-
-      backgroundColor:
-        COLORS.violetSoft,
-    },
-
-    primaryActionCopy: {
-      flex:
-        1,
-    },
-
-    primaryActionTitle: {
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      fontWeight:
-        '800',
-    },
-
-    primaryActionText: {
-      marginTop:
-        3,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      lineHeight:
-        16,
-    },
-
-    menuCard: {
-      overflow:
-        'hidden',
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.xl,
-
-      backgroundColor:
-        COLORS.surface,
-
-      ...SHADOWS.card,
-    },
-
-    menuRow: {
-      minHeight:
-        82,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      gap:
-        11,
-
-      paddingHorizontal:
-        14,
-
-      paddingVertical:
-        12,
-    },
-
-    menuIcon: {
-      width:
-        42,
-
-      height:
-        42,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        14,
-    },
-
-    menuCopy: {
-      flex:
-        1,
-    },
-
-    menuTitle: {
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      fontWeight:
-        '800',
-    },
-
-    menuText: {
-      marginTop:
-        3,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      lineHeight:
-        16,
-    },
-
-    menuDivider: {
-      height:
-        1,
-
-      marginLeft:
-        67,
-
-      backgroundColor:
-        COLORS.border,
-    },
-
-    securityCard: {
-      minHeight:
-        86,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      gap:
-        11,
-
-      padding:
-        14,
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.xl,
-
-      backgroundColor:
-        COLORS.surface,
-
-      ...SHADOWS.card,
-    },
-
-    securityIcon: {
-      width:
-        44,
-
-      height:
-        44,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        14,
-
-      backgroundColor:
-        COLORS.greenSoft,
-    },
-
-    securityCopy: {
-      flex:
-        1,
-    },
-
-    securityTitle: {
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      fontWeight:
-        '800',
-    },
-
-    securityText: {
-      marginTop:
-        3,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      lineHeight:
-        16,
-    },
-
-    securityNotice: {
-      marginTop:
-        10,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'flex-start',
-
-      gap:
-        8,
-
-      padding:
-        12,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.greenSoft,
-    },
-
-    securityNoticeText: {
-      flex:
-        1,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      lineHeight:
-        16,
-    },
-
-    logoutButton: {
-      minHeight:
-        LAYOUT.buttonHeight,
-
-      marginTop:
-        SPACING.xxl,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      gap:
-        7,
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.danger,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.dangerSoft,
-    },
-
-    logoutText: {
-      color:
-        COLORS.danger,
-
-      fontSize:
-        TYPOGRAPHY.body,
-
-      fontWeight:
-        '800',
-    },
-
-    modalOverlay: {
-      flex:
-        1,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      padding:
-        18,
-
-      backgroundColor:
-        'rgba(0, 0, 0, 0.42)',
-    },
-
-    modalCard: {
-      width:
-        '100%',
-
-      maxWidth:
-        520,
-
-      padding:
-        18,
-
-      borderRadius:
-        RADII.xl,
-
-      backgroundColor:
-        COLORS.surface,
-
-      ...SHADOWS.floating,
-    },
-
-    modalHeader: {
-      flexDirection:
-        'row',
-
-      alignItems:
-        'flex-start',
-
-      gap:
-        11,
-    },
-
-    modalPhotoIcon: {
-      width:
-        42,
-
-      height:
-        42,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        14,
-
-      backgroundColor:
-        COLORS.violetSoft,
-    },
-
-    modalHeaderCopy: {
-      flex:
-        1,
-    },
-
-    modalTitle: {
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.cardTitle,
-
-      fontWeight:
-        '800',
-    },
-
-    modalTextLeft: {
-      marginTop:
-        3,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.caption,
-
-      lineHeight:
-        18,
-    },
-
-    modalOption: {
-      minHeight:
-        72,
-
-      marginTop:
-        15,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      gap:
-        10,
-
-      padding:
-        12,
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.surfaceSoft,
-    },
-
-    modalOptionIcon: {
-      width:
-        40,
-
-      height:
-        40,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        13,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-    modalOptionCopy: {
-      flex:
-        1,
-    },
-
-    modalOptionTitle: {
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      fontWeight:
-        '800',
-    },
-
-    modalOptionText: {
-      marginTop:
-        3,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      lineHeight:
-        16,
-    },
-
-    modalDangerOption: {
-      minHeight:
-        72,
-
-      marginTop:
-        8,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      gap:
-        10,
-
-      padding:
-        12,
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.danger,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.dangerSoft,
-    },
-
-    modalDangerOptionIcon: {
-      width:
-        40,
-
-      height:
-        40,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        13,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-    modalDangerOptionTitle: {
-      color:
-        COLORS.danger,
-
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      fontWeight:
-        '800',
-    },
-
-    modalCancelButton: {
-      minHeight:
-        LAYOUT.compactButtonHeight,
-
-      marginTop:
-        9,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-    },
-
-    modalCancelText: {
-      color:
-        COLORS.navy,
-
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      fontWeight:
-        '800',
-    },
-
-    logoutModalIcon: {
-      width:
-        50,
-
-      height:
-        50,
-
-      alignSelf:
-        'center',
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        17,
-
-      backgroundColor:
-        COLORS.dangerSoft,
-    },
-
-    logoutModalTitle: {
-      marginTop:
-        13,
-
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.section,
-
-      fontWeight:
-        '800',
-
-      textAlign:
-        'center',
-    },
-
-    logoutModalText: {
-      marginTop:
-        6,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.body,
-
-      lineHeight:
-        20,
-
-      textAlign:
-        'center',
-    },
-
-    logoutModalActions: {
-      marginTop:
-        16,
-
-      flexDirection:
-        'row',
-
-      gap:
-        8,
-    },
-
-    modalSecondaryButton: {
-      flex:
-        1,
-
-      minHeight:
-        LAYOUT.compactButtonHeight,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.surfaceSoft,
-    },
-
-    modalSecondaryText: {
-      color:
-        COLORS.navy,
-
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      fontWeight:
-        '800',
-    },
-
-    modalDangerButton: {
-      flex:
-        1,
-
-      minHeight:
-        LAYOUT.compactButtonHeight,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      gap:
-        6,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.danger,
-    },
-
-    modalDangerText: {
-      color:
-        COLORS.white,
-
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      fontWeight:
-        '800',
-    },
-
-    disabledButton: {
-      opacity:
-        0.48,
-    },
-  });
+/* ==========================================================
+   PROFILE STYLES
+   ========================================================== */
+
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
+  scrollView: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
+  container: {
+    width: '100%',
+    maxWidth: LAYOUT.contentMaxWidth,
+    alignSelf: 'center',
+    paddingHorizontal: LAYOUT.screenPadding,
+    paddingTop: 40,
+    paddingBottom: 20,
+  },
+
+  /* TOP BAR */
+
+  topBar: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  topBarTitleBlock: {
+    flex: 1,
+  },
+
+  topBarTitle: {
+    color: COLORS.text,
+    fontSize: TYPOGRAPHY.cardTitle,
+    fontWeight: '800',
+  },
+
+  topBarCaption: {
+    marginTop: 1,
+    color: COLORS.textMuted,
+    fontSize: TYPOGRAPHY.micro,
+  },
+
+  topActionButton: {
+    width: LAYOUT.iconButtonSize,
+    height: LAYOUT.iconButtonSize,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 14,
+    backgroundColor: COLORS.surface,
+  },
+
+  /* PAGE HEADER */
+
+  header: {
+    marginTop: SPACING.lg,
+  },
+
+  eyebrow: {
+    color: COLORS.accent,
+    fontSize: TYPOGRAPHY.micro,
+    fontWeight: '800',
+    letterSpacing: 1.2,
+  },
+
+  title: {
+    maxWidth: 590,
+    marginTop: 5,
+    color: COLORS.text,
+    fontSize: TYPOGRAPHY.title,
+    lineHeight: 30,
+    fontWeight: '800',
+    letterSpacing: -0.6,
+  },
+
+  subtitle: {
+    maxWidth: 620,
+    marginTop: 8,
+    color: COLORS.textMuted,
+    fontSize: TYPOGRAPHY.body,
+    lineHeight: 21,
+  },
+
+  /* STATUS MESSAGES */
+
+  messageBox: {
+    marginTop: SPACING.lg,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    padding: 14,
+    borderRadius: RADII.md,
+  },
+
+  messageIcon: {
+    width: 31,
+    height: 31,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: COLORS.surface,
+  },
+
+  messageContent: {
+    flex: 1,
+  },
+
+  messageTitle: {
+    fontSize: TYPOGRAPHY.secondary,
+    fontWeight: '800',
+  },
+
+  messageText: {
+    marginTop: 3,
+    color: COLORS.textMuted,
+    fontSize: TYPOGRAPHY.caption,
+    lineHeight: 18,
+  },
+
+  /* PROFILE HERO */
+
+  profileHero: {
+    marginTop: SPACING.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 15,
+    padding: 18,
+    paddingBottom: 16,
+    borderTopLeftRadius: RADII.xl,
+    borderTopRightRadius: RADII.xl,
+    backgroundColor: COLORS.primary,
+    ...SHADOWS.card,
+  },
+
+  photoWrapper: {
+    width: 84,
+    height: 84,
+    position: 'relative',
+    flexShrink: 0,
+  },
+
+  photo: {
+    width: 84,
+    height: 84,
+    borderWidth: 3,
+    borderColor: COLORS.navyMuted,
+    borderRadius: 28,
+  },
+
+  photoPlaceholder: {
+    width: 84,
+    height: 84,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: COLORS.navyMuted,
+    borderRadius: 28,
+    backgroundColor: COLORS.accentSoft,
+  },
+
+  uploadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 28,
+    backgroundColor: 'rgba(23, 33, 43, 0.62)',
+  },
+
+  photoActionBadge: {
+    position: 'absolute',
+    right: -2,
+    bottom: -2,
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 3,
+    borderColor: COLORS.primary,
+    borderRadius: 17,
+    backgroundColor: COLORS.violet,
+  },
+
+  heroIdentity: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  heroName: {
+    color: COLORS.white,
+    fontSize: 21,
+    lineHeight: 27,
+    fontWeight: '800',
+    letterSpacing: -0.4,
+  },
+
+  heroRole: {
+    marginTop: 3,
+    color: '#D4DAE1',
+    fontSize: TYPOGRAPHY.caption,
+    fontWeight: '600',
+  },
+
+  heroBadges: {
+    marginTop: 11,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 6,
+  },
+
+  heroBadge: {
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    borderRadius: RADII.pill,
+  },
+
+  heroBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+  },
+
+  /* PROFILE HERO FOOTER */
+
+  heroFooter: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    paddingHorizontal: 18,
+    paddingTop: 14,
+    paddingBottom: 16,
+    borderBottomLeftRadius: RADII.xl,
+    borderBottomRightRadius: RADII.xl,
+    backgroundColor: COLORS.primarySoft,
+  },
+
+  heroStat: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  heroStatLabelRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+
+  heroStatLabel: {
+    color: '#AEB8C5',
+    fontSize: TYPOGRAPHY.micro,
+    fontWeight: '600',
+  },
+
+  heroStatValue: {
+    marginTop: 4,
+    color: COLORS.white,
+    fontSize: TYPOGRAPHY.caption,
+    lineHeight: 18,
+    fontWeight: '700',
+  },
+
+  heroFooterDivider: {
+    width: 1,
+    marginHorizontal: 13,
+    backgroundColor: COLORS.navyMuted,
+  },
+
+  /* SECTION HEADINGS */
+
+  sectionHeading: {
+    marginTop: SPACING.xxl,
+    marginBottom: 12,
+  },
+
+  sectionTitle: {
+    color: COLORS.text,
+    fontSize: TYPOGRAPHY.section,
+    fontWeight: '800',
+    letterSpacing: -0.3,
+  },
+
+  sectionSubtitle: {
+    marginTop: 3,
+    color: COLORS.textMuted,
+    fontSize: TYPOGRAPHY.caption,
+    lineHeight: 17,
+  },
+
+  /* LOADING */
+
+  loadingCard: {
+    minHeight: 84,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADII.lg,
+    backgroundColor: COLORS.surface,
+  },
+
+  loadingCardIcon: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    backgroundColor: COLORS.accentSoft,
+  },
+
+  loadingCardCopy: {
+    flex: 1,
+  },
+
+  loadingCardTitle: {
+    color: COLORS.text,
+    fontSize: TYPOGRAPHY.secondary,
+    fontWeight: '800',
+  },
+
+  loadingCardText: {
+    marginTop: 3,
+    color: COLORS.textMuted,
+    fontSize: TYPOGRAPHY.micro,
+    lineHeight: 16,
+  },
+
+  /* ACCOUNT INFORMATION */
+
+  infoCard: {
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADII.xl,
+    backgroundColor: COLORS.surface,
+    ...SHADOWS.card,
+  },
+
+  infoRow: {
+    minHeight: 68,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+
+  infoIcon: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: COLORS.accentSoft,
+  },
+
+  infoContent: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  infoLabel: {
+    color: COLORS.textLight,
+    fontSize: TYPOGRAPHY.micro,
+    fontWeight: '600',
+  },
+
+  infoValue: {
+    marginTop: 3,
+    color: COLORS.text,
+    fontSize: TYPOGRAPHY.body,
+    lineHeight: 19,
+    fontWeight: '700',
+  },
+
+  infoTrailing: {
+    flexShrink: 0,
+  },
+
+  verificationBadge: {
+    minHeight: 28,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    borderRadius: RADII.pill,
+  },
+
+  verificationBadgeText: {
+    fontSize: 9,
+    fontWeight: '800',
+  },
+
+  divider: {
+    height: 1,
+    marginLeft: 63,
+    backgroundColor: COLORS.border,
+  },
+
+  /* EDIT PERSONAL INFORMATION */
+
+  primaryActionCard: {
+    minHeight: 82,
+    marginTop: 11,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADII.lg,
+    backgroundColor: COLORS.surface,
+  },
+
+  primaryActionIcon: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    backgroundColor: COLORS.violetSoft,
+  },
+
+  primaryActionCopy: {
+    flex: 1,
+  },
+
+  primaryActionTitle: {
+    color: COLORS.text,
+    fontSize: TYPOGRAPHY.secondary,
+    fontWeight: '800',
+  },
+
+  primaryActionText: {
+    marginTop: 3,
+    color: COLORS.textMuted,
+    fontSize: TYPOGRAPHY.micro,
+    lineHeight: 16,
+  },
+
+  /* YOUR STYLEHUB MENU */
+
+  menuCard: {
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADII.xl,
+    backgroundColor: COLORS.surface,
+    ...SHADOWS.card,
+  },
+
+  menuRow: {
+    minHeight: 82,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+
+  menuIcon: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+  },
+
+  menuCopy: {
+    flex: 1,
+  },
+
+  menuTitle: {
+    color: COLORS.text,
+    fontSize: TYPOGRAPHY.secondary,
+    fontWeight: '800',
+  },
+
+  menuText: {
+    marginTop: 3,
+    color: COLORS.textMuted,
+    fontSize: TYPOGRAPHY.micro,
+    lineHeight: 16,
+  },
+
+  menuDivider: {
+    height: 1,
+    marginLeft: 67,
+    backgroundColor: COLORS.border,
+  },
+
+  /* ACCOUNT SECURITY */
+
+  securityCard: {
+    minHeight: 86,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADII.xl,
+    backgroundColor: COLORS.surface,
+    ...SHADOWS.card,
+  },
+
+  securityIcon: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    backgroundColor: COLORS.greenSoft,
+  },
+
+  securityCopy: {
+    flex: 1,
+  },
+
+  securityTitle: {
+    color: COLORS.text,
+    fontSize: TYPOGRAPHY.secondary,
+    fontWeight: '800',
+  },
+
+  securityText: {
+    marginTop: 3,
+    color: COLORS.textMuted,
+    fontSize: TYPOGRAPHY.micro,
+    lineHeight: 16,
+  },
+
+  securityNotice: {
+    marginTop: 10,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: 12,
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.greenSoft,
+  },
+
+  securityNoticeText: {
+    flex: 1,
+    color: COLORS.textMuted,
+    fontSize: TYPOGRAPHY.micro,
+    lineHeight: 16,
+  },
+
+  /* SIGN OUT BUTTON */
+
+  logoutButton: {
+    minHeight: LAYOUT.buttonHeight,
+    marginTop: SPACING.xxl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    borderWidth: 1,
+    borderColor: COLORS.danger,
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.dangerSoft,
+  },
+
+  logoutText: {
+    color: COLORS.danger,
+    fontSize: TYPOGRAPHY.body,
+    fontWeight: '800',
+  },
+
+  /* MODAL PHOTO OPTIONS */
+
+  photoOptionList: {
+    width: '100%',
+    gap: 8,
+  },
+
+  photoOption: {
+    minHeight: 64,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 11,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    backgroundColor: COLORS.surfaceSoft,
+  },
+
+  photoOptionIcon: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 11,
+    backgroundColor: COLORS.accentSoft,
+  },
+
+  photoOptionTextBlock: {
+    flex: 1,
+    minWidth: 0,
+  },
+
+  photoOptionTitle: {
+    color: COLORS.text,
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  photoOptionDescription: {
+    marginTop: 3,
+    color: COLORS.textMuted,
+    fontSize: 10,
+    lineHeight: 15,
+  },
+
+  photoOptionDanger: {
+    borderColor: '#F2D5D5',
+    backgroundColor: '#FFF9F9',
+  },
+
+  photoOptionDangerIcon: {
+    backgroundColor: COLORS.dangerSoft,
+  },
+
+  disabledButton: {
+    opacity: 0.48,
+  },
+});

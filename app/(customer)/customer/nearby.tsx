@@ -1,16 +1,12 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
 import type { ComponentProps } from 'react';
-import {
-  useCallback,
-  useMemo,
-  useState,
-} from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -18,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import CustomerNearbyShopCard from '@/src/components/CustomerNearbyShopCard';
 import LeafletMap from '@/src/components/LeafletMap';
@@ -51,6 +48,8 @@ const DEFAULT_RADIUS_KM = 25;
 const DEFAULT_RESULT_LIMIT = 20;
 const RADIUS_OPTIONS = [5, 10, 25, 50] as const;
 
+/* HELPERS */
+
 function formatDistance(distanceKm: number): string {
   if (distanceKm < 1) {
     return `${Math.max(0, Math.round(distanceKm * 1000))} m away`;
@@ -64,18 +63,9 @@ function formatDistance(distanceKm: number): string {
 }
 
 function mapZoomForRadius(radiusKm: number): number {
-  if (radiusKm <= 5) {
-    return 13;
-  }
-
-  if (radiusKm <= 10) {
-    return 12;
-  }
-
-  if (radiusKm <= 25) {
-    return 10;
-  }
-
+  if (radiusKm <= 5) return 13;
+  if (radiusKm <= 10) return 12;
+  if (radiusKm <= 25) return 10;
   return 9;
 }
 
@@ -118,16 +108,26 @@ function availabilityPresentation(
   }
 }
 
+/* MAIN SCREEN */
+
 export default function CustomerNearbyShopsScreen() {
   const { token } = useAuth();
 
   const [shops, setShops] = useState<CustomerNearbyShop[]>([]);
-  const [search, setSearch] = useState<CustomerNearbyShopSearch | null>(null);
+  const [search, setSearch] =
+    useState<CustomerNearbyShopSearch | null>(null);
+
   const [customerCoordinate, setCustomerCoordinate] =
     useState<CustomerCoordinate | null>(null);
-  const [selectedShopId, setSelectedShopId] = useState<number | null>(null);
-  const [radiusKm, setRadiusKm] = useState<number>(DEFAULT_RADIUS_KM);
-  const [viewMode, setViewMode] = useState<ViewMode>('map');
+
+  const [selectedShopId, setSelectedShopId] =
+    useState<number | null>(null);
+
+  const [radiusKm, setRadiusKm] =
+    useState<number>(DEFAULT_RADIUS_KM);
+
+  const [viewMode, setViewMode] =
+    useState<ViewMode>('map');
 
   const [hasSearched, setHasSearched] = useState(false);
   const [isFinding, setIsFinding] = useState(false);
@@ -135,65 +135,47 @@ export default function CustomerNearbyShopsScreen() {
   const [errorMessage, setErrorMessage] = useState('');
 
   const selectedShop = useMemo(
-    () =>
-      shops.find(
-        (shop) => shop.id === selectedShopId,
-      ) ?? null,
-    [
-      selectedShopId,
-      shops,
-    ],
+    () => shops.find(
+      (shop) => shop.id === selectedShopId,
+    ) ?? null,
+    [selectedShopId, shops],
   );
 
-  const closestShop =
-    shops[0] ?? null;
+  const closestShop = shops[0] ?? null;
+
+  /* MAP MARKERS */
 
   const mapMarkers = useMemo(
     () =>
-      shops.flatMap(
-        (shop) => {
-          if (
-            shop.location.latitude === null
-            || shop.location.longitude === null
-          ) {
-            return [];
-          }
+      shops.flatMap((shop) => {
+        if (
+          shop.location.latitude === null ||
+          shop.location.longitude === null
+        ) {
+          return [];
+        }
 
-          return [
-            {
-              id: String(shop.id),
-
-              coordinate: {
-                latitude: shop.location.latitude,
-                longitude: shop.location.longitude,
-              },
-
-              title: shop.name,
-
-              description:
-                formatDistance(
-                  shop.distance_km,
-                ),
-
-              draggable: false,
+        return [
+          {
+            id: String(shop.id),
+            coordinate: {
+              latitude: shop.location.latitude,
+              longitude: shop.location.longitude,
             },
-          ];
-        },
-      ),
-    [
-      shops,
-    ],
+            title: shop.name,
+            description: formatDistance(shop.distance_km),
+            draggable: false,
+          },
+        ];
+      }),
+    [shops],
   );
 
+  /* FIND NEARBY SHOPS */
+
   const loadNearbyShops = useCallback(
-    async (
-      refreshing = false,
-    ): Promise<void> => {
-      if (
-        !token
-        || isFinding
-        || isRefreshing
-      ) {
+    async (refreshing = false): Promise<void> => {
+      if (!token || isFinding || isRefreshing) {
         return;
       }
 
@@ -213,7 +195,6 @@ export default function CustomerNearbyShopsScreen() {
           setErrorMessage(
             'Your device location service is turned off. Turn on Location/GPS and try again.',
           );
-
           return;
         }
 
@@ -224,57 +205,35 @@ export default function CustomerNearbyShopsScreen() {
           setErrorMessage(
             'Location permission is needed to find nearby shops. You can still browse all StyleHub shops from Discover.',
           );
-
           return;
         }
 
         const currentPosition =
           await Location.getCurrentPositionAsync({
-            accuracy:
-              Location.Accuracy.Balanced,
+            accuracy: Location.Accuracy.Balanced,
           });
 
         const coordinate: CustomerCoordinate = {
-          latitude:
-            currentPosition.coords.latitude,
-
-          longitude:
-            currentPosition.coords.longitude,
+          latitude: currentPosition.coords.latitude,
+          longitude: currentPosition.coords.longitude,
         };
 
-        const response =
-          await getCustomerNearbyShops(
-            token,
-            {
-              latitude:
-                coordinate.latitude,
-
-              longitude:
-                coordinate.longitude,
-
-              radiusKm,
-
-              limit:
-                DEFAULT_RESULT_LIMIT,
-            },
-          );
-
-        setCustomerCoordinate(
-          coordinate,
+        const response = await getCustomerNearbyShops(
+          token,
+          {
+            latitude: coordinate.latitude,
+            longitude: coordinate.longitude,
+            radiusKm,
+            limit: DEFAULT_RESULT_LIMIT,
+          },
         );
 
-        setShops(
-          response.data.shops,
-        );
-
-        setSearch(
-          response.data.search,
-        );
-
+        setCustomerCoordinate(coordinate);
+        setShops(response.data.shops);
+        setSearch(response.data.search);
         setSelectedShopId(
           response.data.shops[0]?.id ?? null,
         );
-
         setHasSearched(true);
       } catch (error) {
         setErrorMessage(
@@ -287,101 +246,67 @@ export default function CustomerNearbyShopsScreen() {
         setIsRefreshing(false);
       }
     },
-    [
-      isFinding,
-      isRefreshing,
-      radiusKm,
-      token,
-    ],
+    [isFinding, isRefreshing, radiusKm, token],
   );
 
-  const openShop = useCallback(
-    (
-      shopId: number,
-    ): void => {
-      router.push({
-        pathname:
-          '/(customer)/shop/[shopId]',
+  /* NAVIGATION */
 
-        params: {
-          shopId:
-            String(shopId),
-        },
+  const openShop = useCallback(
+    (shopId: number): void => {
+      router.push({
+        pathname: '/(customer)/shop/[shopId]',
+        params: { shopId: String(shopId) },
       });
     },
     [],
   );
 
+  /* MAP INTERACTION */
+
   const handleMarkerPress = useCallback(
-    (
-      markerId: string,
-    ): void => {
-      const shopId =
-        Number(markerId);
+    (markerId: string): void => {
+      const shopId = Number(markerId);
 
-      if (
-        !Number.isInteger(shopId)
-        || shopId <= 0
-      ) {
+      if (!Number.isInteger(shopId) || shopId <= 0) {
         return;
       }
 
-      if (
-        !shops.some(
-          (shop) =>
-            shop.id === shopId,
-        )
-      ) {
+      if (!shops.some((shop) => shop.id === shopId)) {
         return;
       }
 
-      setSelectedShopId(
-        shopId,
-      );
+      setSelectedShopId(shopId);
     },
-    [
-      shops,
-    ],
+    [shops],
   );
 
   const handleMapError = useCallback(
-    (
-      message: string,
-    ): void => {
-      setErrorMessage(
-        message,
-      );
+    (message: string): void => {
+      setErrorMessage(message);
     },
     [],
   );
 
-  function chooseRadius(
-    nextRadius: number,
-  ): void {
-    if (
-      isFinding
-      || isRefreshing
-    ) {
-      return;
-    }
+  function chooseRadius(nextRadius: number): void {
+    if (isFinding || isRefreshing) return;
 
-    setRadiusKm(
-      nextRadius,
-    );
-
+    setRadiusKm(nextRadius);
     setErrorMessage('');
   }
 
-  const activeRadius =
-    search?.radius_km ?? radiusKm;
+  const activeRadius = search?.radius_km ?? radiusKm;
+
+  /* RENDER */
 
   return (
     <SafeAreaView
+      edges={['top', 'bottom']}
       style={styles.safeArea}
     >
       <StatusBar
         barStyle="dark-content"
         backgroundColor={COLORS.background}
+        translucent={false}
       />
 
       <ScrollView
@@ -400,6 +325,8 @@ export default function CustomerNearbyShopsScreen() {
         }
         contentContainerStyle={styles.container}
       >
+        {/* TOP BAR */}
+
         <View style={styles.topBar}>
           <View style={styles.topBarTitleBlock}>
             <Text style={styles.topBarTitle}>
@@ -416,9 +343,7 @@ export default function CustomerNearbyShopsScreen() {
             accessibilityRole="button"
             accessibilityLabel="Open all shops"
             onPress={() =>
-              router.push(
-                '/(customer)/customer/shops',
-              )
+              router.push('/(customer)/customer/shops')
             }
             style={styles.topActionButton}
           >
@@ -430,6 +355,8 @@ export default function CustomerNearbyShopsScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* HEADER */}
+
         <View style={styles.header}>
           <Text style={styles.eyebrow}>
             AROUND YOU
@@ -440,11 +367,13 @@ export default function CustomerNearbyShopsScreen() {
           </Text>
 
           <Text style={styles.subtitle}>
-            Use foreground location once for this search, compare verified
-            shop pins by distance, and open a shop when you are ready to
-            explore its services.
+            Use foreground location once for this search,
+            compare verified shop pins by distance, and open
+            a shop when you are ready to explore its services.
           </Text>
         </View>
+
+        {/* PRIVACY NOTICE */}
 
         <View style={styles.privacyCard}>
           <View style={styles.privacyIcon}>
@@ -461,12 +390,15 @@ export default function CustomerNearbyShopsScreen() {
             </Text>
 
             <Text style={styles.privacyText}>
-              Your current coordinates are used to calculate nearby shops
-              for this request. This screen does not save those coordinates
-              to your StyleHub customer profile.
+              Your current coordinates are used to calculate
+              nearby shops for this request. This screen
+              does not save those coordinates to your
+              StyleHub customer profile.
             </Text>
           </View>
         </View>
+
+        {/* ERROR */}
 
         {errorMessage ? (
           <View style={styles.errorBox}>
@@ -490,6 +422,8 @@ export default function CustomerNearbyShopsScreen() {
           </View>
         ) : null}
 
+        {/* SEARCH RADIUS */}
+
         <View style={styles.searchCard}>
           <View style={styles.searchHeader}>
             <View style={styles.searchHeaderIcon}>
@@ -506,77 +440,57 @@ export default function CustomerNearbyShopsScreen() {
               </Text>
 
               <Text style={styles.searchText}>
-                Choose how far StyleHub should look from your current
-                location.
+                Choose how far StyleHub should look
+                from your current location.
               </Text>
             </View>
           </View>
 
           <View style={styles.radiusRow}>
-            {RADIUS_OPTIONS.map(
-              (option) => {
-                const selected =
-                  radiusKm === option;
+            {RADIUS_OPTIONS.map((option) => {
+              const selected = radiusKm === option;
 
-                return (
-                  <TouchableOpacity
-                    key={option}
-                    activeOpacity={0.78}
-                    disabled={
-                      isFinding
-                      || isRefreshing
-                    }
-                    accessibilityRole="button"
-                    accessibilityState={{
-                      selected,
-                    }}
-                    onPress={() =>
-                      chooseRadius(
-                        option,
-                      )
-                    }
+              return (
+                <TouchableOpacity
+                  key={option}
+                  activeOpacity={0.78}
+                  disabled={isFinding || isRefreshing}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected }}
+                  onPress={() => chooseRadius(option)}
+                  style={[
+                    styles.radiusButton,
+                    selected && styles.radiusButtonSelected,
+                    (isFinding || isRefreshing) &&
+                      styles.disabledButton,
+                  ]}
+                >
+                  <Text
                     style={[
-                      styles.radiusButton,
-
-                      selected
-                      && styles.radiusButtonSelected,
-
-                      (
-                        isFinding
-                        || isRefreshing
-                      )
-                      && styles.disabledButton,
+                      styles.radiusButtonValue,
+                      selected &&
+                        styles.radiusButtonValueSelected,
                     ]}
                   >
-                    <Text
-                      style={[
-                        styles.radiusButtonValue,
+                    {option}
+                  </Text>
 
-                        selected
-                        && styles.radiusButtonValueSelected,
-                      ]}
-                    >
-                      {option}
-                    </Text>
-
-                    <Text
-                      style={[
-                        styles.radiusButtonUnit,
-
-                        selected
-                        && styles.radiusButtonUnitSelected,
-                      ]}
-                    >
-                      km
-                    </Text>
-                  </TouchableOpacity>
-                );
-              },
-            )}
+                  <Text
+                    style={[
+                      styles.radiusButtonUnit,
+                      selected &&
+                        styles.radiusButtonUnitSelected,
+                    ]}
+                  >
+                    km
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
 
-          {hasSearched
-          && search?.radius_km !== radiusKm ? (
+          {hasSearched &&
+          search?.radius_km !== radiusKm ? (
             <View style={styles.radiusChangedNote}>
               <Ionicons
                 name="information-circle-outline"
@@ -585,35 +499,28 @@ export default function CustomerNearbyShopsScreen() {
               />
 
               <Text style={styles.radiusChangedText}>
-                Radius changed. Search again to refresh the map and shop
-                list.
+                Radius changed. Search again to refresh
+                the map and shop list.
               </Text>
             </View>
           ) : null}
 
+          {/* SEARCH BUTTON */}
+
           <TouchableOpacity
             activeOpacity={0.84}
-            disabled={
-              isFinding
-              || isRefreshing
-            }
+            disabled={isFinding || isRefreshing}
             accessibilityRole="button"
             accessibilityLabel={
               hasSearched
                 ? 'Search nearby shops again'
                 : 'Find nearby shops'
             }
-            onPress={() =>
-              void loadNearbyShops()
-            }
+            onPress={() => void loadNearbyShops()}
             style={[
               styles.primaryButton,
-
-              (
-                isFinding
-                || isRefreshing
-              )
-              && styles.disabledButton,
+              (isFinding || isRefreshing) &&
+                styles.disabledButton,
             ]}
           >
             {isFinding ? (
@@ -644,11 +551,13 @@ export default function CustomerNearbyShopsScreen() {
 
           {!hasSearched ? (
             <Text style={styles.searchFootnote}>
-              StyleHub will request foreground location permission when you
-              press the button.
+              StyleHub will request foreground location
+              permission when you press the button.
             </Text>
           ) : null}
         </View>
+
+        {/* BEFORE FIRST SEARCH */}
 
         {!hasSearched ? (
           <View style={styles.startCard}>
@@ -667,8 +576,9 @@ export default function CustomerNearbyShopsScreen() {
             </Text>
 
             <Text style={styles.startText}>
-              We will show only approved customer-visible shops that have
-              saved map coordinates and fall inside your selected radius.
+              We will show only approved customer-visible
+              shops that have saved map coordinates and
+              fall inside your selected radius.
             </Text>
 
             <View style={styles.startFeatures}>
@@ -690,8 +600,12 @@ export default function CustomerNearbyShopsScreen() {
           </View>
         ) : null}
 
+        {/* AFTER SEARCH */}
+
         {hasSearched ? (
           <>
+            {/* RESULTS OVERVIEW */}
+
             <View style={styles.resultsOverview}>
               <View style={styles.resultsOverviewTop}>
                 <View>
@@ -725,9 +639,7 @@ export default function CustomerNearbyShopsScreen() {
                   label="Closest"
                   value={
                     closestShop
-                      ? formatDistance(
-                          closestShop.distance_km,
-                        )
+                      ? formatDistance(closestShop.distance_km)
                       : 'None'
                   }
                 />
@@ -741,22 +653,20 @@ export default function CustomerNearbyShopsScreen() {
               </View>
             </View>
 
+            {/* MAP / LIST SWITCHER */}
+
             <View style={styles.viewSwitcher}>
               <TouchableOpacity
                 activeOpacity={0.78}
                 accessibilityRole="button"
                 accessibilityState={{
-                  selected:
-                    viewMode === 'map',
+                  selected: viewMode === 'map',
                 }}
-                onPress={() =>
-                  setViewMode('map')
-                }
+                onPress={() => setViewMode('map')}
                 style={[
                   styles.viewButton,
-
-                  viewMode === 'map'
-                  && styles.viewButtonSelected,
+                  viewMode === 'map' &&
+                    styles.viewButtonSelected,
                 ]}
               >
                 <Ionicons
@@ -772,9 +682,8 @@ export default function CustomerNearbyShopsScreen() {
                 <Text
                   style={[
                     styles.viewButtonText,
-
-                    viewMode === 'map'
-                    && styles.viewButtonTextSelected,
+                    viewMode === 'map' &&
+                      styles.viewButtonTextSelected,
                   ]}
                 >
                   Map
@@ -785,17 +694,13 @@ export default function CustomerNearbyShopsScreen() {
                 activeOpacity={0.78}
                 accessibilityRole="button"
                 accessibilityState={{
-                  selected:
-                    viewMode === 'list',
+                  selected: viewMode === 'list',
                 }}
-                onPress={() =>
-                  setViewMode('list')
-                }
+                onPress={() => setViewMode('list')}
                 style={[
                   styles.viewButton,
-
-                  viewMode === 'list'
-                  && styles.viewButtonSelected,
+                  viewMode === 'list' &&
+                    styles.viewButtonSelected,
                 ]}
               >
                 <Ionicons
@@ -811,15 +716,16 @@ export default function CustomerNearbyShopsScreen() {
                 <Text
                   style={[
                     styles.viewButtonText,
-
-                    viewMode === 'list'
-                    && styles.viewButtonTextSelected,
+                    viewMode === 'list' &&
+                      styles.viewButtonTextSelected,
                   ]}
                 >
                   List
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {/* EMPTY RESULTS */}
 
             {shops.length === 0 ? (
               <View style={styles.emptyCard}>
@@ -836,17 +742,16 @@ export default function CustomerNearbyShopsScreen() {
                 </Text>
 
                 <Text style={styles.emptyText}>
-                  There are no approved shops with saved map locations
-                  inside {activeRadius} km of your current position. Try a
-                  wider radius or browse Discover.
+                  There are no approved shops with saved
+                  map locations inside {activeRadius} km
+                  of your current position. Try a wider
+                  radius or browse Discover.
                 </Text>
 
                 <View style={styles.emptyActions}>
                   <TouchableOpacity
                     activeOpacity={0.8}
-                    onPress={() =>
-                      setRadiusKm(50)
-                    }
+                    onPress={() => setRadiusKm(50)}
                     style={styles.emptySecondaryButton}
                   >
                     <Text style={styles.emptySecondaryButtonText}>
@@ -857,9 +762,7 @@ export default function CustomerNearbyShopsScreen() {
                   <TouchableOpacity
                     activeOpacity={0.82}
                     onPress={() =>
-                      router.push(
-                        '/(customer)/customer/shops',
-                      )
+                      router.push('/(customer)/customer/shops')
                     }
                     style={styles.emptyPrimaryButton}
                   >
@@ -877,9 +780,11 @@ export default function CustomerNearbyShopsScreen() {
               </View>
             ) : null}
 
-            {shops.length > 0
-            && viewMode === 'map'
-            && customerCoordinate ? (
+            {/* LEAFLET MAP VIEW */}
+
+            {shops.length > 0 &&
+            viewMode === 'map' &&
+            customerCoordinate ? (
               <>
                 <View style={styles.mapCard}>
                   <View style={styles.mapHeader}>
@@ -897,8 +802,8 @@ export default function CustomerNearbyShopsScreen() {
                       </Text>
 
                       <Text style={styles.mapHeaderText}>
-                        Tap an orange shop pin to preview that shop below
-                        the map.
+                        Tap an orange shop pin to preview
+                        that shop below the map.
                       </Text>
                     </View>
                   </View>
@@ -932,27 +837,27 @@ export default function CustomerNearbyShopsScreen() {
                   <SelectedShopCard
                     shop={selectedShop}
                     onOpen={() =>
-                      openShop(
-                        selectedShop.id,
-                      )
+                      openShop(selectedShop.id)
                     }
                   />
                 ) : null}
               </>
             ) : null}
 
-            {shops.length > 0
-            && viewMode === 'list' ? (
+            {/* LIST VIEW */}
+
+            {shops.length > 0 &&
+            viewMode === 'list' ? (
               <View style={styles.listSection}>
                 <View style={styles.listHeading}>
-                  <View>
+                  <View style={{ flex: 1 }}>
                     <Text style={styles.listTitle}>
                       Nearest first
                     </Text>
 
                     <Text style={styles.listSubtitle}>
-                      Distances are returned by your existing nearby-shop
-                      API.
+                      Distances are returned by your
+                      existing nearby-shop API.
                     </Text>
                   </View>
 
@@ -964,19 +869,13 @@ export default function CustomerNearbyShopsScreen() {
                 </View>
 
                 <View style={styles.shopList}>
-                  {shops.map(
-                    (shop) => (
-                      <CustomerNearbyShopCard
-                        key={shop.id}
-                        shop={shop}
-                        onPress={() =>
-                          openShop(
-                            shop.id,
-                          )
-                        }
-                      />
-                    ),
-                  )}
+                  {shops.map((shop) => (
+                    <CustomerNearbyShopCard
+                      key={shop.id}
+                      shop={shop}
+                      onPress={() => openShop(shop.id)}
+                    />
+                  ))}
                 </View>
               </View>
             ) : null}
@@ -986,6 +885,8 @@ export default function CustomerNearbyShopsScreen() {
     </SafeAreaView>
   );
 }
+
+/* FEATURE LINE */
 
 function FeatureLine({
   icon,
@@ -1010,6 +911,8 @@ function FeatureLine({
     </View>
   );
 }
+
+/* SUMMARY ITEM */
 
 function SummaryItem({
   label,
@@ -1036,6 +939,8 @@ function SummaryItem({
   );
 }
 
+/* MAP LEGEND */
+
 function LegendItem({
   color,
   label,
@@ -1048,9 +953,7 @@ function LegendItem({
       <View
         style={[
           styles.legendDot,
-          {
-            backgroundColor: color,
-          },
+          { backgroundColor: color },
         ]}
       />
 
@@ -1061,6 +964,8 @@ function LegendItem({
   );
 }
 
+/* SELECTED SHOP PREVIEW */
+
 function SelectedShopCard({
   shop,
   onOpen,
@@ -1068,10 +973,9 @@ function SelectedShopCard({
   shop: CustomerNearbyShop;
   onOpen: () => void;
 }) {
-  const availability =
-    availabilityPresentation(
-      shop.availability.status,
-    );
+  const availability = availabilityPresentation(
+    shop.availability.status,
+  );
 
   return (
     <View style={styles.selectedCard}>
@@ -1106,8 +1010,7 @@ function SelectedShopCard({
           style={[
             styles.selectedStatus,
             {
-              backgroundColor:
-                availability.background,
+              backgroundColor: availability.background,
             },
           ]}
         >
@@ -1120,16 +1023,15 @@ function SelectedShopCard({
           <Text
             style={[
               styles.selectedStatusText,
-              {
-                color:
-                  availability.color,
-              },
+              { color: availability.color },
             ]}
           >
             {shop.availability.status_label}
           </Text>
         </View>
       </View>
+
+      {/* DISTANCE */}
 
       <View style={styles.selectedDistanceRow}>
         <View style={styles.selectedDistanceIcon}>
@@ -1146,12 +1048,12 @@ function SelectedShopCard({
           </Text>
 
           <Text style={styles.selectedDistanceValue}>
-            {formatDistance(
-              shop.distance_km,
-            )}
+            {formatDistance(shop.distance_km)}
           </Text>
         </View>
       </View>
+
+      {/* SHOP RATING */}
 
       <View style={styles.selectedMetaRow}>
         <View style={styles.selectedMetaPill}>
@@ -1191,6 +1093,8 @@ function SelectedShopCard({
         </View>
       </View>
 
+      {/* SHOP ADDRESS */}
+
       <View style={styles.selectedAddressRow}>
         <Ionicons
           name="location-outline"
@@ -1205,6 +1109,8 @@ function SelectedShopCard({
           {shop.address}, {shop.city}, {shop.province}
         </Text>
       </View>
+
+      {/* OPEN SHOP */}
 
       <TouchableOpacity
         activeOpacity={0.82}
@@ -1227,6 +1133,8 @@ function SelectedShopCard({
   );
 }
 
+/* STYLES */
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -1238,7 +1146,7 @@ const styles = StyleSheet.create({
     maxWidth: LAYOUT.contentMaxWidth,
     alignSelf: 'center',
     paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingTop: 40,
     paddingBottom: 110,
   },
 

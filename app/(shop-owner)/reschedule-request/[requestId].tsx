@@ -1,35 +1,17 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import { router, useLocalSearchParams } from 'expo-router';
 import type { ComponentProps } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
-import {
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  SafeAreaView,
-  ScrollView,
-  StatusBar,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
+  ActivityIndicator, ScrollView, StatusBar, StyleSheet,
+  Text, TextInput, TouchableOpacity, View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
+import StyleHubModal from '@/src/components/StyleHubModal';
 import { COLORS } from '@/src/constants/colors';
-import {
-  LAYOUT,
-  RADII,
-  SHADOWS,
-  SPACING,
-  TYPOGRAPHY,
-} from '@/src/constants/design';
+import { LAYOUT, RADII, SHADOWS, SPACING, TYPOGRAPHY } from '@/src/constants/design';
 import { useAuth } from '@/src/context/AuthContext';
 import { ApiError } from '@/src/services/api';
 import {
@@ -42,4819 +24,526 @@ import type {
   ShopOwnerRescheduleRequestStatus,
 } from '@/src/types/shop-owner';
 
+type IconName = ComponentProps<typeof Ionicons>['name'];
+type RequestModal = 'approve' | 'rejectReason' | 'reject' | 'success' | null;
 
-type IconName =
-  ComponentProps<typeof Ionicons>['name'];
-
-type ConfirmationAction =
-  | 'approve'
-  | 'reject'
-  | null;
-
-
-/* ==========================================================================
-   ROUTE VALUE
-   ========================================================================== */
-
-function routeValue(
-  value:
-    | string
-    | string[]
-    | undefined,
-): string | undefined {
-  return Array.isArray(
-    value,
-  )
-    ? value[0]
-    : value;
+function routeValue(value: string | string[] | undefined): string | undefined {
+  return Array.isArray(value) ? value[0] : value;
 }
 
-
-/* ==========================================================================
-   FORMAT PRICE
-   ========================================================================== */
-
-function formatPrice(
-  value:
-    | string
-    | number,
-): string {
-  const numeric =
-    Number(
-      value,
-    );
-
-  return Number.isNaN(
-    numeric,
-  )
-    ? String(
-        value,
-      )
-    : `₱${numeric.toFixed(2)}`;
+function formatPrice(value: string | number): string {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? `₱${amount.toFixed(2)}` : String(value);
 }
 
-
-/* ==========================================================================
-   FORMAT DATE
-   ========================================================================== */
-
-function formatDate(
-  value: string,
-): string {
-  const parts =
-    value
-      .split('-')
-      .map(
-        Number,
-      );
-
-  if (
-    parts.length !== 3
-    ||
-    parts.some(
-      (
-        part,
-      ) =>
-        Number.isNaN(
-          part,
-        ),
-    )
-  ) {
-    return value;
-  }
-
-  const [
-    year,
-    month,
-    day,
-  ] =
-    parts;
-
-  const date =
-    new Date(
-      year,
-      month - 1,
-      day,
-    );
-
-  return date.toLocaleDateString(
-    'en-PH',
-    {
-      weekday:
-        'short',
-
-      month:
-        'short',
-
-      day:
-        'numeric',
-
-      year:
-        'numeric',
-    },
-  );
+function formatDate(value: string): string {
+  const parts = value.split('-').map(Number);
+  if (parts.length !== 3 || parts.some(Number.isNaN)) return value;
+  const [year, month, day] = parts;
+  const date = new Date(year, month - 1, day);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('en-PH', {
+    weekday: 'short', month: 'short', day: 'numeric', year: 'numeric',
+  });
 }
 
-
-/* ==========================================================================
-   FORMAT TIME
-   ========================================================================== */
-
-function formatTime(
-  value: string,
-): string {
-  const match =
-    value.match(
-      /^(\d{1,2}):(\d{2})/,
-    );
-
-  if (
-    !match
-  ) {
-    return value;
-  }
-
-  const hour24 =
-    Number(
-      match[1],
-    );
-
-  const minute =
-    match[2];
-
-  if (
-    Number.isNaN(
-      hour24,
-    )
-    ||
-    hour24 < 0
-    ||
-    hour24 > 23
-  ) {
-    return value;
-  }
-
-  const suffix =
-    hour24 >= 12
-      ? 'PM'
-      : 'AM';
-
-  const hour12 =
-    hour24 % 12
-    ||
-    12;
-
-  return `${hour12}:${minute} ${suffix}`;
+function formatTime(value: string): string {
+  const match = value.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return value;
+  const hour = Number(match[1]);
+  if (hour < 0 || hour > 23) return value;
+  return `${hour % 12 || 12}:${match[2]} ${hour >= 12 ? 'PM' : 'AM'}`;
 }
 
-
-/* ==========================================================================
-   FORMAT TIMESTAMP
-   ========================================================================== */
-
-function formatTimestamp(
-  value:
-    string
-    | null,
-): string | null {
-  if (
-    !value
-  ) {
-    return null;
-  }
-
-  const date =
-    new Date(
-      value,
-    );
-
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
-    return value;
-  }
-
-  return new Intl.DateTimeFormat(
-    'en-PH',
-    {
-      dateStyle:
-        'medium',
-
-      timeStyle:
-        'short',
-
-      timeZone:
-        'Asia/Manila',
-    },
-  ).format(
-    date,
-  );
+function formatTimestamp(value: string | null | undefined): string | null {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-PH', {
+    dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Manila',
+  }).format(date);
 }
 
-
-/* ==========================================================================
-   STATUS PRESENTATION
-   ========================================================================== */
-
-function statusPresentation(
-  status:
-    ShopOwnerRescheduleRequestStatus,
-): {
-  background:
-    string;
-
-  text:
-    string;
-
-  icon:
-    IconName;
+function statusStyle(status: ShopOwnerRescheduleRequestStatus): {
+  icon: IconName; color: string; background: string;
 } {
-  switch (
-    status
-  ) {
+  switch (status) {
     case 'pending':
-      return {
-        background:
-          COLORS.warningSoft,
-
-        text:
-          COLORS.warning,
-
-        icon:
-          'time-outline',
-      };
-
+      return { icon: 'time-outline', color: COLORS.warning, background: COLORS.warningSoft };
     case 'approved':
-      return {
-        background:
-          COLORS.greenSoft,
-
-        text:
-          COLORS.green,
-
-        icon:
-          'checkmark-circle-outline',
-      };
-
+      return { icon: 'checkmark-circle-outline', color: COLORS.green, background: COLORS.greenSoft };
     case 'rejected':
-      return {
-        background:
-          COLORS.dangerSoft,
-
-        text:
-          COLORS.danger,
-
-        icon:
-          'close-circle-outline',
-      };
-
+      return { icon: 'close-circle-outline', color: COLORS.danger, background: COLORS.dangerSoft };
     case 'withdrawn':
-      return {
-        background:
-          COLORS.surfaceSoft,
-
-        text:
-          COLORS.textMuted,
-
-        icon:
-          'return-up-back-outline',
-      };
+      return { icon: 'return-up-back-outline', color: COLORS.textMuted, background: COLORS.surfaceSoft };
   }
 }
-
-
-/* ==========================================================================
-   SCREEN
-   ========================================================================== */
 
 export default function ShopOwnerRescheduleRequestDetailScreen() {
-  const params =
-    useLocalSearchParams<{
-      requestId?:
-        | string
-        | string[];
-    }>();
+  const params = useLocalSearchParams<{ requestId?: string | string[] }>();
+  const { token } = useAuth();
+  const requestId = Number(routeValue(params.requestId));
 
-  const {
-    token,
-  } =
-    useAuth();
+  const [request, setRequest] = useState<ShopOwnerRescheduleRequest | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const processingRef = useRef(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+  const [activeModal, setActiveModal] = useState<RequestModal>(null);
+  const [rejectionReason, setRejectionReason] = useState('');
+  const [modalError, setModalError] = useState('');
 
-  const requestId =
-    Number(
-      routeValue(
-        params.requestId,
-      ),
-    );
-
-
-  /* ==========================================================================
-     STATE
-     ========================================================================== */
-
-  const [
-    request,
-    setRequest,
-  ] =
-    useState<
-      ShopOwnerRescheduleRequest
-      | null
-    >(
-      null,
-    );
-
-  const [
-    rejectionReason,
-    setRejectionReason,
-  ] =
-    useState('');
-
-  const [
-    showRejectSheet,
-    setShowRejectSheet,
-  ] =
-    useState(
-      false,
-    );
-
-  const [
-    confirmationAction,
-    setConfirmationAction,
-  ] =
-    useState<ConfirmationAction>(
-      null,
-    );
-
-  const [
-    isLoading,
-    setIsLoading,
-  ] =
-    useState(
-      true,
-    );
-
-  const [
-    isProcessing,
-    setIsProcessing,
-  ] =
-    useState(
-      false,
-    );
-
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] =
-    useState('');
-
-  const [
-    successMessage,
-    setSuccessMessage,
-  ] =
-    useState('');
-
-
-  /* ==========================================================================
-     LOAD REQUEST
-     ========================================================================== */
-
-  const loadRequest =
-    useCallback(
-      async (
-        showLoading = true,
-      ): Promise<void> => {
-        if (
-          !token
-          ||
-          !Number.isInteger(
-            requestId,
-          )
-          ||
-          requestId < 1
-        ) {
-          setIsLoading(
-            false,
-          );
-
-          setErrorMessage(
-            'The selected reschedule request is invalid.',
-          );
-
-          return;
-        }
-
-        if (
-          showLoading
-        ) {
-          setIsLoading(
-            true,
-          );
-        }
-
-        setErrorMessage('');
-
-        try {
-          const response =
-            await getShopOwnerRescheduleRequest(
-              token,
-              requestId,
-            );
-
-          setRequest(
-            response
-              .data
-              .reschedule_request,
-          );
-        } catch (
-          error
-        ) {
-          setErrorMessage(
-            error instanceof ApiError
-              ? error.message
-              : 'Unable to load this reschedule request.',
-          );
-        } finally {
-          if (
-            showLoading
-          ) {
-            setIsLoading(
-              false,
-            );
-          }
-        }
-      },
-      [
-        requestId,
-        token,
-      ],
-    );
-
-
-  useEffect(
-    () => {
-      void loadRequest();
-    },
-    [
-      loadRequest,
-    ],
-  );
-
-
-  /* ==========================================================================
-     DERIVED DATA
-     ========================================================================== */
-
-  const appointment =
-    request?.appointment;
-
-  const pending =
-    request?.status ===
-    'pending';
-
-  const customerName =
-    appointment
-      ?.customer
-      ?.full_name
-      ?.trim()
-    ||
-    'Customer';
-
-  const customerInitial =
-    customerName
-      .charAt(
-        0,
-      )
-      .toUpperCase();
-
-  const createdAt =
-    useMemo(
-      () =>
-        formatTimestamp(
-          request?.created_at
-          ??
-          null,
-        ),
-      [
-        request?.created_at,
-      ],
-    );
-
-  const reviewedAt =
-    useMemo(
-      () =>
-        formatTimestamp(
-          request?.reviewed_at
-          ??
-          null,
-        ),
-      [
-        request?.reviewed_at,
-      ],
-    );
-
-
-  /* ==========================================================================
-     MESSAGE HELPERS
-     ========================================================================== */
-
-  function clearMessages(): void {
-    setErrorMessage('');
-    setSuccessMessage('');
-  }
-
-
-  /* ==========================================================================
-     APPROVE
-     ========================================================================== */
-
-  function requestApprove(): void {
-    if (
-      !pending
-      ||
-      isProcessing
-    ) {
+  const loadRequest = useCallback(async (showLoading = true): Promise<void> => {
+    if (!token || !Number.isInteger(requestId) || requestId < 1) {
+      setIsLoading(false);
+      setErrorMessage('The selected reschedule request is invalid.');
       return;
     }
-
-    clearMessages();
-
-    setConfirmationAction(
-      'approve',
-    );
-  }
-
-
-  async function performApprove(): Promise<void> {
-    if (
-      !token
-      ||
-      isProcessing
-      ||
-      !pending
-    ) {
-      return;
-    }
-
-    setIsProcessing(
-      true,
-    );
-
+    if (showLoading) setIsLoading(true);
     setErrorMessage('');
-    setSuccessMessage('');
-
     try {
-      const response =
-        await approveShopOwnerRescheduleRequest(
-          token,
-          requestId,
-        );
-
-      setRequest(
-        response
-          .data
-          .reschedule_request,
-      );
-
-      setSuccessMessage(
-        response.message
-        ??
-        'The reschedule request was approved successfully.',
-      );
-
-      setConfirmationAction(
-        null,
-      );
-    } catch (
-      error
-    ) {
-      setErrorMessage(
-        error instanceof ApiError
-          ? error.message
-          : 'Unable to approve this request.',
-      );
-
-      setConfirmationAction(
-        null,
-      );
+      const response = await getShopOwnerRescheduleRequest(token, requestId);
+      setRequest(response.data.reschedule_request);
+    } catch (error) {
+      setErrorMessage(error instanceof ApiError ? error.message : 'Unable to load this reschedule request.');
     } finally {
-      setIsProcessing(
-        false,
-      );
+      if (showLoading) setIsLoading(false);
     }
+  }, [token, requestId]);
+
+  useEffect(() => { void loadRequest(); }, [loadRequest]);
+
+  const pending = request?.status === 'pending';
+  const appointment = request?.appointment;
+  const customerName = appointment?.customer?.full_name?.trim() || 'Customer';
+  const requestedDate = request ? formatDate(request.requested_date) : '';
+  const requestedTime = request
+    ? `${formatTime(request.requested_starts_at)} – ${formatTime(request.requested_ends_at)}` : '';
+
+  function openApprove(): void {
+    if (!pending || processingRef.current) return;
+    setErrorMessage(''); setSuccessMessage(''); setModalError('');
+    setActiveModal('approve');
   }
 
-
-  /* ==========================================================================
-     REJECT
-     ========================================================================== */
-
-  function openRejectSheet(): void {
-    if (
-      !pending
-      ||
-      isProcessing
-    ) {
-      return;
-    }
-
-    clearMessages();
-
-    setRejectionReason('');
-
-    setShowRejectSheet(
-      true,
-    );
+  function openReject(): void {
+    if (!pending || processingRef.current) return;
+    setErrorMessage(''); setSuccessMessage(''); setModalError('');
+    setRejectionReason(''); setActiveModal('rejectReason');
   }
 
-
-  function closeRejectSheet(): void {
-    if (
-      isProcessing
-    ) {
-      return;
-    }
-
-    setShowRejectSheet(
-      false,
-    );
-
-    setRejectionReason('');
-
-    setErrorMessage('');
-  }
-
-
-  function requestRejectConfirmation(): void {
-    if (
-      !pending
-      ||
-      isProcessing
-    ) {
-      return;
-    }
-
-    const cleanReason =
-      rejectionReason.trim();
-
-    if (
-      cleanReason.length < 5
-      ||
-      cleanReason.length > 1000
-    ) {
-      setErrorMessage(
-        'Rejection reason must contain between 5 and 1000 characters.',
-      );
-
-      return;
-    }
-
-    setErrorMessage('');
-
-    setConfirmationAction(
-      'reject',
-    );
-  }
-
-
-  async function performReject(): Promise<void> {
-    if (
-      !token
-      ||
-      isProcessing
-      ||
-      !pending
-    ) {
-      return;
-    }
-
-    const cleanReason =
-      rejectionReason.trim();
-
-    if (
-      cleanReason.length < 5
-      ||
-      cleanReason.length > 1000
-    ) {
-      setConfirmationAction(
-        null,
-      );
-
-      setErrorMessage(
-        'Rejection reason must contain between 5 and 1000 characters.',
-      );
-
-      return;
-    }
-
-    setIsProcessing(
-      true,
-    );
-
-    setErrorMessage('');
-    setSuccessMessage('');
-
-    try {
-      const response =
-        await rejectShopOwnerRescheduleRequest(
-          token,
-          requestId,
-          cleanReason,
-        );
-
-      setRequest(
-        response
-          .data
-          .reschedule_request,
-      );
-
+  function closeModal(): void {
+    if (processingRef.current) return;
+    if (activeModal === 'reject') {
+      setActiveModal('rejectReason');
+    } else {
+      setActiveModal(null);
       setRejectionReason('');
-
-      setShowRejectSheet(
-        false,
-      );
-
-      setConfirmationAction(
-        null,
-      );
-
-      setSuccessMessage(
-        response.message
-        ??
-        'The reschedule request was rejected successfully.',
-      );
-    } catch (
-      error
-    ) {
-      setErrorMessage(
-        error instanceof ApiError
-          ? error.message
-          : 'Unable to reject this request.',
-      );
-
-      setConfirmationAction(
-        null,
-      );
-    } finally {
-      setIsProcessing(
-        false,
-      );
     }
+    setModalError('');
   }
 
-
-  /* ==========================================================================
-     CONFIRMED ACTION
-     ========================================================================== */
-
-  async function performConfirmedAction(): Promise<void> {
-    if (
-      confirmationAction ===
-      'approve'
-    ) {
-      await performApprove();
-
+  function reviewRejectReason(): void {
+    if (!pending || processingRef.current) return;
+    const reason = rejectionReason.trim();
+    if (reason.length < 5 || reason.length > 1000) {
+      setModalError('Rejection reason must contain between 5 and 1000 characters.');
       return;
     }
+    setModalError(''); setActiveModal('reject');
+  }
 
-    if (
-      confirmationAction ===
-      'reject'
-    ) {
-      await performReject();
+  async function performAction(action: 'approve' | 'reject'): Promise<void> {
+    if (!token || !request || request.status !== 'pending' || processingRef.current) return;
+    const reason = rejectionReason.trim();
+    if (action === 'reject' && (reason.length < 5 || reason.length > 1000)) {
+      setModalError('Rejection reason must contain between 5 and 1000 characters.');
+      setActiveModal('rejectReason');
+      return;
+    }
+    processingRef.current = true;
+    setIsProcessing(true);
+    setModalError('');
+    setErrorMessage('');
+    try {
+      const response = action === 'approve'
+        ? await approveShopOwnerRescheduleRequest(token, requestId)
+        : await rejectShopOwnerRescheduleRequest(token, requestId, reason);
+      setRequest({
+        ...response.data.reschedule_request,
+        appointment: response.data.reschedule_request.appointment ?? request.appointment,
+      });
+      setSuccessMessage(response.message ?? (action === 'approve'
+        ? 'The reschedule request was approved successfully.'
+        : 'The reschedule request was rejected successfully.'));
+      setActiveModal('success');
+      setRejectionReason('');
+    } catch (error) {
+      // Keep the confirmation open and show Laravel's error inside it.
+      setModalError(error instanceof ApiError ? error.message
+        : `Unable to ${action} this reschedule request.`);
+    } finally {
+      processingRef.current = false;
+      setIsProcessing(false);
     }
   }
 
-
-  /* ==========================================================================
-     LOADING
-     ========================================================================== */
-
-  if (
-    isLoading
-  ) {
+  if (isLoading && !request) {
     return (
-      <SafeAreaView
-        style={
-          styles.safeArea
-        }
-      >
-        <StatusBar
-          barStyle="dark-content"
-          backgroundColor={
-            COLORS.background
-          }
-        />
-
-        <View
-          style={
-            styles.loadingContainer
-          }
-        >
-          <View
-            style={
-              styles.loadingIcon
-            }
-          >
-            <ActivityIndicator
-              size="small"
-              color={
-                COLORS.navy
-              }
-            />
-          </View>
-
-          <Text
-            style={
-              styles.loadingTitle
-            }
-          >
-            Loading reschedule request
-          </Text>
-
-          <Text
-            style={
-              styles.loadingText
-            }
-          >
-            Getting the current appointment and requested schedule.
-          </Text>
+      <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+        <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} translucent={false} />
+        <View style={styles.centerState}>
+          <ActivityIndicator size="small" color={COLORS.navy} />
+          <Text style={styles.stateTitle}>Loading reschedule request</Text>
+          <Text style={styles.stateText}>Getting the current and requested schedules.</Text>
         </View>
       </SafeAreaView>
     );
   }
 
-
-  /* ==========================================================================
-     UNAVAILABLE
-     ========================================================================== */
-
-  if (
-    !request
-  ) {
+  if (!request) {
     return (
-      <SafeAreaView
-        style={
-          styles.safeArea
-        }
-      >
-        <StatusBar
-          barStyle="dark-content"
-          backgroundColor={
-            COLORS.background
-          }
-        />
-
-        <View
-          style={
-            styles.unavailableContainer
-          }
-        >
-          <TouchableOpacity
-            activeOpacity={
-              0.7
-            }
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            onPress={
-              () =>
-                router.back()
-            }
-            style={
-              styles.topIconButton
-            }
-          >
-            <Ionicons
-              name="arrow-back"
-              size={
-                22
-              }
-              color={
-                COLORS.navy
-              }
-            />
+      <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+        <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} translucent={false} />
+        <View style={styles.centerState}>
+          <Ionicons name="alert-circle-outline" size={32} color={COLORS.navy} />
+          <Text style={styles.stateTitle}>Request unavailable</Text>
+          <Text style={styles.stateText}>{errorMessage || 'Unable to display this request.'}</Text>
+          <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
+            <Text style={styles.backButtonText}>Go back</Text>
           </TouchableOpacity>
-
-          <View
-            style={
-              styles.unavailableContent
-            }
-          >
-            <View
-              style={
-                styles.unavailableIcon
-              }
-            >
-              <Ionicons
-                name="swap-horizontal-outline"
-                size={
-                  30
-                }
-                color={
-                  COLORS.navy
-                }
-              />
-            </View>
-
-            <Text
-              style={
-                styles.unavailableTitle
-              }
-            >
-              Request unavailable
-            </Text>
-
-            <Text
-              style={
-                styles.unavailableText
-              }
-            >
-              {errorMessage
-              ||
-              'Unable to display this reschedule request.'}
-            </Text>
-          </View>
         </View>
       </SafeAreaView>
     );
   }
 
-
-  /* ==========================================================================
-     DISPLAY DATA
-     ========================================================================== */
-
-  const status =
-    statusPresentation(
-      request.status,
-    );
-
-  const appointmentDate =
-    appointment
-      ? formatDate(
-          appointment.appointment_date,
-        )
-      : 'Unavailable';
-
-  const appointmentTime =
-    appointment
-      ? `${formatTime(
-          appointment.starts_at,
-        )} - ${formatTime(
-          appointment.ends_at,
-        )}`
-      : 'Unavailable';
-
-  const requestedDate =
-    formatDate(
-      request.requested_date,
-    );
-
-  const requestedTime =
-    `${formatTime(
-      request.requested_starts_at,
-    )} - ${formatTime(
-      request.requested_ends_at,
-    )}`;
-
-  const confirmationIsReject =
-    confirmationAction ===
-    'reject';
-
-
-  /* ==========================================================================
-     UI
-     ========================================================================== */
+  const status = statusStyle(request.status);
+  const createdAt = formatTimestamp(request.created_at);
+  const reviewedAt = formatTimestamp(request.reviewed_at);
+  const appointmentDate = appointment ? formatDate(appointment.appointment_date) : 'Unavailable';
+  const appointmentTime = appointment
+    ? `${formatTime(appointment.starts_at)} – ${formatTime(appointment.ends_at)}` : 'Unavailable';
 
   return (
-    <SafeAreaView
-      style={
-        styles.safeArea
-      }
-    >
-      <StatusBar
-        barStyle="dark-content"
-        backgroundColor={
-          COLORS.background
-        }
-      />
-
-      <ScrollView
-        showsVerticalScrollIndicator={
-          false
-        }
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={
-          styles.container
-        }
-      >
-
-        {/* ================================================================
-            TOP BAR
-            ================================================================ */}
-
-        <View
-          style={
-            styles.topBar
-          }
-        >
-          <TouchableOpacity
-            activeOpacity={
-              0.7
-            }
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-            onPress={
-              () =>
-                router.back()
-            }
-            style={
-              styles.topIconButton
-            }
-          >
-            <Ionicons
-              name="arrow-back"
-              size={
-                22
-              }
-              color={
-                COLORS.navy
-              }
-            />
+    <SafeAreaView edges={['top', 'bottom']} style={styles.safeArea}>
+      <StatusBar barStyle="dark-content" backgroundColor={COLORS.background} translucent={false} />
+      <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false} contentContainerStyle={styles.container}>
+        <View style={styles.topBar}>
+          <TouchableOpacity onPress={() => router.back()} accessibilityRole="button" accessibilityLabel="Go back" style={styles.iconButton}>
+            <Ionicons name="arrow-back" size={22} color={COLORS.navy} />
           </TouchableOpacity>
-
-          <View
-            style={
-              styles.topBarTitleBlock
-            }
-          >
-            <Text
-              style={
-                styles.topBarTitle
-              }
-            >
-              Reschedule request
-            </Text>
-
-            <Text
-              style={
-                styles.topBarCaption
-              }
-            >
-              Request #{request.id}
-            </Text>
+          <View style={styles.topHeading}>
+            <Text style={styles.topTitle}>Reschedule request</Text>
+            <Text style={styles.topSubtitle}>Request #{request.id}</Text>
           </View>
-
-          <TouchableOpacity
-            activeOpacity={
-              0.7
-            }
-            accessibilityRole="button"
-            accessibilityLabel="Refresh request"
-            disabled={
-              isProcessing
-            }
-            onPress={
-              () =>
-                void loadRequest(
-                  false,
-                )
-            }
-            style={
-              styles.topIconButton
-            }
-          >
-            <Ionicons
-              name="refresh-outline"
-              size={
-                21
-              }
-              color={
-                COLORS.navy
-              }
-            />
+          <TouchableOpacity onPress={() => void loadRequest(false)} disabled={isProcessing} accessibilityRole="button" accessibilityLabel="Refresh request" style={styles.iconButton}>
+            <Ionicons name="refresh-outline" size={21} color={COLORS.navy} />
           </TouchableOpacity>
         </View>
 
-
-        {/* ================================================================
-            HEADER
-            ================================================================ */}
-
-        <View
-          style={
-            styles.header
-          }
-        >
-          <Text
-            style={
-              styles.eyebrow
-            }
-          >
-            SCHEDULE CHANGE
-          </Text>
-
-          <Text
-            style={
-              styles.title
-            }
-          >
-            Compare the appointment before making a decision
-          </Text>
-
-          <Text
-            style={
-              styles.subtitle
-            }
-          >
-            Review the current appointment, the customer&apos;s requested schedule, and the reason for the change.
-          </Text>
+        <View style={styles.header}>
+          <Text style={styles.eyebrow}>SCHEDULE CHANGE</Text>
+          <Text style={styles.title}>Compare the appointment before making a decision</Text>
+          <Text style={styles.subtitle}>Review the current appointment, the customer's requested schedule, and the reason for the change.</Text>
         </View>
 
-
-        {/* ================================================================
-            HERO
-            ================================================================ */}
-
-        <View
-          style={
-            styles.heroCard
-          }
-        >
-          <View
-            style={
-              styles.heroTopRow
-            }
-          >
-            <View
-              style={
-                styles.heroIcon
-              }
-            >
-              <Ionicons
-                name="swap-horizontal-outline"
-                size={
-                  24
-                }
-                color={
-                  COLORS.white
-                }
-              />
-            </View>
-
-            <View
-              style={[
-                styles.statusBadge,
-
-                {
-                  backgroundColor:
-                    status.background,
-                },
-              ]}
-            >
-              <Ionicons
-                name={
-                  status.icon
-                }
-                size={
-                  14
-                }
-                color={
-                  status.text
-                }
-              />
-
-              <Text
-                style={[
-                  styles.statusText,
-
-                  {
-                    color:
-                      status.text,
-                  },
-                ]}
-              >
-                {
-                  request.status_label
-                }
-              </Text>
+        <View style={styles.heroCard}>
+          <View style={styles.heroTop}>
+            <View style={styles.heroIcon}><Ionicons name="swap-horizontal-outline" size={24} color={COLORS.white} /></View>
+            <View style={[styles.statusBadge, { backgroundColor: status.background }]}>
+              <Ionicons name={status.icon} size={14} color={status.color} />
+              <Text style={[styles.badgeText, { color: status.color }]}>{request.status_label}</Text>
             </View>
           </View>
-
-          <Text
-            style={
-              styles.heroTitle
-            }
-          >
-            {
-              appointment
-                ?.service_snapshot
-                .name
-              ||
-              'Appointment reschedule'
-            }
-          </Text>
-
-          <Text
-            style={
-              styles.heroSubtitle
-            }
-          >
-            Customer requested a different date and time for this booking.
-          </Text>
-
-          <View
-            style={
-              styles.heroMetaRow
-            }
-          >
-            {appointment ? (
-              <HeroMeta
-                label="Price"
-                value={
-                  formatPrice(
-                    appointment
-                      .service_snapshot
-                      .price,
-                  )
-                }
-              />
-            ) : null}
-
-            {appointment ? (
-              <View
-                style={
-                  styles.heroMetaDivider
-                }
-              />
-            ) : null}
-
-            {appointment ? (
-              <HeroMeta
-                label="Duration"
-                value={
-                  `${appointment
-                    .service_snapshot
-                    .duration_minutes} min`
-                }
-              />
-            ) : null}
-
-            {createdAt ? (
-              <>
-                <View
-                  style={
-                    styles.heroMetaDivider
-                  }
-                />
-
-                <HeroMeta
-                  label="Requested"
-                  value={
-                    createdAt
-                  }
-                  flexible
-                />
-              </>
-            ) : null}
+          <Text style={styles.heroTitle}>{appointment?.service_snapshot.name || 'Appointment reschedule'}</Text>
+          <Text style={styles.heroSubtitle}>Customer requested a different date and time for this booking.</Text>
+          <View style={styles.heroStats}>
+            {appointment ? <>
+              <HeroStat label="Price" value={formatPrice(appointment.service_snapshot.price)} />
+              <View style={styles.heroDivider} />
+              <HeroStat label="Duration" value={`${appointment.service_snapshot.duration_minutes} min`} />
+            </> : null}
+            {createdAt ? <>
+              {appointment ? <View style={styles.heroDivider} /> : null}
+              <HeroStat label="Requested" value={createdAt} />
+            </> : null}
           </View>
         </View>
 
+        {errorMessage ? <MessageBox success={false} message={errorMessage} /> : null}
+        {successMessage && activeModal === null ? <MessageBox success message={successMessage} /> : null}
 
-        {/* ================================================================
-            ERROR
-            ================================================================ */}
-
-        {errorMessage ? (
-          <MessageBox
-            type="error"
-            title="Action needs attention"
-            message={
-              errorMessage
-            }
-          />
-        ) : null}
-
-
-        {/* ================================================================
-            SUCCESS
-            ================================================================ */}
-
-        {successMessage ? (
-          <MessageBox
-            type="success"
-            title="Request updated"
-            message={
-              successMessage
-            }
-          />
-        ) : null}
-
-
-        {/* ================================================================
-            COMPARISON
-            ================================================================ */}
-
-        <SectionHeading
-          title="Schedule comparison"
-          subtitle="Compare the appointment schedule with the customer's requested change."
-        />
-
-        <View
-          style={
-            styles.comparisonCard
-          }
-        >
-          <SchedulePanel
-            icon="calendar-outline"
-            label="Appointment schedule"
-            date={
-              appointmentDate
-            }
-            time={
-              appointmentTime
-            }
-            muted
-          />
-
-          <View
-            style={
-              styles.comparisonArrow
-            }
-          >
-            <View
-              style={
-                styles.comparisonArrowCircle
-              }
-            >
-              <Ionicons
-                name="arrow-forward"
-                size={
-                  18
-                }
-                color={
-                  COLORS.navy
-                }
-              />
-            </View>
-          </View>
-
-          <SchedulePanel
-            icon="calendar-clear-outline"
-            label="Requested schedule"
-            date={
-              requestedDate
-            }
-            time={
-              requestedTime
-            }
-          />
+        <SectionHeading title="Schedule comparison" subtitle="Compare the current booking with the customer's requested change." />
+        <View style={styles.comparisonCard}>
+          <SchedulePanel icon="calendar-outline" label="Appointment schedule" date={appointmentDate} time={appointmentTime} muted />
+          <View style={styles.scheduleArrow}><Ionicons name="arrow-down-outline" size={19} color={COLORS.navy} /></View>
+          <SchedulePanel icon="calendar-clear-outline" label="Requested schedule" date={requestedDate} time={requestedTime} />
         </View>
 
-
-        {/* ================================================================
-            CUSTOMER
-            ================================================================ */}
-
-        {appointment?.customer ? (
-          <>
-            <SectionHeading
-              title="Customer"
-              subtitle="Contact details for the customer who requested the change."
-            />
-
-            <View
-              style={
-                styles.customerCard
-              }
-            >
-              <View
-                style={
-                  styles.customerHeader
-                }
-              >
-                <View
-                  style={
-                    styles.customerAvatar
-                  }
-                >
-                  <Text
-                    style={
-                      styles.customerInitial
-                    }
-                  >
-                    {customerInitial}
-                  </Text>
-                </View>
-
-                <View
-                  style={
-                    styles.customerIdentity
-                  }
-                >
-                  <Text
-                    style={
-                      styles.customerName
-                    }
-                    numberOfLines={
-                      1
-                    }
-                  >
-                    {customerName}
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.customerType
-                    }
-                  >
-                    StyleHub customer
-                  </Text>
-                </View>
+        {appointment?.customer ? <>
+          <SectionHeading title="Customer" subtitle="Contact details for the customer requesting the change." />
+          <View style={styles.customerCard}>
+            <View style={styles.customerHeader}>
+              <View style={styles.avatar}><Text style={styles.avatarText}>{customerName.charAt(0).toUpperCase()}</Text></View>
+              <View style={styles.customerNameBlock}>
+                <Text style={styles.customerName}>{customerName}</Text>
+                <Text style={styles.mutedText}>StyleHub customer</Text>
               </View>
-
-              <View
-                style={
-                  styles.customerDivider
-                }
-              />
-
-              <ContactRow
-                icon="mail-outline"
-                label="Email"
-                value={
-                  appointment
-                    .customer
-                    .email
-                }
-              />
-
-              <ContactRow
-                icon="call-outline"
-                label="Mobile number"
-                value={
-                  appointment
-                    .customer
-                    .phone_number
-                }
-              />
             </View>
-          </>
-        ) : null}
-
-
-        {/* ================================================================
-            CUSTOMER REASON
-            ================================================================ */}
-
-        <SectionHeading
-          title="Customer reason"
-          subtitle="Why the customer wants to move the appointment."
-        />
-
-        <View
-          style={
-            styles.reasonCard
-          }
-        >
-          <View
-            style={
-              styles.reasonIcon
-            }
-          >
-            <Ionicons
-              name="chatbubble-ellipses-outline"
-              size={
-                20
-              }
-              color={
-                COLORS.navy
-              }
-            />
+            <View style={styles.divider} />
+            <ContactRow icon="mail-outline" label="Email" value={appointment.customer.email} />
+            <ContactRow icon="call-outline" label="Mobile number" value={appointment.customer.phone_number} />
           </View>
+        </> : null}
 
-          <Text
-            style={
-              styles.reasonText
-            }
-          >
-            {
-              request
-                .customer_reason
-                ?.trim()
-              ||
-              'The customer did not provide a reason.'
-            }
-          </Text>
+        <SectionHeading title="Customer reason" subtitle="Why the customer wants to move the appointment." />
+        <View style={styles.reasonCard}>
+          <Ionicons name="chatbubble-ellipses-outline" size={21} color={COLORS.navy} />
+          <Text style={styles.reasonText}>{request.customer_reason?.trim() || 'The customer did not provide a reason.'}</Text>
         </View>
 
-
-        {/* ================================================================
-            REQUEST HISTORY
-            ================================================================ */}
-
-        {!pending ? (
-          <>
-            <SectionHeading
-              title="Request history"
-              subtitle="The latest recorded decision information for this request."
-            />
-
-            <View
-              style={
-                styles.historyCard
-              }
-            >
-              <HistoryRow
-                icon={
-                  status.icon
-                }
-                title="Current status"
-                value={
-                  request.status_label
-                }
-                iconColor={
-                  status.text
-                }
-                iconBackground={
-                  status.background
-                }
-              />
-
-              {request.reviewer ? (
-                <>
-                  <View
-                    style={
-                      styles.historyDivider
-                    }
-                  />
-
-                  <HistoryRow
-                    icon="person-outline"
-                    title="Reviewed by"
-                    value={
-                      request
-                        .reviewer
-                        .full_name
-                    }
-                    iconColor={
-                      COLORS.navy
-                    }
-                    iconBackground={
-                      COLORS.accentSoft
-                    }
-                  />
-                </>
-              ) : null}
-
-              {reviewedAt ? (
-                <>
-                  <View
-                    style={
-                      styles.historyDivider
-                    }
-                  />
-
-                  <HistoryRow
-                    icon="time-outline"
-                    title="Reviewed at"
-                    value={
-                      reviewedAt
-                    }
-                    iconColor={
-                      COLORS.blue
-                    }
-                    iconBackground={
-                      COLORS.blueSoft
-                    }
-                  />
-                </>
-              ) : null}
-
-              {request.rejection_reason ? (
-                <>
-                  <View
-                    style={
-                      styles.historyDivider
-                    }
-                  />
-
-                  <View
-                    style={
-                      styles.rejectionHistory
-                    }
-                  >
-                    <View
-                      style={
-                        styles.rejectionHistoryIcon
-                      }
-                    >
-                      <Ionicons
-                        name="document-text-outline"
-                        size={
-                          19
-                        }
-                        color={
-                          COLORS.danger
-                        }
-                      />
-                    </View>
-
-                    <View
-                      style={
-                        styles.rejectionHistoryContent
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.rejectionHistoryTitle
-                        }
-                      >
-                        Rejection reason
-                      </Text>
-
-                      <Text
-                        style={
-                          styles.rejectionHistoryText
-                        }
-                      >
-                        {
-                          request.rejection_reason
-                        }
-                      </Text>
-                    </View>
-                  </View>
-                </>
-              ) : null}
-            </View>
-          </>
-        ) : null}
-
-
-        {/* ================================================================
-            REVIEW REQUEST
-            ================================================================ */}
-
-        {pending ? (
-          <>
-            <SectionHeading
-              title="Review request"
-              subtitle="Approve only after checking that the requested schedule works for your shop."
-            />
-
-            <View
-              style={
-                styles.actionCard
-              }
-            >
-              <View
-                style={
-                  styles.actionNotice
-                }
-              >
-                <View
-                  style={
-                    styles.actionNoticeIcon
-                  }
-                >
-                  <Ionicons
-                    name="shield-checkmark-outline"
-                    size={
-                      20
-                    }
-                    color={
-                      COLORS.blue
-                    }
-                  />
-                </View>
-
-                <View
-                  style={
-                    styles.actionNoticeContent
-                  }
-                >
-                  <Text
-                    style={
-                      styles.actionNoticeTitle
-                    }
-                  >
-                    Laravel re-checks the schedule
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.actionNoticeText
-                    }
-                  >
-                    Approval uses the existing request. The backend revalidates business hours and appointment conflicts before updating the appointment.
-                  </Text>
-                </View>
-              </View>
-
-              <TouchableOpacity
-                activeOpacity={
-                  0.84
-                }
-                disabled={
-                  isProcessing
-                }
-                accessibilityRole="button"
-                accessibilityLabel="Approve reschedule request"
-                onPress={
-                  requestApprove
-                }
-                style={[
-                  styles.approveButton,
-
-                  isProcessing
-                  &&
-                    styles.disabledButton,
-                ]}
-              >
-                <Ionicons
-                  name="checkmark-circle-outline"
-                  size={
-                    20
-                  }
-                  color={
-                    COLORS.white
-                  }
-                />
-
-                <Text
-                  style={
-                    styles.approveButtonText
-                  }
-                >
-                  Approve requested schedule
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={
-                  0.82
-                }
-                disabled={
-                  isProcessing
-                }
-                accessibilityRole="button"
-                accessibilityLabel="Reject reschedule request"
-                onPress={
-                  openRejectSheet
-                }
-                style={[
-                  styles.rejectButton,
-
-                  isProcessing
-                  &&
-                    styles.disabledButton,
-                ]}
-              >
-                <Ionicons
-                  name="close-circle-outline"
-                  size={
-                    19
-                  }
-                  color={
-                    COLORS.danger
-                  }
-                />
-
-                <Text
-                  style={
-                    styles.rejectButtonText
-                  }
-                >
-                  Reject request
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </>
-        ) : (
-
-          /* ==============================================================
-             FINAL STATUS
-             ============================================================== */
-
-          <View
-            style={
-              styles.finalStatusCard
-            }
-          >
-            <Ionicons
-              name={
-                status.icon
-              }
-              size={
-                22
-              }
-              color={
-                status.text
-              }
-            />
-
-            <View
-              style={
-                styles.finalStatusContent
-              }
-            >
-              <Text
-                style={
-                  styles.finalStatusTitle
-                }
-              >
-                No decision is required
-              </Text>
-
-              <Text
-                style={
-                  styles.finalStatusText
-                }
-              >
-                This reschedule request is {request.status_label.toLowerCase()} and is no longer awaiting an approval or rejection decision.
-              </Text>
-            </View>
+        {!pending ? <>
+          <SectionHeading title="Request history" subtitle="Latest recorded decision information for this request." />
+          <View style={styles.historyCard}>
+            <HistoryRow icon={status.icon} label="Current status" value={request.status_label} color={status.color} background={status.background} />
+            {request.reviewer ? <HistoryRow icon="person-outline" label="Reviewed by" value={request.reviewer.full_name} /> : null}
+            {reviewedAt ? <HistoryRow icon="time-outline" label="Reviewed at" value={reviewedAt} /> : null}
+            {request.rejection_reason ? <HistoryRow icon="document-text-outline" label="Rejection reason" value={request.rejection_reason} color={COLORS.danger} background={COLORS.dangerSoft} /> : null}
           </View>
-        )}
+        </> : <>
+          <SectionHeading title="Review request" subtitle="Approve only after checking that the requested time works for your shop." />
+          <View style={styles.actionCard}>
+            <View style={styles.notice}>
+              <Ionicons name="shield-checkmark-outline" size={21} color={COLORS.blue} />
+              <Text style={styles.noticeText}>Laravel rechecks business hours and appointment conflicts before approving and updating the booking.</Text>
+            </View>
+            <TouchableOpacity onPress={openApprove} disabled={isProcessing} accessibilityRole="button" style={[styles.primaryButton, isProcessing && styles.disabled]}>
+              <Ionicons name="checkmark-circle-outline" size={19} color={COLORS.white} />
+              <Text style={styles.primaryText}>Approve requested schedule</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={openReject} disabled={isProcessing} accessibilityRole="button" style={[styles.dangerButton, isProcessing && styles.disabled]}>
+              <Ionicons name="close-circle-outline" size={19} color={COLORS.danger} />
+              <Text style={styles.dangerText}>Reject request</Text>
+            </TouchableOpacity>
+          </View>
+        </>}
+
+        {!pending ? <View style={styles.finalCard}>
+          <Ionicons name={status.icon} size={21} color={status.color} />
+          <Text style={styles.finalText}>This reschedule request is {request.status_label.toLowerCase()} and no further decision is required.</Text>
+        </View> : null}
       </ScrollView>
 
-
-      {/* ================================================================
-          REJECTION REASON BOTTOM SHEET
-          ================================================================ */}
-
-      <Modal
-        visible={
-          showRejectSheet
-          &&
-          confirmationAction ===
-            null
-        }
-        transparent
-        animationType="slide"
-        statusBarTranslucent
-        onRequestClose={
-          closeRejectSheet
-        }
+      <StyleHubModal
+        visible={activeModal !== null}
+        onClose={closeModal}
+        dismissOnBackdrop={false}
+        title={activeModal === 'approve' ? 'Approve requested schedule?'
+          : activeModal === 'rejectReason' ? 'Why reject this request?'
+          : activeModal === 'reject' ? 'Reject reschedule request?' : 'Request updated'}
+        message={activeModal === 'approve'
+          ? 'Laravel will recheck business hours and appointment conflicts before changing this booking.'
+          : activeModal === 'rejectReason'
+            ? 'Give the customer a clear reason why you cannot approve their requested schedule.'
+            : activeModal === 'reject'
+              ? 'The customer will see your reason. Their requested schedule will not be approved.'
+              : successMessage}
+        tone={activeModal === 'success' ? 'success' : activeModal === 'approve' ? 'info' : 'danger'}
+        icon={activeModal === 'success' ? 'checkmark-circle-outline'
+          : activeModal === 'approve' ? 'calendar-outline'
+          : activeModal === 'rejectReason' ? 'document-text-outline' : 'close-circle-outline'}
+        actions={activeModal === 'approve' ? [
+          { label: 'Keep pending', variant: 'secondary', onPress: closeModal },
+          { label: 'Approve request', variant: 'primary', icon: 'checkmark-circle-outline', loading: isProcessing, onPress: () => void performAction('approve') },
+        ] : activeModal === 'rejectReason' ? [
+          { label: 'Keep pending', variant: 'secondary', onPress: closeModal },
+          { label: 'Continue', variant: 'primary', icon: 'arrow-forward-outline', disabled: rejectionReason.trim().length < 5, onPress: reviewRejectReason },
+        ] : activeModal === 'reject' ? [
+          { label: 'Edit reason', variant: 'secondary', onPress: closeModal },
+          { label: 'Reject request', variant: 'danger', icon: 'close-circle-outline', loading: isProcessing, onPress: () => void performAction('reject') },
+        ] : activeModal === 'success' ? [
+          { label: 'Done', variant: 'primary', onPress: closeModal },
+        ] : []}
       >
-        <KeyboardAvoidingView
-          style={
-            styles.modalKeyboardView
-          }
-          behavior={
-            Platform.OS ===
-            'ios'
-              ? 'padding'
-              : undefined
-          }
-        >
-          <View
-            style={
-              styles.sheetOverlay
-            }
-          >
-            <View
-              style={
-                styles.rejectSheet
-              }
-            >
-              <View
-                style={
-                  styles.sheetHandle
-                }
-              />
-
-              <View
-                style={
-                  styles.rejectSheetHeader
-                }
-              >
-                <View
-                  style={
-                    styles.rejectSheetIcon
-                  }
-                >
-                  <Ionicons
-                    name="document-text-outline"
-                    size={
-                      22
-                    }
-                    color={
-                      COLORS.danger
-                    }
-                  />
-                </View>
-
-                <View
-                  style={
-                    styles.rejectSheetHeading
-                  }
-                >
-                  <Text
-                    style={
-                      styles.rejectSheetTitle
-                    }
-                  >
-                    Why are you rejecting this request?
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.rejectSheetSubtitle
-                    }
-                  >
-                    Give the customer a clear reason why the requested schedule cannot be approved.
-                  </Text>
-                </View>
-              </View>
-
-              <TextInput
-                value={
-                  rejectionReason
-                }
-                onChangeText={
-                  setRejectionReason
-                }
-                editable={
-                  !isProcessing
-                }
-                multiline
-                textAlignVertical="top"
-                maxLength={
-                  1000
-                }
-                placeholder="Example: The requested time is no longer available."
-                placeholderTextColor={
-                  COLORS.textLight
-                }
-                selectionColor={
-                  COLORS.navy
-                }
-                style={
-                  styles.reasonInput
-                }
-              />
-
-              <View
-                style={
-                  styles.reasonMetaRow
-                }
-              >
-                <Text
-                  style={
-                    styles.reasonRequirement
-                  }
-                >
-                  Minimum 5 characters
-                </Text>
-
-                <Text
-                  style={
-                    styles.reasonCounter
-                  }
-                >
-                  {rejectionReason.length}/1000
-                </Text>
-              </View>
-
-              {errorMessage ? (
-                <Text
-                  style={
-                    styles.sheetErrorText
-                  }
-                >
-                  {errorMessage}
-                </Text>
-              ) : null}
-
-              <TouchableOpacity
-                activeOpacity={
-                  0.84
-                }
-                disabled={
-                  isProcessing
-                }
-                onPress={
-                  requestRejectConfirmation
-                }
-                style={[
-                  styles.rejectContinueButton,
-
-                  isProcessing
-                  &&
-                    styles.disabledButton,
-                ]}
-              >
-                <Text
-                  style={
-                    styles.rejectContinueText
-                  }
-                >
-                  Continue to reject
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={
-                  0.7
-                }
-                disabled={
-                  isProcessing
-                }
-                onPress={
-                  closeRejectSheet
-                }
-                style={
-                  styles.sheetCancelButton
-                }
-              >
-                <Text
-                  style={
-                    styles.sheetCancelText
-                  }
-                >
-                  Keep request pending
-                </Text>
-              </TouchableOpacity>
-            </View>
+        {activeModal === 'rejectReason' ? <View style={styles.modalForm}>
+          <Text style={styles.modalLabel}>Rejection reason *</Text>
+          <TextInput
+            value={rejectionReason}
+            onChangeText={(value) => { setRejectionReason(value); if (modalError) setModalError(''); }}
+            editable={!isProcessing}
+            multiline
+            textAlignVertical="top"
+            maxLength={1000}
+            placeholder="Example: The requested time is no longer available."
+            placeholderTextColor={COLORS.textLight}
+            selectionColor={COLORS.navy}
+            accessibilityLabel="Rejection reason"
+            style={styles.modalInput}
+          />
+          <View style={styles.modalMeta}>
+            <Text style={styles.modalHint}>Minimum 5 characters</Text>
+            <Text style={styles.modalHint}>{rejectionReason.length}/1000</Text>
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-
-      {/* ================================================================
-          CONFIRMATION MODAL
-          ================================================================ */}
-
-      <Modal
-        visible={
-          confirmationAction !==
-          null
-        }
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={
-          () => {
-            if (
-              !isProcessing
-            ) {
-              setConfirmationAction(
-                null,
-              );
-            }
-          }
-        }
-      >
-        <View
-          style={
-            styles.confirmationOverlay
-          }
-        >
-          <View
-            style={
-              styles.confirmationModal
-            }
-          >
-            <View
-              style={[
-                styles.confirmationIcon,
-
-                {
-                  backgroundColor:
-                    confirmationIsReject
-                      ? COLORS.dangerSoft
-                      : COLORS.greenSoft,
-                },
-              ]}
-            >
-              <Ionicons
-                name={
-                  confirmationIsReject
-                    ? 'close-circle-outline'
-                    : 'checkmark-circle-outline'
-                }
-                size={
-                  30
-                }
-                color={
-                  confirmationIsReject
-                    ? COLORS.danger
-                    : COLORS.green
-                }
-              />
-            </View>
-
-            <Text
-              style={
-                styles.confirmationTitle
-              }
-            >
-              {confirmationIsReject
-                ? 'Reject reschedule request?'
-                : 'Approve requested schedule?'}
-            </Text>
-
-            <Text
-              style={
-                styles.confirmationDescription
-              }
-            >
-              {confirmationIsReject
-                ? 'The customer will see your rejection reason and the requested schedule will not be approved.'
-                : 'Laravel will re-check business hours and appointment conflicts before changing the appointment.'}
-            </Text>
-
-            {confirmationIsReject ? (
-              <View
-                style={
-                  styles.reasonPreview
-                }
-              >
-                <Text
-                  style={
-                    styles.reasonPreviewLabel
-                  }
-                >
-                  Rejection reason
-                </Text>
-
-                <Text
-                  style={
-                    styles.reasonPreviewText
-                  }
-                >
-                  {
-                    rejectionReason.trim()
-                  }
-                </Text>
-              </View>
-            ) : (
-              <View
-                style={
-                  styles.approvalPreview
-                }
-              >
-                <Text
-                  style={
-                    styles.approvalPreviewLabel
-                  }
-                >
-                  Requested schedule
-                </Text>
-
-                <Text
-                  style={
-                    styles.approvalPreviewDate
-                  }
-                >
-                  {requestedDate}
-                </Text>
-
-                <Text
-                  style={
-                    styles.approvalPreviewTime
-                  }
-                >
-                  {requestedTime}
-                </Text>
-              </View>
-            )}
-
-            <TouchableOpacity
-              activeOpacity={
-                0.84
-              }
-              disabled={
-                isProcessing
-              }
-              onPress={
-                () =>
-                  void performConfirmedAction()
-              }
-              style={[
-                styles.confirmationPrimaryButton,
-
-                confirmationIsReject
-                  ? styles.confirmationRejectButton
-                  : styles.confirmationApproveButton,
-
-                isProcessing
-                &&
-                  styles.disabledButton,
-              ]}
-            >
-              {isProcessing ? (
-                <ActivityIndicator
-                  size="small"
-                  color={
-                    COLORS.white
-                  }
-                />
-              ) : (
-                <Text
-                  style={
-                    styles.confirmationPrimaryText
-                  }
-                >
-                  {confirmationIsReject
-                    ? 'Reject request'
-                    : 'Approve reschedule'}
-                </Text>
-              )}
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={
-                0.7
-              }
-              disabled={
-                isProcessing
-              }
-              onPress={
-                () =>
-                  setConfirmationAction(
-                    null,
-                  )
-              }
-              style={
-                styles.confirmationCancelButton
-              }
-            >
-              <Text
-                style={
-                  styles.confirmationCancelText
-                }
-              >
-                Go back
-              </Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+        </View> : null}
+        {activeModal === 'reject' ? <View style={styles.modalPreview}>
+          <Text style={styles.modalPreviewLabel}>Rejection reason</Text>
+          <Text style={styles.modalPreviewText}>{rejectionReason.trim()}</Text>
+        </View> : null}
+        {activeModal === 'approve' ? <View style={styles.modalPreview}>
+          <Text style={styles.modalPreviewLabel}>Requested schedule</Text>
+          <Text style={styles.modalPreviewText}>{requestedDate}</Text>
+          <Text style={styles.modalPreviewText}>{requestedTime}</Text>
+        </View> : null}
+        {activeModal !== 'success' && modalError ? <View style={styles.modalError}>
+          <Ionicons name="alert-circle-outline" size={17} color={COLORS.danger} />
+          <Text style={styles.modalErrorText}>{modalError}</Text>
+        </View> : null}
+      </StyleHubModal>
     </SafeAreaView>
   );
 }
 
-
-/* ==========================================================================
-   SECTION HEADING
-   ========================================================================== */
-
-function SectionHeading({
-  title,
-  subtitle,
-}: {
-  title:
-    string;
-
-  subtitle:
-    string;
-}) {
-  return (
-    <View
-      style={
-        styles.sectionHeading
-      }
-    >
-      <Text
-        style={
-          styles.sectionTitle
-        }
-      >
-        {title}
-      </Text>
-
-      <Text
-        style={
-          styles.sectionSubtitle
-        }
-      >
-        {subtitle}
-      </Text>
-    </View>
-  );
+function SectionHeading({ title, subtitle }: { title: string; subtitle: string }) {
+  return <View style={styles.sectionHeading}>
+    <Text style={styles.sectionTitle}>{title}</Text>
+    <Text style={styles.sectionSubtitle}>{subtitle}</Text>
+  </View>;
 }
 
-
-/* ==========================================================================
-   HERO META
-   ========================================================================== */
-
-function HeroMeta({
-  label,
-  value,
-  flexible = false,
-}: {
-  label:
-    string;
-
-  value:
-    string;
-
-  flexible?:
-    boolean;
-}) {
-  return (
-    <View
-      style={[
-        styles.heroMeta,
-
-        flexible
-        &&
-          styles.heroMetaFlexible,
-      ]}
-    >
-      <Text
-        style={
-          styles.heroMetaLabel
-        }
-      >
-        {label}
-      </Text>
-
-      <Text
-        style={
-          styles.heroMetaValue
-        }
-        numberOfLines={
-          2
-        }
-      >
-        {value}
-      </Text>
-    </View>
-  );
+function HeroStat({ label, value }: { label: string; value: string }) {
+  return <View style={styles.heroStat}>
+    <Text style={styles.heroStatLabel}>{label}</Text>
+    <Text style={styles.heroStatValue} numberOfLines={2}>{value}</Text>
+  </View>;
 }
 
-
-/* ==========================================================================
-   SCHEDULE PANEL
-   ========================================================================== */
-
-function SchedulePanel({
-  icon,
-  label,
-  date,
-  time,
-  muted = false,
-}: {
-  icon:
-    IconName;
-
-  label:
-    string;
-
-  date:
-    string;
-
-  time:
-    string;
-
-  muted?:
-    boolean;
+function SchedulePanel({ icon, label, date, time, muted = false }: {
+  icon: IconName; label: string; date: string; time: string; muted?: boolean;
 }) {
-  return (
-    <View
-      style={[
-        styles.schedulePanel,
+  return <View style={[styles.schedulePanel, muted ? styles.scheduleMuted : styles.scheduleRequested]}>
+    <View style={styles.scheduleIcon}><Ionicons name={icon} size={19} color={muted ? COLORS.textMuted : COLORS.navy} /></View>
+    <Text style={[styles.scheduleLabel, !muted && styles.requestedLabel]}>{label}</Text>
+    <Text style={styles.scheduleDate}>{date}</Text>
+    <Text style={styles.scheduleTime}>{time}</Text>
+  </View>;
+}
 
-        muted
-        &&
-          styles.schedulePanelMuted,
-      ]}
-    >
-      <View
-        style={[
-          styles.scheduleIcon,
+function ContactRow({ icon, label, value }: { icon: IconName; label: string; value: string }) {
+  return <View style={styles.contactRow}>
+    <View style={styles.contactIcon}><Ionicons name={icon} size={18} color={COLORS.navy} /></View>
+    <View style={styles.contactText}>
+      <Text style={styles.mutedText}>{label}</Text>
+      <Text style={styles.contactValue} selectable>{value}</Text>
+    </View>
+  </View>;
+}
 
-          muted
-            ? styles.scheduleIconMuted
-            : styles.scheduleIconRequested,
-        ]}
-      >
-        <Ionicons
-          name={
-            icon
-          }
-          size={
-            19
-          }
-          color={
-            muted
-              ? COLORS.textMuted
-              : COLORS.navy
-          }
-        />
-      </View>
+function HistoryRow({ icon, label, value, color = COLORS.navy, background = COLORS.accentSoft }: {
+  icon: IconName; label: string; value: string; color?: string; background?: string;
+}) {
+  return <View style={styles.historyRow}>
+    <View style={[styles.historyIcon, { backgroundColor: background }]}><Ionicons name={icon} size={19} color={color} /></View>
+    <View style={styles.contactText}>
+      <Text style={styles.mutedText}>{label}</Text>
+      <Text style={styles.historyValue}>{value}</Text>
+    </View>
+  </View>;
+}
 
-      <Text
-        style={[
-          styles.scheduleLabel,
-
-          !muted
-          &&
-            styles.scheduleLabelRequested,
-        ]}
-      >
-        {label}
+function MessageBox({ success, message }: { success: boolean; message: string }) {
+  return <View style={[styles.messageBox, { backgroundColor: success ? COLORS.successSoft : COLORS.dangerSoft }]}>
+    <Ionicons name={success ? 'checkmark-circle-outline' : 'alert-circle-outline'} size={20} color={success ? COLORS.success : COLORS.danger} />
+    <View style={styles.contactText}>
+      <Text style={[styles.messageTitle, { color: success ? COLORS.success : COLORS.danger }]}>
+        {success ? 'Request updated' : 'Action needs attention'}
       </Text>
-
-      <Text
-        style={[
-          styles.scheduleDate,
-
-          !muted
-          &&
-            styles.scheduleDateRequested,
-        ]}
-      >
-        {date}
-      </Text>
-
-      <Text
-        style={
-          styles.scheduleTime
-        }
-      >
-        {time}
-      </Text>
+      <Text style={styles.messageText}>{message}</Text>
     </View>
-  );
+  </View>;
 }
 
-
-/* ==========================================================================
-   CONTACT ROW
-   ========================================================================== */
-
-function ContactRow({
-  icon,
-  label,
-  value,
-}: {
-  icon:
-    IconName;
-
-  label:
-    string;
-
-  value:
-    string;
-}) {
-  return (
-    <View
-      style={
-        styles.contactRow
-      }
-    >
-      <View
-        style={
-          styles.contactIcon
-        }
-      >
-        <Ionicons
-          name={
-            icon
-          }
-          size={
-            18
-          }
-          color={
-            COLORS.navy
-          }
-        />
-      </View>
-
-      <View
-        style={
-          styles.contactContent
-        }
-      >
-        <Text
-          style={
-            styles.contactLabel
-          }
-        >
-          {label}
-        </Text>
-
-        <Text
-          style={
-            styles.contactValue
-          }
-          selectable
-        >
-          {value}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-
-/* ==========================================================================
-   HISTORY ROW
-   ========================================================================== */
-
-function HistoryRow({
-  icon,
-  title,
-  value,
-  iconColor,
-  iconBackground,
-}: {
-  icon:
-    IconName;
-
-  title:
-    string;
-
-  value:
-    string;
-
-  iconColor:
-    string;
-
-  iconBackground:
-    string;
-}) {
-  return (
-    <View
-      style={
-        styles.historyRow
-      }
-    >
-      <View
-        style={[
-          styles.historyIcon,
-
-          {
-            backgroundColor:
-              iconBackground,
-          },
-        ]}
-      >
-        <Ionicons
-          name={
-            icon
-          }
-          size={
-            19
-          }
-          color={
-            iconColor
-          }
-        />
-      </View>
-
-      <View
-        style={
-          styles.historyContent
-        }
-      >
-        <Text
-          style={
-            styles.historyLabel
-          }
-        >
-          {title}
-        </Text>
-
-        <Text
-          style={
-            styles.historyValue
-          }
-        >
-          {value}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-
-/* ==========================================================================
-   MESSAGE BOX
-   ========================================================================== */
-
-function MessageBox({
-  type,
-  title,
-  message,
-}: {
-  type:
-    | 'success'
-    | 'error';
-
-  title:
-    string;
-
-  message:
-    string;
-}) {
-  const success =
-    type ===
-    'success';
-
-  return (
-    <View
-      style={[
-        styles.messageBox,
-
-        {
-          backgroundColor:
-            success
-              ? COLORS.successSoft
-              : COLORS.dangerSoft,
-        },
-      ]}
-    >
-      <View
-        style={
-          styles.messageIcon
-        }
-      >
-        <Ionicons
-          name={
-            success
-              ? 'checkmark-circle-outline'
-              : 'alert-circle-outline'
-          }
-          size={
-            20
-          }
-          color={
-            success
-              ? COLORS.success
-              : COLORS.danger
-          }
-        />
-      </View>
-
-      <View
-        style={
-          styles.messageContent
-        }
-      >
-        <Text
-          style={[
-            styles.messageTitle,
-
-            {
-              color:
-                success
-                  ? COLORS.success
-                  : COLORS.danger,
-            },
-          ]}
-        >
-          {title}
-        </Text>
-
-        <Text
-          style={
-            styles.messageText
-          }
-        >
-          {message}
-        </Text>
-      </View>
-    </View>
-  );
-}
-
-
-/* ==========================================================================
-   STYLES
-   ========================================================================== */
-
-const styles =
-  StyleSheet.create({
-    safeArea: {
-      flex:
-        1,
-
-      backgroundColor:
-        COLORS.background,
-    },
-
-
-    container: {
-      width:
-        '100%',
-
-      maxWidth:
-        LAYOUT.contentMaxWidth,
-
-      alignSelf:
-        'center',
-
-      paddingHorizontal:
-        LAYOUT.screenPadding,
-
-      paddingTop:
-        SPACING.sm,
-
-      paddingBottom:
-        48,
-    },
-
-
-    /* ======================================================================
-       TOP BAR
-       ====================================================================== */
-
-    topBar: {
-      minHeight:
-        48,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-    },
-
-
-    topIconButton: {
-      width:
-        LAYOUT.iconButtonSize,
-
-      height:
-        LAYOUT.iconButtonSize,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        RADII.pill,
-    },
-
-
-    topBarTitleBlock: {
-      flex:
-        1,
-
-      marginHorizontal:
-        6,
-    },
-
-
-    topBarTitle: {
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.cardTitle,
-
-      fontWeight:
-        '800',
-
-      textAlign:
-        'center',
-    },
-
-
-    topBarCaption: {
-      marginTop:
-        1,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      textAlign:
-        'center',
-    },
-
-
-    /* ======================================================================
-       HEADER
-       ====================================================================== */
-
-    header: {
-      marginTop:
-        SPACING.lg,
-    },
-
-
-    eyebrow: {
-      color:
-        COLORS.accent,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      fontWeight:
-        '800',
-
-      letterSpacing:
-        1.2,
-    },
-
-
-    title: {
-      maxWidth:
-        570,
-
-      marginTop:
-        5,
-
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.title,
-
-      lineHeight:
-        30,
-
-      fontWeight:
-        '800',
-
-      letterSpacing:
-        -0.6,
-    },
-
-
-    subtitle: {
-      maxWidth:
-        610,
-
-      marginTop:
-        8,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.body,
-
-      lineHeight:
-        21,
-    },
-
-
-    /* ======================================================================
-       HERO
-       ====================================================================== */
-
-    heroCard: {
-      marginTop:
-        SPACING.xl,
-
-      padding:
-        18,
-
-      borderRadius:
-        RADII.xl,
-
-      backgroundColor:
-        COLORS.primary,
-
-      ...SHADOWS.card,
-    },
-
-
-    heroTopRow: {
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'space-between',
-
-      gap:
-        12,
-    },
-
-
-    heroIcon: {
-      width:
-        46,
-
-      height:
-        46,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        15,
-
-      backgroundColor:
-        COLORS.navyMuted,
-    },
-
-
-    statusBadge: {
-      minHeight:
-        31,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      gap:
-        6,
-
-      paddingHorizontal:
-        10,
-
-      borderRadius:
-        RADII.pill,
-    },
-
-
-    statusText: {
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      fontWeight:
-        '800',
-    },
-
-
-    heroTitle: {
-      marginTop:
-        18,
-
-      color:
-        COLORS.white,
-
-      fontSize:
-        23,
-
-      lineHeight:
-        29,
-
-      fontWeight:
-        '800',
-
-      letterSpacing:
-        -0.5,
-    },
-
-
-    heroSubtitle: {
-      marginTop:
-        6,
-
-      color:
-        '#D4DAE1',
-
-      fontSize:
-        TYPOGRAPHY.caption,
-
-      lineHeight:
-        18,
-    },
-
-
-    heroMetaRow: {
-      marginTop:
-        17,
-
-      paddingTop:
-        15,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'flex-start',
-
-      borderTopWidth:
-        1,
-
-      borderTopColor:
-        COLORS.navyMuted,
-    },
-
-
-    heroMeta: {
-      minWidth:
-        70,
-    },
-
-
-    heroMetaFlexible: {
-      flex:
-        1,
-
-      minWidth:
-        0,
-    },
-
-
-    heroMetaLabel: {
-      color:
-        '#AEB8C5',
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      fontWeight:
-        '600',
-    },
-
-
-    heroMetaValue: {
-      marginTop:
-        3,
-
-      color:
-        COLORS.white,
-
-      fontSize:
-        TYPOGRAPHY.caption,
-
-      lineHeight:
-        17,
-
-      fontWeight:
-        '800',
-    },
-
-
-    heroMetaDivider: {
-      width:
-        1,
-
-      minHeight:
-        34,
-
-      marginHorizontal:
-        12,
-
-      backgroundColor:
-        COLORS.navyMuted,
-    },
-
-
-    /* ======================================================================
-       MESSAGES
-       ====================================================================== */
-
-    messageBox: {
-      marginTop:
-        14,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'flex-start',
-
-      gap:
-        10,
-
-      padding:
-        14,
-
-      borderRadius:
-        RADII.md,
-    },
-
-
-    messageIcon: {
-      width:
-        31,
-
-      height:
-        31,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        10,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    messageContent: {
-      flex:
-        1,
-    },
-
-
-    messageTitle: {
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      fontWeight:
-        '800',
-    },
-
-
-    messageText: {
-      marginTop:
-        3,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.caption,
-
-      lineHeight:
-        18,
-    },
-
-
-    /* ======================================================================
-       SECTIONS
-       ====================================================================== */
-
-    sectionHeading: {
-      marginTop:
-        SPACING.xxl,
-
-      marginBottom:
-        12,
-    },
-
-
-    sectionTitle: {
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.section,
-
-      fontWeight:
-        '800',
-
-      letterSpacing:
-        -0.3,
-    },
-
-
-    sectionSubtitle: {
-      marginTop:
-        3,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.caption,
-
-      lineHeight:
-        17,
-    },
-
-
-    /* ======================================================================
-       SCHEDULE COMPARISON
-       ====================================================================== */
-
-    comparisonCard: {
-      flexDirection:
-        'row',
-
-      alignItems:
-        'stretch',
-
-      padding:
-        12,
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.xl,
-
-      backgroundColor:
-        COLORS.surface,
-
-      ...SHADOWS.card,
-    },
-
-
-    schedulePanel: {
-      flex:
-        1,
-
-      minWidth:
-        0,
-
-      padding:
-        12,
-
-      borderRadius:
-        RADII.lg,
-
-      backgroundColor:
-        COLORS.accentSoft,
-    },
-
-
-    schedulePanelMuted: {
-      backgroundColor:
-        COLORS.surfaceSoft,
-    },
-
-
-    scheduleIcon: {
-      width:
-        36,
-
-      height:
-        36,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        12,
-    },
-
-
-    scheduleIconMuted: {
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    scheduleIconRequested: {
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    scheduleLabel: {
-      marginTop:
-        10,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      fontWeight:
-        '800',
-    },
-
-
-    scheduleLabelRequested: {
-      color:
-        COLORS.navy,
-    },
-
-
-    scheduleDate: {
-      marginTop:
-        7,
-
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.caption,
-
-      lineHeight:
-        18,
-
-      fontWeight:
-        '700',
-    },
-
-
-    scheduleDateRequested: {
-      color:
-        COLORS.navy,
-
-      fontWeight:
-        '800',
-    },
-
-
-    scheduleTime: {
-      marginTop:
-        4,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      lineHeight:
-        15,
-
-      fontWeight:
-        '600',
-    },
-
-
-    comparisonArrow: {
-      width:
-        40,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-    },
-
-
-    comparisonArrowCircle: {
-      width:
-        34,
-
-      height:
-        34,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.pill,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    /* ======================================================================
-       CUSTOMER
-       ====================================================================== */
-
-    customerCard: {
-      padding:
-        16,
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.xl,
-
-      backgroundColor:
-        COLORS.surface,
-
-      ...SHADOWS.card,
-    },
-
-
-    customerHeader: {
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      gap:
-        12,
-    },
-
-
-    customerAvatar: {
-      width:
-        48,
-
-      height:
-        48,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        RADII.pill,
-
-      backgroundColor:
-        COLORS.primary,
-    },
-
-
-    customerInitial: {
-      color:
-        COLORS.white,
-
-      fontSize:
-        TYPOGRAPHY.section,
-
-      fontWeight:
-        '800',
-    },
-
-
-    customerIdentity: {
-      flex:
-        1,
-
-      minWidth:
-        0,
-    },
-
-
-    customerName: {
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.cardTitle,
-
-      fontWeight:
-        '800',
-    },
-
-
-    customerType: {
-      marginTop:
-        3,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.caption,
-    },
-
-
-    customerDivider: {
-      height:
-        1,
-
-      marginVertical:
-        15,
-
-      backgroundColor:
-        COLORS.border,
-    },
-
-
-    contactRow: {
-      minHeight:
-        54,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      gap:
-        11,
-    },
-
-
-    contactIcon: {
-      width:
-        38,
-
-      height:
-        38,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        12,
-
-      backgroundColor:
-        COLORS.surfaceSoft,
-    },
-
-
-    contactContent: {
-      flex:
-        1,
-
-      minWidth:
-        0,
-    },
-
-
-    contactLabel: {
-      color:
-        COLORS.textLight,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      fontWeight:
-        '600',
-    },
-
-
-    contactValue: {
-      marginTop:
-        2,
-
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.body,
-
-      lineHeight:
-        20,
-
-      fontWeight:
-        '700',
-    },
-
-
-    /* ======================================================================
-       CUSTOMER REASON
-       ====================================================================== */
-
-    reasonCard: {
-      flexDirection:
-        'row',
-
-      alignItems:
-        'flex-start',
-
-      gap:
-        12,
-
-      padding:
-        16,
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.lg,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    reasonIcon: {
-      width:
-        40,
-
-      height:
-        40,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        13,
-
-      backgroundColor:
-        COLORS.accentSoft,
-    },
-
-
-    reasonText: {
-      flex:
-        1,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.body,
-
-      lineHeight:
-        21,
-    },
-
-
-    /* ======================================================================
-       HISTORY
-       ====================================================================== */
-
-    historyCard: {
-      overflow:
-        'hidden',
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.xl,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    historyRow: {
-      minHeight:
-        66,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      gap:
-        11,
-
-      paddingHorizontal:
-        14,
-
-      paddingVertical:
-        12,
-    },
-
-
-    historyIcon: {
-      width:
-        40,
-
-      height:
-        40,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        13,
-    },
-
-
-    historyContent: {
-      flex:
-        1,
-
-      minWidth:
-        0,
-    },
-
-
-    historyLabel: {
-      color:
-        COLORS.textLight,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      fontWeight:
-        '600',
-    },
-
-
-    historyValue: {
-      marginTop:
-        3,
-
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.body,
-
-      lineHeight:
-        20,
-
-      fontWeight:
-        '700',
-    },
-
-
-    historyDivider: {
-      height:
-        1,
-
-      marginLeft:
-        65,
-
-      backgroundColor:
-        COLORS.border,
-    },
-
-
-    rejectionHistory: {
-      flexDirection:
-        'row',
-
-      alignItems:
-        'flex-start',
-
-      gap:
-        11,
-
-      paddingHorizontal:
-        14,
-
-      paddingVertical:
-        13,
-    },
-
-
-    rejectionHistoryIcon: {
-      width:
-        40,
-
-      height:
-        40,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        13,
-
-      backgroundColor:
-        COLORS.dangerSoft,
-    },
-
-
-    rejectionHistoryContent: {
-      flex:
-        1,
-    },
-
-
-    rejectionHistoryTitle: {
-      color:
-        COLORS.danger,
-
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      fontWeight:
-        '800',
-    },
-
-
-    rejectionHistoryText: {
-      marginTop:
-        4,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.caption,
-
-      lineHeight:
-        18,
-    },
-
-
-    /* ======================================================================
-       ACTIONS
-       ====================================================================== */
-
-    actionCard: {
-      padding:
-        16,
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.xl,
-
-      backgroundColor:
-        COLORS.surface,
-
-      ...SHADOWS.card,
-    },
-
-
-    actionNotice: {
-      flexDirection:
-        'row',
-
-      alignItems:
-        'flex-start',
-
-      gap:
-        11,
-
-      marginBottom:
-        16,
-
-      padding:
-        13,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.blueSoft,
-    },
-
-
-    actionNoticeIcon: {
-      width:
-        38,
-
-      height:
-        38,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        12,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    actionNoticeContent: {
-      flex:
-        1,
-    },
-
-
-    actionNoticeTitle: {
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      fontWeight:
-        '800',
-    },
-
-
-    actionNoticeText: {
-      marginTop:
-        3,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.caption,
-
-      lineHeight:
-        18,
-    },
-
-
-    approveButton: {
-      minHeight:
-        LAYOUT.buttonHeight,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      gap:
-        8,
-
-      paddingHorizontal:
-        16,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.primary,
-    },
-
-
-    approveButtonText: {
-      color:
-        COLORS.white,
-
-      fontSize:
-        TYPOGRAPHY.body,
-
-      fontWeight:
-        '800',
-    },
-
-
-    rejectButton: {
-      minHeight:
-        LAYOUT.buttonHeight,
-
-      marginTop:
-        10,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      gap:
-        8,
-
-      paddingHorizontal:
-        16,
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.danger,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.dangerSoft,
-    },
-
-
-    rejectButtonText: {
-      color:
-        COLORS.danger,
-
-      fontSize:
-        TYPOGRAPHY.body,
-
-      fontWeight:
-        '800',
-    },
-
-
-    disabledButton: {
-      opacity:
-        0.5,
-    },
-
-
-    finalStatusCard: {
-      marginTop:
-        SPACING.xxl,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'flex-start',
-
-      gap:
-        11,
-
-      padding:
-        15,
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.lg,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    finalStatusContent: {
-      flex:
-        1,
-    },
-
-
-    finalStatusTitle: {
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      fontWeight:
-        '800',
-    },
-
-
-    finalStatusText: {
-      marginTop:
-        3,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.caption,
-
-      lineHeight:
-        18,
-    },
-
-
-    /* ======================================================================
-       REJECTION BOTTOM SHEET
-       ====================================================================== */
-
-    modalKeyboardView: {
-      flex:
-        1,
-    },
-
-
-    sheetOverlay: {
-      flex:
-        1,
-
-      justifyContent:
-        'flex-end',
-
-      backgroundColor:
-        'rgba(10, 18, 27, 0.48)',
-    },
-
-
-    rejectSheet: {
-      width:
-        '100%',
-
-      maxWidth:
-        LAYOUT.contentMaxWidth,
-
-      alignSelf:
-        'center',
-
-      paddingHorizontal:
-        LAYOUT.screenPadding,
-
-      paddingTop:
-        10,
-
-      paddingBottom:
-        22,
-
-      borderTopLeftRadius:
-        26,
-
-      borderTopRightRadius:
-        26,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    sheetHandle: {
-      width:
-        42,
-
-      height:
-        4,
-
-      alignSelf:
-        'center',
-
-      marginBottom:
-        18,
-
-      borderRadius:
-        RADII.pill,
-
-      backgroundColor:
-        COLORS.border,
-    },
-
-
-    rejectSheetHeader: {
-      flexDirection:
-        'row',
-
-      alignItems:
-        'flex-start',
-
-      gap:
-        11,
-    },
-
-
-    rejectSheetIcon: {
-      width:
-        44,
-
-      height:
-        44,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        14,
-
-      backgroundColor:
-        COLORS.dangerSoft,
-    },
-
-
-    rejectSheetHeading: {
-      flex:
-        1,
-    },
-
-
-    rejectSheetTitle: {
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.section,
-
-      fontWeight:
-        '800',
-    },
-
-
-    rejectSheetSubtitle: {
-      marginTop:
-        3,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.caption,
-
-      lineHeight:
-        17,
-    },
-
-
-    reasonInput: {
-      minHeight:
-        125,
-
-      marginTop:
-        18,
-
-      paddingHorizontal:
-        14,
-
-      paddingVertical:
-        13,
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.md,
-
-      color:
-        COLORS.text,
-
-      backgroundColor:
-        COLORS.surfaceSoft,
-
-      fontSize:
-        TYPOGRAPHY.body,
-
-      lineHeight:
-        20,
-    },
-
-
-    reasonMetaRow: {
-      marginTop:
-        7,
-
-      flexDirection:
-        'row',
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'space-between',
-    },
-
-
-    reasonRequirement: {
-      color:
-        COLORS.textLight,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-    },
-
-
-    reasonCounter: {
-      color:
-        COLORS.textLight,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      fontWeight:
-        '600',
-    },
-
-
-    sheetErrorText: {
-      marginTop:
-        8,
-
-      color:
-        COLORS.danger,
-
-      fontSize:
-        TYPOGRAPHY.caption,
-
-      lineHeight:
-        18,
-    },
-
-
-    rejectContinueButton: {
-      minHeight:
-        LAYOUT.buttonHeight,
-
-      marginTop:
-        16,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.danger,
-    },
-
-
-    rejectContinueText: {
-      color:
-        COLORS.white,
-
-      fontSize:
-        TYPOGRAPHY.body,
-
-      fontWeight:
-        '800',
-    },
-
-
-    sheetCancelButton: {
-      minHeight:
-        46,
-
-      marginTop:
-        4,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-    },
-
-
-    sheetCancelText: {
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      fontWeight:
-        '700',
-    },
-
-
-    /* ======================================================================
-       CONFIRMATION MODAL
-       ====================================================================== */
-
-    confirmationOverlay: {
-      flex:
-        1,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      paddingHorizontal:
-        24,
-
-      backgroundColor:
-        'rgba(10, 18, 27, 0.52)',
-    },
-
-
-    confirmationModal: {
-      width:
-        '100%',
-
-      maxWidth:
-        380,
-
-      alignItems:
-        'center',
-
-      paddingHorizontal:
-        22,
-
-      paddingTop:
-        26,
-
-      paddingBottom:
-        18,
-
-      borderRadius:
-        24,
-
-      backgroundColor:
-        COLORS.surface,
-
-      ...SHADOWS.floating,
-    },
-
-
-    confirmationIcon: {
-      width:
-        62,
-
-      height:
-        62,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        31,
-    },
-
-
-    confirmationTitle: {
-      marginTop:
-        16,
-
-      color:
-        COLORS.text,
-
-      fontSize:
-        20,
-
-      lineHeight:
-        25,
-
-      fontWeight:
-        '800',
-
-      textAlign:
-        'center',
-    },
-
-
-    confirmationDescription: {
-      marginTop:
-        8,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.body,
-
-      lineHeight:
-        20,
-
-      textAlign:
-        'center',
-    },
-
-
-    reasonPreview: {
-      width:
-        '100%',
-
-      marginTop:
-        17,
-
-      padding:
-        13,
-
-      borderWidth:
-        1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.surfaceSoft,
-    },
-
-
-    reasonPreviewLabel: {
-      color:
-        COLORS.textLight,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      fontWeight:
-        '700',
-    },
-
-
-    reasonPreviewText: {
-      marginTop:
-        5,
-
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.caption,
-
-      lineHeight:
-        18,
-
-      fontWeight:
-        '600',
-    },
-
-
-    approvalPreview: {
-      width:
-        '100%',
-
-      marginTop:
-        17,
-
-      padding:
-        13,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.greenSoft,
-    },
-
-
-    approvalPreviewLabel: {
-      color:
-        COLORS.green,
-
-      fontSize:
-        TYPOGRAPHY.micro,
-
-      fontWeight:
-        '800',
-    },
-
-
-    approvalPreviewDate: {
-      marginTop:
-        5,
-
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      fontWeight:
-        '800',
-    },
-
-
-    approvalPreviewTime: {
-      marginTop:
-        3,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.caption,
-
-      fontWeight:
-        '600',
-    },
-
-
-    confirmationPrimaryButton: {
-      width:
-        '100%',
-
-      minHeight:
-        LAYOUT.buttonHeight,
-
-      marginTop:
-        20,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        RADII.md,
-    },
-
-
-    confirmationApproveButton: {
-      backgroundColor:
-        COLORS.primary,
-    },
-
-
-    confirmationRejectButton: {
-      backgroundColor:
-        COLORS.danger,
-    },
-
-
-    confirmationPrimaryText: {
-      color:
-        COLORS.white,
-
-      fontSize:
-        TYPOGRAPHY.body,
-
-      fontWeight:
-        '800',
-    },
-
-
-    confirmationCancelButton: {
-      minHeight:
-        44,
-
-      marginTop:
-        4,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      paddingHorizontal:
-        20,
-    },
-
-
-    confirmationCancelText: {
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      fontWeight:
-        '700',
-    },
-
-
-    /* ======================================================================
-       LOADING
-       ====================================================================== */
-
-    loadingContainer: {
-      flex:
-        1,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      paddingHorizontal:
-        24,
-    },
-
-
-    loadingIcon: {
-      width:
-        56,
-
-      height:
-        56,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        18,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    loadingTitle: {
-      marginTop:
-        14,
-
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.cardTitle,
-
-      fontWeight:
-        '800',
-    },
-
-
-    loadingText: {
-      maxWidth:
-        330,
-
-      marginTop:
-        5,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.caption,
-
-      lineHeight:
-        18,
-
-      textAlign:
-        'center',
-    },
-
-
-    /* ======================================================================
-       UNAVAILABLE
-       ====================================================================== */
-
-    unavailableContainer: {
-      flex:
-        1,
-
-      paddingHorizontal:
-        LAYOUT.screenPadding,
-
-      paddingTop:
-        SPACING.sm,
-    },
-
-
-    unavailableContent: {
-      flex:
-        1,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      paddingBottom:
-        70,
-    },
-
-
-    unavailableIcon: {
-      width:
-        64,
-
-      height:
-        64,
-
-      alignItems:
-        'center',
-
-      justifyContent:
-        'center',
-
-      borderRadius:
-        20,
-
-      backgroundColor:
-        COLORS.accentSoft,
-    },
-
-
-    unavailableTitle: {
-      marginTop:
-        15,
-
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.section,
-
-      fontWeight:
-        '800',
-    },
-
-
-    unavailableText: {
-      maxWidth:
-        320,
-
-      marginTop:
-        6,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.body,
-
-      lineHeight:
-        20,
-
-      textAlign:
-        'center',
-    },
-  });
+const styles = StyleSheet.create({
+  safeArea: { flex: 1, backgroundColor: COLORS.background },
+  container: { width: '100%', maxWidth: LAYOUT.contentMaxWidth, alignSelf: 'center', paddingHorizontal: LAYOUT.screenPadding, paddingTop: 40, paddingBottom: 48 },
+  topBar: { minHeight: 48, flexDirection: 'row', alignItems: 'center' },
+  iconButton: { width: LAYOUT.iconButtonSize, height: LAYOUT.iconButtonSize, alignItems: 'center', justifyContent: 'center', borderRadius: RADII.pill },
+  topHeading: { flex: 1, marginHorizontal: 6 },
+  topTitle: { color: COLORS.text, fontSize: TYPOGRAPHY.cardTitle, fontWeight: '800', textAlign: 'center' },
+  topSubtitle: { marginTop: 1, color: COLORS.textMuted, fontSize: TYPOGRAPHY.micro, textAlign: 'center' },
+  header: { marginTop: SPACING.lg },
+  eyebrow: { color: COLORS.accent, fontSize: TYPOGRAPHY.micro, fontWeight: '800', letterSpacing: 1.2 },
+  title: { maxWidth: 560, marginTop: 5, color: COLORS.text, fontSize: TYPOGRAPHY.title, lineHeight: 30, fontWeight: '800', letterSpacing: -0.6 },
+  subtitle: { maxWidth: 610, marginTop: 8, color: COLORS.textMuted, fontSize: TYPOGRAPHY.body, lineHeight: 21 },
+  heroCard: { marginTop: SPACING.xl, padding: 18, borderRadius: RADII.xl, backgroundColor: COLORS.primary, ...SHADOWS.card },
+  heroTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 },
+  heroIcon: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: COLORS.navyMuted },
+  statusBadge: { minHeight: 31, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 10, borderRadius: RADII.pill },
+  badgeText: { fontSize: TYPOGRAPHY.micro, fontWeight: '800' },
+  heroTitle: { marginTop: 16, color: COLORS.white, fontSize: 23, lineHeight: 29, fontWeight: '800', letterSpacing: -0.5 },
+  heroSubtitle: { marginTop: 4, color: '#D4DAE1', fontSize: TYPOGRAPHY.caption, lineHeight: 18 },
+  heroStats: { marginTop: 16, paddingTop: 14, flexDirection: 'row', alignItems: 'stretch', borderTopWidth: 1, borderTopColor: COLORS.navyMuted },
+  heroStat: { flex: 1, minWidth: 0 },
+  heroStatLabel: { color: '#AEB8C5', fontSize: TYPOGRAPHY.micro, fontWeight: '600' },
+  heroStatValue: { marginTop: 4, color: COLORS.white, fontSize: TYPOGRAPHY.caption, lineHeight: 17, fontWeight: '800' },
+  heroDivider: { width: 1, marginHorizontal: 10, backgroundColor: COLORS.navyMuted },
+  messageBox: { marginTop: SPACING.md, flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 14, borderRadius: RADII.md },
+  messageTitle: { fontSize: TYPOGRAPHY.secondary, fontWeight: '800' },
+  messageText: { marginTop: 3, color: COLORS.textMuted, fontSize: TYPOGRAPHY.caption, lineHeight: 18 },
+  sectionHeading: { marginTop: SPACING.xxl, marginBottom: 12 },
+  sectionTitle: { color: COLORS.text, fontSize: TYPOGRAPHY.section, fontWeight: '800', letterSpacing: -0.3 },
+  sectionSubtitle: { marginTop: 3, color: COLORS.textMuted, fontSize: TYPOGRAPHY.caption, lineHeight: 17 },
+  comparisonCard: { padding: 14, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADII.xl, backgroundColor: COLORS.surface, ...SHADOWS.card },
+  schedulePanel: { padding: 14, borderRadius: RADII.lg },
+  scheduleMuted: { backgroundColor: COLORS.surfaceSoft },
+  scheduleRequested: { backgroundColor: COLORS.accentSoft },
+  scheduleIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 13, backgroundColor: COLORS.surface },
+  scheduleLabel: { marginTop: 8, color: COLORS.textMuted, fontSize: TYPOGRAPHY.micro, fontWeight: '800' },
+  requestedLabel: { color: COLORS.navy },
+  scheduleDate: { marginTop: 4, color: COLORS.text, fontSize: TYPOGRAPHY.secondary, fontWeight: '800' },
+  scheduleTime: { marginTop: 4, color: COLORS.textMuted, fontSize: TYPOGRAPHY.caption, fontWeight: '700' },
+  scheduleArrow: { width: 34, height: 34, alignSelf: 'center', alignItems: 'center', justifyContent: 'center', marginVertical: 7, borderRadius: 17, backgroundColor: COLORS.accentSoft },
+  customerCard: { padding: 16, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADII.xl, backgroundColor: COLORS.surface, ...SHADOWS.card },
+  customerHeader: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  avatar: { width: 46, height: 46, borderRadius: 23, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.primary },
+  avatarText: { color: COLORS.white, fontSize: TYPOGRAPHY.section, fontWeight: '800' },
+  customerNameBlock: { flex: 1 },
+  customerName: { color: COLORS.text, fontSize: TYPOGRAPHY.cardTitle, fontWeight: '800' },
+  mutedText: { color: COLORS.textMuted, fontSize: TYPOGRAPHY.caption, lineHeight: 18 },
+  divider: { height: 1, marginVertical: 13, backgroundColor: COLORS.border },
+  contactRow: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 11 },
+  contactIcon: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: COLORS.accentSoft },
+  contactText: { flex: 1, minWidth: 0 },
+  contactValue: { marginTop: 3, color: COLORS.text, fontSize: TYPOGRAPHY.body, fontWeight: '700' },
+  reasonCard: { padding: 15, flexDirection: 'row', alignItems: 'flex-start', gap: 10, borderRadius: RADII.lg, backgroundColor: COLORS.surface, borderWidth: 1, borderColor: COLORS.border },
+  reasonText: { flex: 1, color: COLORS.textMuted, fontSize: TYPOGRAPHY.body, lineHeight: 20 },
+  historyCard: { padding: 14, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADII.xl, backgroundColor: COLORS.surface },
+  historyRow: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: COLORS.border, paddingVertical: 9 },
+  historyIcon: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 12 },
+  historyValue: { marginTop: 3, color: COLORS.text, fontSize: TYPOGRAPHY.caption, fontWeight: '700', lineHeight: 19 },
+  actionCard: { padding: 16, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADII.xl, backgroundColor: COLORS.surface, ...SHADOWS.card },
+  notice: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 12, borderRadius: RADII.md, backgroundColor: COLORS.blueSoft },
+  noticeText: { flex: 1, color: COLORS.textMuted, fontSize: TYPOGRAPHY.caption, lineHeight: 18 },
+  primaryButton: { marginTop: 14, minHeight: LAYOUT.buttonHeight, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: RADII.md, backgroundColor: COLORS.primary },
+  primaryText: { color: COLORS.white, fontSize: TYPOGRAPHY.body, fontWeight: '800' },
+  dangerButton: { marginTop: 10, minHeight: LAYOUT.buttonHeight, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderWidth: 1, borderColor: COLORS.danger, borderRadius: RADII.md, backgroundColor: COLORS.dangerSoft },
+  dangerText: { color: COLORS.danger, fontSize: TYPOGRAPHY.body, fontWeight: '800' },
+  finalCard: { marginTop: SPACING.xxl, flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 15, borderRadius: RADII.lg, borderWidth: 1, borderColor: COLORS.border, backgroundColor: COLORS.surface },
+  finalText: { flex: 1, color: COLORS.textMuted, fontSize: TYPOGRAPHY.caption, lineHeight: 19 },
+  centerState: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12, paddingHorizontal: 25 },
+  stateTitle: { color: COLORS.text, fontSize: TYPOGRAPHY.cardTitle, fontWeight: '800', textAlign: 'center' },
+  stateText: { color: COLORS.textMuted, fontSize: TYPOGRAPHY.body, lineHeight: 20, textAlign: 'center' },
+  backButton: { marginTop: 8, paddingVertical: 11, paddingHorizontal: 18, backgroundColor: COLORS.primary, borderRadius: RADII.md },
+  backButtonText: { color: COLORS.white, fontWeight: '800' },
+  disabled: { opacity: 0.48 },
+  modalForm: { width: '100%' },
+  modalLabel: { marginBottom: 8, color: COLORS.text, fontSize: 12, fontWeight: '700' },
+  modalInput: { minHeight: 105, paddingHorizontal: 12, paddingVertical: 11, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADII.md, backgroundColor: COLORS.surfaceSoft, color: COLORS.text, fontSize: 13, lineHeight: 19 },
+  modalMeta: { marginTop: 7, flexDirection: 'row', justifyContent: 'space-between' },
+  modalHint: { color: COLORS.textMuted, fontSize: 10 },
+  modalPreview: { width: '100%', padding: 12, borderRadius: RADII.md, backgroundColor: COLORS.surfaceSoft },
+  modalPreviewLabel: { color: COLORS.textLight, fontSize: 10, fontWeight: '700' },
+  modalPreviewText: { marginTop: 5, color: COLORS.text, fontSize: 12, lineHeight: 18, fontWeight: '600' },
+  modalError: { width: '100%', flexDirection: 'row', alignItems: 'flex-start', gap: 7, padding: 10, borderRadius: RADII.md, backgroundColor: COLORS.dangerSoft },
+  modalErrorText: { flex: 1, color: COLORS.danger, fontSize: 11, lineHeight: 17 },
+});

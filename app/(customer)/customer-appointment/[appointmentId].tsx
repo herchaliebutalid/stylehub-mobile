@@ -1,3 +1,4 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import {
   router,
@@ -5,17 +6,9 @@ import {
   useLocalSearchParams,
 } from 'expo-router';
 import type { ComponentProps } from 'react';
-import {
-  useCallback,
-  useMemo,
-  useState,
-} from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -24,7 +17,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
+import StyleHubModal from '@/src/components/StyleHubModal';
 import { COLORS } from '@/src/constants/colors';
 import {
   LAYOUT,
@@ -48,68 +43,58 @@ import type {
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
+type AppointmentModal = 'cancel' | 'cancelSuccess' | null;
+
+/* ==========================================================
+   HELPERS
+   ========================================================== */
+
 function getRouteValue(
   value: string | string[] | undefined,
 ): string | undefined {
-  return Array.isArray(value)
-    ? value[0]
-    : value;
+  return Array.isArray(value) ? value[0] : value;
 }
 
 function formatDate(value: string): string {
-  const date = new Date(
-    `${value}T12:00:00+08:00`,
-  );
+  const date = new Date(`${value}T12:00:00+08:00`);
 
   if (Number.isNaN(date.getTime())) {
     return value;
   }
 
   try {
-    return new Intl.DateTimeFormat(
-      'en-PH',
-      {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-        timeZone: 'Asia/Manila',
-      },
-    ).format(date);
+    return new Intl.DateTimeFormat('en-PH', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'Asia/Manila',
+    }).format(date);
   } catch {
     return value;
   }
 }
 
 function formatTime(value: string): string {
-  const match = value.match(
-    /^(\d{1,2}):(\d{2})/,
-  );
+  const match = value.match(/^(\d{1,2}):(\d{2})/);
 
   if (!match) {
     return value;
   }
 
   const hour24 = Number(match[1]);
-  const minute = match[2];
 
   if (
-    Number.isNaN(hour24)
-    || hour24 < 0
-    || hour24 > 23
+    !Number.isFinite(hour24) ||
+    hour24 < 0 ||
+    hour24 > 23
   ) {
     return value;
   }
 
-  const suffix =
-    hour24 >= 12
-      ? 'PM'
-      : 'AM';
-
-  const hour12 =
-    hour24 % 12 || 12;
-
-  return `${hour12}:${minute} ${suffix}`;
+  return `${hour24 % 12 || 12}:${match[2]} ${
+    hour24 >= 12 ? 'PM' : 'AM'
+  }`;
 }
 
 function formatDateTime(
@@ -126,17 +111,14 @@ function formatDateTime(
   }
 
   try {
-    return new Intl.DateTimeFormat(
-      'en-PH',
-      {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        timeZone: 'Asia/Manila',
-      },
-    ).format(date);
+    return new Intl.DateTimeFormat('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'Asia/Manila',
+    }).format(date);
   } catch {
     return value;
   }
@@ -155,14 +137,15 @@ function formatPrice(
     return String(value);
   }
 
-  return `₱${parsed.toLocaleString(
-    'en-PH',
-    {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    },
-  )}`;
+  return `₱${parsed.toLocaleString('en-PH', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
+
+/* ==========================================================
+   APPOINTMENT STATUS
+   ========================================================== */
 
 function statusPresentation(
   status: AppointmentStatus,
@@ -221,328 +204,247 @@ function statusPresentation(
   }
 }
 
+/* ==========================================================
+   CUSTOMER APPOINTMENT DETAILS SCREEN
+   ========================================================== */
+
 export default function CustomerAppointmentDetailScreen() {
-  const params =
-    useLocalSearchParams<{
-      appointmentId?:
-        | string
-        | string[];
-    }>();
+  const params = useLocalSearchParams<{
+    appointmentId?: string | string[];
+  }>();
 
-  const {
-    token,
-  } = useAuth();
+  const { token } = useAuth();
 
-  const appointmentId =
-    Number(
-      getRouteValue(
-        params.appointmentId,
-      ),
-    );
-
-  const [
-    appointment,
-    setAppointment,
-  ] =
-    useState<CustomerAppointment | null>(
-      null,
-    );
-
-  const [
-    existingFeedback,
-    setExistingFeedback,
-  ] =
-    useState<CustomerFeedback | null>(
-      null,
-    );
-
-  const [
-    isLoading,
-    setIsLoading,
-  ] =
-    useState(true);
-
-  const [
-    isRefreshing,
-    setIsRefreshing,
-  ] =
-    useState(false);
-
-  const [
-    isCancelling,
-    setIsCancelling,
-  ] =
-    useState(false);
-
-  const [
-    cancelModalVisible,
-    setCancelModalVisible,
-  ] =
-    useState(false);
-
-  const [
-    cancellationReason,
-    setCancellationReason,
-  ] =
-    useState('');
-
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] =
-    useState('');
-
-  const [
-    successMessage,
-    setSuccessMessage,
-  ] =
-    useState('');
-
-  const loadAppointment =
-    useCallback(
-      async (
-        refreshing = false,
-      ): Promise<void> => {
-        if (
-          !token
-          ||
-          !Number.isInteger(
-            appointmentId,
-          )
-          ||
-          appointmentId < 1
-        ) {
-          setIsLoading(false);
-          setIsRefreshing(false);
-
-          setErrorMessage(
-            'The selected appointment is invalid.',
-          );
-
-          return;
-        }
-
-        if (refreshing) {
-          setIsRefreshing(true);
-        } else {
-          setIsLoading(true);
-        }
-
-        setErrorMessage('');
-
-        try {
-          const appointmentResponse =
-            await getCustomerAppointment(
-              token,
-              appointmentId,
-            );
-
-          const loadedAppointment =
-            appointmentResponse
-              .data
-              .appointment;
-
-          setAppointment(
-            loadedAppointment,
-          );
-
-          if (
-            loadedAppointment.status
-            === 'completed'
-          ) {
-            try {
-              const feedbackResponse =
-                await getCustomerFeedback(
-                  token,
-                );
-
-              setExistingFeedback(
-                feedbackResponse
-                  .data
-                  .feedback
-                  .find(
-                    (item) =>
-                      item
-                        .appointment
-                        ?.id
-                      === appointmentId,
-                  )
-                ?? null,
-              );
-            } catch {
-              setExistingFeedback(
-                null,
-              );
-            }
-          } else {
-            setExistingFeedback(
-              null,
-            );
-          }
-        } catch (error) {
-          setErrorMessage(
-            error instanceof ApiError
-              ? error.message
-              : 'Unable to load this appointment.',
-          );
-        } finally {
-          setIsLoading(false);
-          setIsRefreshing(false);
-        }
-      },
-      [
-        appointmentId,
-        token,
-      ],
-    );
-
-  useFocusEffect(
-    useCallback(
-      () => {
-        void loadAppointment();
-
-        return undefined;
-      },
-      [
-        loadAppointment,
-      ],
-    ),
+  const appointmentId = Number(
+    getRouteValue(params.appointmentId),
   );
 
+  const [appointment, setAppointment] =
+    useState<CustomerAppointment | null>(null);
+
+  const [existingFeedback, setExistingFeedback] =
+    useState<CustomerFeedback | null>(null);
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] =
+    useState(false);
+
+  const [isCancelling, setIsCancelling] =
+    useState(false);
+
+  /* Shared modal state */
+
+  const [activeModal, setActiveModal] =
+    useState<AppointmentModal>(null);
+
+  const [cancellationReason, setCancellationReason] =
+    useState('');
+
+  const [cancelModalError, setCancelModalError] =
+    useState('');
+
+  const [errorMessage, setErrorMessage] =
+    useState('');
+
+  const [successMessage, setSuccessMessage] =
+    useState('');
+
+  /* ========================================================
+     LOAD APPOINTMENT
+     ======================================================== */
+
+  const loadAppointment = useCallback(
+    async (refreshing = false): Promise<void> => {
+      if (
+        !token ||
+        !Number.isInteger(appointmentId) ||
+        appointmentId < 1
+      ) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+        setErrorMessage(
+          'The selected appointment is invalid.',
+        );
+        return;
+      }
+
+      if (refreshing) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+
+      setErrorMessage('');
+
+      try {
+        const appointmentResponse =
+          await getCustomerAppointment(
+            token,
+            appointmentId,
+          );
+
+        const loadedAppointment =
+          appointmentResponse.data.appointment;
+
+        setAppointment(loadedAppointment);
+
+        if (
+          loadedAppointment.status === 'completed'
+        ) {
+          try {
+            const feedbackResponse =
+              await getCustomerFeedback(token);
+
+            setExistingFeedback(
+              feedbackResponse.data.feedback.find(
+                (item) =>
+                  item.appointment?.id ===
+                  appointmentId,
+              ) ?? null,
+            );
+          } catch {
+            setExistingFeedback(null);
+          }
+        } else {
+          setExistingFeedback(null);
+        }
+      } catch (error) {
+        setErrorMessage(
+          error instanceof ApiError
+            ? error.message
+            : 'Unable to load this appointment.',
+        );
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [appointmentId, token],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadAppointment();
+      return undefined;
+    }, [loadAppointment]),
+  );
+
+  /* ========================================================
+     APPOINTMENT VALUES
+     ======================================================== */
+
   const canManageSchedule =
-    appointment?.status === 'pending'
-    ||
+    appointment?.status === 'pending' ||
     appointment?.status === 'confirmed';
 
-  const status =
-    appointment
-      ? statusPresentation(
-          appointment.status,
-        )
-      : null;
+  const status = appointment
+    ? statusPresentation(appointment.status)
+    : null;
 
-  const scheduleLabel =
-    useMemo(
-      () => {
-        if (!appointment) {
-          return '';
-        }
+  const scheduleLabel = useMemo(() => {
+    if (!appointment) {
+      return '';
+    }
 
-        return `${formatTime(
-          appointment.starts_at,
-        )} – ${formatTime(
-          appointment.ends_at,
-        )}`;
-      },
-      [
-        appointment,
-      ],
-    );
+    return `${formatTime(
+      appointment.starts_at,
+    )} – ${formatTime(
+      appointment.ends_at,
+    )}`;
+  }, [appointment]);
+
+  /* ========================================================
+     NAVIGATION ACTIONS
+     ======================================================== */
 
   function openShop(): void {
-    if (
-      !appointment
-        ?.shop
-        ?.id
-    ) {
+    if (!appointment?.shop?.id) {
       return;
     }
 
     router.push({
-      pathname:
-        '/(customer)/shop/[shopId]',
-
+      pathname: '/(customer)/shop/[shopId]',
       params: {
-        shopId:
-          String(
-            appointment.shop.id,
-          ),
+        shopId: String(appointment.shop.id),
       },
     });
   }
 
   function openReschedule(): void {
     if (
-      !appointment
-      ||
+      !appointment ||
       !canManageSchedule
     ) {
       return;
     }
 
     router.push({
-      pathname:
-        '/(customer)/reschedule/[appointmentId]',
-
+      pathname: '/(customer)/reschedule/[appointmentId]',
       params: {
-        appointmentId:
-          String(
-            appointment.id,
-          ),
+        appointmentId: String(appointment.id),
       },
     });
   }
 
   function openFeedback(): void {
     if (
-      !appointment
-      ||
+      !appointment ||
       appointment.status !== 'completed'
     ) {
       return;
     }
 
     router.push({
-      pathname:
-        '/(customer)/feedback/[appointmentId]',
-
+      pathname: '/(customer)/feedback/[appointmentId]',
       params: {
-        appointmentId:
-          String(
-            appointment.id,
-          ),
+        appointmentId: String(appointment.id),
       },
     });
   }
 
+  /* ========================================================
+     OPEN CANCELLATION MODAL
+     ======================================================== */
+
   function openCancelModal(): void {
     if (
-      !appointment
-      ||
-      !canManageSchedule
-      ||
+      !appointment ||
+      !canManageSchedule ||
       isCancelling
     ) {
       return;
     }
 
     setCancellationReason('');
+    setCancelModalError('');
     setErrorMessage('');
     setSuccessMessage('');
 
-    setCancelModalVisible(
-      true,
-    );
+    setActiveModal('cancel');
   }
+
+  /* ========================================================
+     CLOSE MODAL
+     ======================================================== */
 
   function closeCancelModal(): void {
     if (isCancelling) {
       return;
     }
 
-    setCancelModalVisible(
-      false,
-    );
-
+    setActiveModal(null);
     setCancellationReason('');
+    setCancelModalError('');
   }
+
+  /* ========================================================
+     CANCEL APPOINTMENT
+     ======================================================== */
 
   async function cancelAppointment(): Promise<void> {
     if (
-      !token
-      ||
-      !appointment
-      ||
+      !token ||
+      !appointment ||
       isCancelling
     ) {
       return;
@@ -551,27 +453,22 @@ export default function CustomerAppointmentDetailScreen() {
     const cleanReason =
       cancellationReason.trim();
 
-    if (
-      cleanReason.length < 5
-    ) {
-      setErrorMessage(
+    if (cleanReason.length < 5) {
+      setCancelModalError(
         'Cancellation reason must contain at least 5 characters.',
       );
-
       return;
     }
 
-    if (
-      cleanReason.length > 1000
-    ) {
-      setErrorMessage(
+    if (cleanReason.length > 1000) {
+      setCancelModalError(
         'Cancellation reason may not exceed 1000 characters.',
       );
-
       return;
     }
 
     setIsCancelling(true);
+    setCancelModalError('');
     setErrorMessage('');
     setSuccessMessage('');
 
@@ -587,23 +484,21 @@ export default function CustomerAppointmentDetailScreen() {
         response.data.appointment,
       );
 
-      setExistingFeedback(
-        null,
-      );
-
-      setCancelModalVisible(
-        false,
-      );
-
+      setExistingFeedback(null);
       setCancellationReason('');
 
       setSuccessMessage(
-        response.message
-        ??
-        'Your appointment was cancelled successfully.',
+        response.message ??
+          'Your appointment was cancelled successfully.',
       );
+
+      /* Switch from red confirmation to green success */
+
+      setActiveModal('cancelSuccess');
     } catch (error) {
-      setErrorMessage(
+      /* Display errors within the modal */
+
+      setCancelModalError(
         error instanceof ApiError
           ? error.message
           : 'Unable to cancel the appointment.',
@@ -613,68 +508,62 @@ export default function CustomerAppointmentDetailScreen() {
     }
   }
 
+  /* ========================================================
+     LOADING STATE
+     ======================================================== */
+
   if (
-    isLoading
-    &&
+    isLoading &&
     !appointment
   ) {
     return (
-      <SafeAreaView
-        style={styles.safeArea}
-      >
+      <SafeAreaView style={styles.safeArea}>
         <StatusBar
           barStyle="dark-content"
           backgroundColor={COLORS.background}
+          translucent={false}
         />
 
-        <View
-          style={styles.loadingContainer}
-        >
-          <View
-            style={styles.loadingIcon}
-          >
+        <View style={styles.loadingContainer}>
+          <View style={styles.loadingIcon}>
             <ActivityIndicator
               size="small"
               color={COLORS.navy}
             />
           </View>
 
-          <Text
-            style={styles.loadingTitle}
-          >
+          <Text style={styles.loadingTitle}>
             Loading booking details
           </Text>
 
-          <Text
-            style={styles.loadingText}
-          >
-            Getting the latest appointment status and service information.
+          <Text style={styles.loadingText}>
+            Getting the latest appointment
+            status and service information.
           </Text>
         </View>
       </SafeAreaView>
     );
   }
 
+  /* ========================================================
+     UNAVAILABLE STATE
+     ======================================================== */
+
   if (!appointment) {
     return (
-      <SafeAreaView
-        style={styles.safeArea}
-      >
+      <SafeAreaView style={styles.safeArea}>
         <StatusBar
           barStyle="dark-content"
           backgroundColor={COLORS.background}
+          translucent={false}
         />
 
-        <View
-          style={styles.unavailableContainer}
-        >
+        <View style={styles.unavailableContainer}>
           <TouchableOpacity
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel="Go back"
-            onPress={() =>
-              router.back()
-            }
+            onPress={() => router.back()}
             style={styles.topIconButton}
           >
             <Ionicons
@@ -684,12 +573,8 @@ export default function CustomerAppointmentDetailScreen() {
             />
           </TouchableOpacity>
 
-          <View
-            style={styles.unavailableContent}
-          >
-            <View
-              style={styles.unavailableIcon}
-            >
+          <View style={styles.unavailableContent}>
+            <View style={styles.unavailableIcon}>
               <Ionicons
                 name="calendar-outline"
                 size={30}
@@ -697,17 +582,12 @@ export default function CustomerAppointmentDetailScreen() {
               />
             </View>
 
-            <Text
-              style={styles.unavailableTitle}
-            >
+            <Text style={styles.unavailableTitle}>
               Booking unavailable
             </Text>
 
-            <Text
-              style={styles.unavailableText}
-            >
-              {errorMessage
-                ||
+            <Text style={styles.unavailableText}>
+              {errorMessage ||
                 'Unable to display this appointment.'}
             </Text>
 
@@ -720,9 +600,7 @@ export default function CustomerAppointmentDetailScreen() {
               }
               style={styles.returnButton}
             >
-              <Text
-                style={styles.returnButtonText}
-              >
+              <Text style={styles.returnButtonText}>
                 Return to bookings
               </Text>
             </TouchableOpacity>
@@ -732,47 +610,50 @@ export default function CustomerAppointmentDetailScreen() {
     );
   }
 
-  const completedAt =
-    formatDateTime(
-      appointment.completed_at,
-    );
+  /* ========================================================
+     DETAIL VALUES
+     ======================================================== */
 
-  const cancelledAt =
-    formatDateTime(
-      appointment.cancelled_at,
-    );
+  const completedAt = formatDateTime(
+    appointment.completed_at,
+  );
 
-  const createdAt =
-    formatDateTime(
-      appointment.created_at,
-    );
+  const cancelledAt = formatDateTime(
+    appointment.cancelled_at,
+  );
 
-  const updatedAt =
-    formatDateTime(
-      appointment.updated_at,
-    );
+  const createdAt = formatDateTime(
+    appointment.created_at,
+  );
+
+  const updatedAt = formatDateTime(
+    appointment.updated_at,
+  );
+
+  /* ========================================================
+     MAIN SCREEN
+     ======================================================== */
 
   return (
-    <SafeAreaView
-      style={styles.safeArea}
-    >
+    <SafeAreaView style={styles.safeArea}>
       <StatusBar
         barStyle="dark-content"
         backgroundColor={COLORS.background}
+        translucent={false}
       />
 
       <ScrollView
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.container}
       >
+        {/* TOP NAVIGATION */}
+
         <View style={styles.topBar}>
           <TouchableOpacity
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel="Go back"
-            onPress={() =>
-              router.back()
-            }
+            onPress={() => router.back()}
             style={styles.topIconButton}
           >
             <Ionicons
@@ -782,18 +663,12 @@ export default function CustomerAppointmentDetailScreen() {
             />
           </TouchableOpacity>
 
-          <View
-            style={styles.topBarTitleBlock}
-          >
-            <Text
-              style={styles.topBarTitle}
-            >
+          <View style={styles.topBarTitleBlock}>
+            <Text style={styles.topBarTitle}>
               Booking details
             </Text>
 
-            <Text
-              style={styles.topBarCaption}
-            >
+            <Text style={styles.topBarCaption}>
               Appointment #{appointment.id}
             </Text>
           </View>
@@ -803,25 +678,18 @@ export default function CustomerAppointmentDetailScreen() {
             accessibilityRole="button"
             accessibilityLabel="Refresh booking details"
             disabled={
-              isRefreshing
-              ||
+              isRefreshing ||
               isCancelling
             }
             onPress={() =>
-              void loadAppointment(
-                true,
-              )
+              void loadAppointment(true)
             }
             style={[
               styles.topIconButton,
-
               (
-                isRefreshing
-                ||
+                isRefreshing ||
                 isCancelling
-              )
-              &&
-                styles.disabledButton,
+              ) && styles.disabledButton,
             ]}
           >
             {isRefreshing ? (
@@ -839,19 +707,26 @@ export default function CustomerAppointmentDetailScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* PAGE HEADER */}
+
         <View style={styles.header}>
           <Text style={styles.eyebrow}>
             APPOINTMENT
           </Text>
 
           <Text style={styles.title}>
-            Everything about this booking in one place
+            Everything about this booking
+            in one place
           </Text>
 
           <Text style={styles.subtitle}>
-            Review the service, schedule, shop, notes, status, and any actions currently allowed for this appointment.
+            Review the service, schedule, shop,
+            notes, status, and any actions currently
+            allowed for this appointment.
           </Text>
         </View>
+
+        {/* STATUS MESSAGES */}
 
         {errorMessage ? (
           <MessageBox
@@ -869,15 +744,14 @@ export default function CustomerAppointmentDetailScreen() {
           />
         ) : null}
 
+        {/* BOOKING HERO */}
+
         <View style={styles.heroCard}>
           <View style={styles.heroTopRow}>
             <View style={styles.heroIcon}>
               <Ionicons
                 name={
-                  appointment
-                    .shop
-                    ?.type
-                  === 'barber_shop'
+                  appointment.shop?.type === 'barber_shop'
                     ? 'cut-outline'
                     : 'sparkles-outline'
                 }
@@ -906,108 +780,76 @@ export default function CustomerAppointmentDetailScreen() {
                   style={[
                     styles.statusBadgeText,
                     {
-                      color:
-                        status.color,
+                      color: status.color,
                     },
                   ]}
                 >
-                  {
-                    appointment
-                      .status_label
-                  }
+                  {appointment.status_label}
                 </Text>
               </View>
             ) : null}
           </View>
 
-          <Text
-            style={styles.heroService}
-          >
-            {
-              appointment
-                .service_snapshot
-                .name
-            }
+          <Text style={styles.heroService}>
+            {appointment.service_snapshot.name}
           </Text>
 
-          <Text
-            style={styles.heroShop}
-          >
-            {
-              appointment
-                .shop
-                ?.name
-              ??
-              'StyleHub Shop'
-            }
+          <Text style={styles.heroShop}>
+            {appointment.shop?.name ??
+              'StyleHub Shop'}
           </Text>
 
-          <View
-            style={styles.heroScheduleRow}
-          >
-            <View
-              style={styles.heroScheduleItem}
-            >
+          <View style={styles.heroScheduleRow}>
+            <View style={styles.heroScheduleItem}>
               <Ionicons
                 name="calendar-outline"
                 size={15}
                 color="#D4DAE1"
               />
 
-              <Text
-                style={styles.heroScheduleText}
-              >
+              <Text style={styles.heroScheduleText}>
                 {formatDate(
-                  appointment
-                    .appointment_date,
+                  appointment.appointment_date,
                 )}
               </Text>
             </View>
 
-            <View
-              style={styles.heroScheduleItem}
-            >
+            <View style={styles.heroScheduleItem}>
               <Ionicons
                 name="time-outline"
                 size={15}
                 color="#D4DAE1"
               />
 
-              <Text
-                style={styles.heroScheduleText}
-              >
+              <Text style={styles.heroScheduleText}>
                 {scheduleLabel}
               </Text>
             </View>
           </View>
 
           {status ? (
-            <View
-              style={styles.heroStatusMessage}
-            >
+            <View style={styles.heroStatusMessage}>
               <Ionicons
                 name="information-circle-outline"
                 size={15}
                 color="#D4DAE1"
               />
 
-              <Text
-                style={styles.heroStatusMessageText}
-              >
+              <Text style={styles.heroStatusMessageText}>
                 {status.message}
               </Text>
             </View>
           ) : null}
         </View>
 
+        {/* BOOKING SUMMARY */}
+
         <SectionHeading
           title="Booking summary"
           subtitle="The service snapshot and schedule stored with this appointment."
         />
 
-        <View
-          style={styles.detailsCard}
-        >
+        <View style={styles.detailsCard}>
           <DetailRow
             icon="calendar-clear-outline"
             label="Date"
@@ -1030,9 +872,7 @@ export default function CustomerAppointmentDetailScreen() {
             icon="cash-outline"
             label="Booked price"
             value={formatPrice(
-              appointment
-                .service_snapshot
-                .price,
+              appointment.service_snapshot.price,
             )}
           />
 
@@ -1042,15 +882,18 @@ export default function CustomerAppointmentDetailScreen() {
             icon="hourglass-outline"
             label="Service duration"
             value={
-              appointment
-                .service_snapshot
-                .duration_minutes
-              === null
+              appointment.service_snapshot
+                .duration_minutes === null
                 ? 'Not available'
-                : `${appointment.service_snapshot.duration_minutes} minutes`
+                : `${
+                    appointment.service_snapshot
+                      .duration_minutes
+                  } minutes`
             }
           />
         </View>
+
+        {/* SHOP INFORMATION */}
 
         <SectionHeading
           title="Shop"
@@ -1062,10 +905,8 @@ export default function CustomerAppointmentDetailScreen() {
             <View style={styles.shopIcon}>
               <Ionicons
                 name={
-                  appointment
-                    .shop
-                    ?.type
-                  === 'barber_shop'
+                  appointment.shop?.type ===
+                  'barber_shop'
                     ? 'cut-outline'
                     : 'sparkles-outline'
                 }
@@ -1076,23 +917,13 @@ export default function CustomerAppointmentDetailScreen() {
 
             <View style={styles.shopCopy}>
               <Text style={styles.shopName}>
-                {
-                  appointment
-                    .shop
-                    ?.name
-                  ??
-                  'StyleHub Shop'
-                }
+                {appointment.shop?.name ??
+                  'StyleHub Shop'}
               </Text>
 
               <Text style={styles.shopType}>
-                {
-                  appointment
-                    .shop
-                    ?.type_label
-                  ??
-                  'Shop information'
-                }
+                {appointment.shop?.type_label ??
+                  'Shop information'}
               </Text>
             </View>
           </View>
@@ -1105,9 +936,7 @@ export default function CustomerAppointmentDetailScreen() {
               onPress={openShop}
               style={styles.shopButton}
             >
-              <Text
-                style={styles.shopButtonText}
-              >
+              <Text style={styles.shopButtonText}>
                 View shop profile
               </Text>
 
@@ -1119,6 +948,8 @@ export default function CustomerAppointmentDetailScreen() {
             </TouchableOpacity>
           ) : null}
         </View>
+
+        {/* BOOKING NOTES */}
 
         <SectionHeading
           title="Notes"
@@ -1135,74 +966,50 @@ export default function CustomerAppointmentDetailScreen() {
           </View>
 
           <Text style={styles.notesText}>
-            {
-              appointment
-                .notes
-                ?.trim()
-              ||
-              'No customer notes were added to this appointment.'
-            }
+            {appointment.notes?.trim() ||
+              'No customer notes were added to this appointment.'}
           </Text>
         </View>
 
-        {
-          appointment.status
-            === 'cancelled'
-          &&
-          appointment
-            .cancellation_reason
-            ?.trim()
-          ? (
-              <>
-                <SectionHeading
-                  title="Cancellation"
-                  subtitle="Reason recorded when this appointment was cancelled."
+        {/* CANCELLATION INFORMATION */}
+
+        {appointment.status === 'cancelled' &&
+        appointment.cancellation_reason?.trim() ? (
+          <>
+            <SectionHeading
+              title="Cancellation"
+              subtitle="Reason recorded when this appointment was cancelled."
+            />
+
+            <View style={styles.cancellationCard}>
+              <View style={styles.cancellationIcon}>
+                <Ionicons
+                  name="close-circle-outline"
+                  size={20}
+                  color={COLORS.danger}
                 />
+              </View>
 
-                <View
-                  style={styles.cancellationCard}
-                >
-                  <View
-                    style={styles.cancellationIcon}
-                  >
-                    <Ionicons
-                      name="close-circle-outline"
-                      size={20}
-                      color={COLORS.danger}
-                    />
-                  </View>
+              <View style={styles.cancellationCopy}>
+                <Text style={styles.cancellationTitle}>
+                  Cancellation reason
+                </Text>
 
-                  <View
-                    style={styles.cancellationCopy}
-                  >
-                    <Text
-                      style={styles.cancellationTitle}
-                    >
-                      Cancellation reason
-                    </Text>
+                <Text style={styles.cancellationText}>
+                  {appointment.cancellation_reason}
+                </Text>
 
-                    <Text
-                      style={styles.cancellationText}
-                    >
-                      {
-                        appointment
-                          .cancellation_reason
-                      }
-                    </Text>
+                {cancelledAt ? (
+                  <Text style={styles.cancellationDate}>
+                    Cancelled {cancelledAt}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+          </>
+        ) : null}
 
-                    {cancelledAt ? (
-                      <Text
-                        style={styles.cancellationDate}
-                      >
-                        Cancelled {cancelledAt}
-                      </Text>
-                    ) : null}
-                  </View>
-                </View>
-              </>
-            )
-          : null
-        }
+        {/* BOOKING ACTIVITY */}
 
         <SectionHeading
           title="Booking activity"
@@ -1213,11 +1020,7 @@ export default function CustomerAppointmentDetailScreen() {
           <ActivityRow
             icon="add-circle-outline"
             label="Booking created"
-            value={
-              createdAt
-              ??
-              'Not available'
-            }
+            value={createdAt ?? 'Not available'}
           />
 
           {completedAt ? (
@@ -1257,6 +1060,8 @@ export default function CustomerAppointmentDetailScreen() {
           ) : null}
         </View>
 
+        {/* MANAGE BOOKING */}
+
         {canManageSchedule ? (
           <>
             <SectionHeading
@@ -1274,9 +1079,7 @@ export default function CustomerAppointmentDetailScreen() {
                 onPress={openReschedule}
               />
 
-              <View
-                style={styles.actionDivider}
-              />
+              <View style={styles.actionDivider} />
 
               <ActionRow
                 icon="close-circle-outline"
@@ -1306,9 +1109,7 @@ export default function CustomerAppointmentDetailScreen() {
                 color={COLORS.navy}
               />
 
-              <Text
-                style={styles.requestsButtonText}
-              >
+              <Text style={styles.requestsButtonText}>
                 View all reschedule requests
               </Text>
 
@@ -1321,87 +1122,78 @@ export default function CustomerAppointmentDetailScreen() {
           </>
         ) : null}
 
-        {
-          appointment.status
-            === 'completed'
-          ? (
-              <>
-                <SectionHeading
-                  title="Your experience"
-                  subtitle="Feedback is available only for completed appointments."
-                />
+        {/* COMPLETED BOOKING FEEDBACK */}
 
-                <View
-                  style={styles.reviewCard}
-                >
-                  <View
-                    style={[
-                      styles.reviewIcon,
-                      {
-                        backgroundColor:
-                          existingFeedback
-                            ? COLORS.greenSoft
-                            : COLORS.warningSoft,
-                      },
-                    ]}
-                  >
-                    <Ionicons
-                      name={
-                        existingFeedback
-                          ? 'star'
-                          : 'star-outline'
-                      }
-                      size={22}
-                      color={
-                        existingFeedback
-                          ? COLORS.green
-                          : COLORS.warning
-                      }
-                    />
-                  </View>
+        {appointment.status === 'completed' ? (
+          <>
+            <SectionHeading
+              title="Your experience"
+              subtitle="Feedback is available only for completed appointments."
+            />
 
-                  <View
-                    style={styles.reviewCopy}
-                  >
-                    <Text
-                      style={styles.reviewTitle}
-                    >
-                      {existingFeedback
-                        ? 'Feedback already submitted'
-                        : 'Rate this appointment'}
-                    </Text>
-
-                    <Text
-                      style={styles.reviewText}
-                    >
-                      {existingFeedback
-                        ? `You rated this experience ${existingFeedback.rating}/5. Open it to review what you submitted.`
-                        : 'Share a 1–5 star rating and an optional comment about your completed visit.'}
-                    </Text>
-                  </View>
-
-                  <TouchableOpacity
-                    activeOpacity={0.8}
-                    accessibilityRole="button"
-                    accessibilityLabel={
+            <View style={styles.reviewCard}>
+              <View
+                style={[
+                  styles.reviewIcon,
+                  {
+                    backgroundColor:
                       existingFeedback
-                        ? 'View submitted feedback'
-                        : 'Rate this appointment'
-                    }
-                    onPress={openFeedback}
-                    style={styles.reviewButton}
-                  >
-                    <Ionicons
-                      name="chevron-forward"
-                      size={18}
-                      color={COLORS.navy}
-                    />
-                  </TouchableOpacity>
-                </View>
-              </>
-            )
-          : null
-        }
+                        ? COLORS.greenSoft
+                        : COLORS.warningSoft,
+                  },
+                ]}
+              >
+                <Ionicons
+                  name={
+                    existingFeedback
+                      ? 'star'
+                      : 'star-outline'
+                  }
+                  size={22}
+                  color={
+                    existingFeedback
+                      ? COLORS.green
+                      : COLORS.warning
+                  }
+                />
+              </View>
+
+              <View style={styles.reviewCopy}>
+                <Text style={styles.reviewTitle}>
+                  {existingFeedback
+                    ? 'Feedback already submitted'
+                    : 'Rate this appointment'}
+                </Text>
+
+                <Text style={styles.reviewText}>
+                  {existingFeedback
+                    ? `You rated this experience ${existingFeedback.rating}/5. Open it to review what you submitted.`
+                    : 'Share a 1–5 star rating and an optional comment about your completed visit.'}
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                activeOpacity={0.8}
+                accessibilityRole="button"
+                accessibilityLabel={
+                  existingFeedback
+                    ? 'View submitted feedback'
+                    : 'Rate this appointment'
+                }
+                onPress={openFeedback}
+                style={styles.reviewButton}
+              >
+                <Ionicons
+                  name="chevron-forward"
+                  size={18}
+                  color={COLORS.navy}
+                />
+              </TouchableOpacity>
+            </View>
+          </>
+        ) : null}
+
+        {/* SECURITY NOTICE */}
 
         <View style={styles.footerNote}>
           <Ionicons
@@ -1410,128 +1202,150 @@ export default function CustomerAppointmentDetailScreen() {
             color={COLORS.green}
           />
 
-          <Text
-            style={styles.footerNoteText}
-          >
-            Appointment status and allowed actions are enforced by Laravel. The mobile screen does not override booking rules or shop decisions.
+          <Text style={styles.footerNoteText}>
+            Appointment status and allowed
+            actions are enforced by Laravel.
+            The mobile screen does not override
+            booking rules or shop decisions.
           </Text>
         </View>
       </ScrollView>
 
-      <Modal
-        transparent
-        animationType="fade"
-        visible={cancelModalVisible}
-        onRequestClose={closeCancelModal}
+      {/* ================================================
+          SHARED STYLEHUB MODAL
+
+          Red: Confirm cancellation
+          Green: Cancellation successful
+          ================================================ */}
+
+      <StyleHubModal
+        visible={activeModal !== null}
+        onClose={closeCancelModal}
+        title={
+          activeModal === 'cancelSuccess'
+            ? 'Appointment cancelled'
+            : 'Cancel appointment?'
+        }
+        message={
+          activeModal === 'cancelSuccess'
+            ? successMessage ||
+              'Your appointment has been cancelled.'
+            : 'Please enter a reason. The shop cancellation policy will still be checked before your request is accepted.'
+        }
+        tone={
+          activeModal === 'cancelSuccess'
+            ? 'success'
+            : 'danger'
+        }
+        icon={
+          activeModal === 'cancelSuccess'
+            ? 'checkmark-circle-outline'
+            : 'close-circle-outline'
+        }
+        dismissOnBackdrop={
+          activeModal === 'cancelSuccess' &&
+          !isCancelling
+        }
+        actions={
+          activeModal === 'cancelSuccess'
+            ? [
+                {
+                  label: 'Done',
+                  variant: 'primary',
+                  onPress: closeCancelModal,
+                },
+              ]
+            : activeModal === 'cancel'
+              ? [
+                  {
+                    label: 'Keep booking',
+                    variant: 'secondary',
+                    onPress: closeCancelModal,
+                  },
+                  {
+                    label: 'Cancel booking',
+                    variant: 'danger',
+                    icon: 'close-circle-outline',
+                    disabled:
+                      cancellationReason.trim()
+                        .length < 5,
+                    loading: isCancelling,
+                    onPress: () =>
+                      void cancelAppointment(),
+                  },
+                ]
+              : []
+        }
       >
-        <KeyboardAvoidingView
-          style={styles.modalBackdrop}
-          behavior={
-            Platform.OS === 'ios'
-              ? 'padding'
-              : undefined
-          }
-        >
-          <View style={styles.modalCard}>
-            <View style={styles.modalHeader}>
-              <View style={styles.modalIcon}>
-                <Ionicons
-                  name="close-circle-outline"
-                  size={22}
-                  color={COLORS.danger}
-                />
-              </View>
-
-              <View
-                style={styles.modalHeaderCopy}
-              >
-                <Text style={styles.modalTitle}>
-                  Cancel appointment?
-                </Text>
-
-                <Text style={styles.modalText}>
-                  Enter a reason. Laravel will still verify the shop&apos;s cancellation cutoff before accepting the request.
-                </Text>
-              </View>
-            </View>
-
+        {activeModal === 'cancel' ? (
+          <View style={styles.cancelForm}>
             <Text style={styles.modalLabel}>
               Cancellation reason
+              <Text style={styles.requiredMark}>
+                {' *'}
+              </Text>
             </Text>
 
             <TextInput
               value={cancellationReason}
-              onChangeText={setCancellationReason}
+              onChangeText={(value) => {
+                setCancellationReason(value);
+
+                if (cancelModalError) {
+                  setCancelModalError('');
+                }
+              }}
               editable={!isCancelling}
               multiline
               maxLength={1000}
-              placeholder="Explain why you need to cancel..."
-              placeholderTextColor={COLORS.textLight}
+              placeholder="Why do you need to cancel?"
+              placeholderTextColor={
+                COLORS.textLight
+              }
               selectionColor={COLORS.navy}
               textAlignVertical="top"
-              style={styles.modalInput}
+              accessibilityLabel="Cancellation reason"
+              style={[
+                styles.modalInput,
+                cancelModalError
+                  ? styles.modalInputInvalid
+                  : null,
+              ]}
             />
 
-            <Text
-              style={styles.modalCounter}
-            >
-              {cancellationReason.length}/1000 · minimum 5 characters
-            </Text>
+            <View style={styles.reasonInfoRow}>
+              <Text style={styles.reasonHelp}>
+                Minimum 5 characters
+              </Text>
 
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                activeOpacity={0.8}
-                disabled={isCancelling}
-                onPress={closeCancelModal}
-                style={styles.modalSecondaryButton}
-              >
-                <Text
-                  style={styles.modalSecondaryText}
-                >
-                  Keep booking
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.82}
-                disabled={isCancelling}
-                onPress={() =>
-                  void cancelAppointment()
-                }
-                style={[
-                  styles.modalDangerButton,
-                  isCancelling
-                  && styles.disabledButton,
-                ]}
-              >
-                {isCancelling ? (
-                  <ActivityIndicator
-                    size="small"
-                    color={COLORS.white}
-                  />
-                ) : (
-                  <Ionicons
-                    name="close-circle-outline"
-                    size={17}
-                    color={COLORS.white}
-                  />
-                )}
-
-                <Text
-                  style={styles.modalDangerText}
-                >
-                  {isCancelling
-                    ? 'Cancelling...'
-                    : 'Cancel appointment'}
-                </Text>
-              </TouchableOpacity>
+              <Text style={styles.modalCounter}>
+                {cancellationReason.length}/1000
+              </Text>
             </View>
+
+            {cancelModalError ? (
+              <View style={styles.modalErrorRow}>
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={15}
+                  color={COLORS.danger}
+                />
+
+                <Text style={styles.modalErrorText}>
+                  {cancelModalError}
+                </Text>
+              </View>
+            ) : null}
           </View>
-        </KeyboardAvoidingView>
-      </Modal>
+        ) : null}
+      </StyleHubModal>
     </SafeAreaView>
   );
 }
+
+/* ==========================================================
+   REUSABLE SCREEN COMPONENTS
+   ========================================================== */
 
 function SectionHeading({
   title,
@@ -1625,9 +1439,7 @@ function ActivityRow({
 
 function ActivityDivider() {
   return (
-    <View
-      style={styles.activityDivider}
-    />
+    <View style={styles.activityDivider} />
   );
 }
 
@@ -1675,8 +1487,8 @@ function ActionRow({
         <Text
           style={[
             styles.actionTitle,
-            danger
-            && styles.actionTitleDanger,
+            danger &&
+              styles.actionTitleDanger,
           ]}
         >
           {title}
@@ -1705,8 +1517,7 @@ function MessageBox({
   title: string;
   message: string;
 }) {
-  const success =
-    type === 'success';
+  const success = type === 'success';
 
   return (
     <View
@@ -1759,6 +1570,10 @@ function MessageBox({
   );
 }
 
+/* ==========================================================
+   COMPLETE SCREEN STYLES
+   ========================================================== */
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -1769,8 +1584,9 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: LAYOUT.contentMaxWidth,
     alignSelf: 'center',
-    paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingHorizontal:
+      LAYOUT.screenPadding,
+    paddingTop: 40,
     paddingBottom: 48,
   },
 
@@ -1836,6 +1652,8 @@ const styles = StyleSheet.create({
     lineHeight: 21,
   },
 
+  /* STATUS MESSAGES */
+
   messageBox: {
     marginTop: SPACING.lg,
     flexDirection: 'row',
@@ -1869,6 +1687,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 18,
   },
+
+  /* HERO CARD */
 
   heroCard: {
     marginTop: SPACING.xl,
@@ -1960,6 +1780,8 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 
+  /* SECTION HEADINGS */
+
   sectionHeading: {
     marginTop: SPACING.xxl,
     marginBottom: 12,
@@ -1978,6 +1800,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 17,
   },
+
+  /* BOOKING DETAILS */
 
   detailsCard: {
     overflow: 'hidden',
@@ -2030,6 +1854,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.border,
   },
 
+  /* SHOP CARD */
+
   shopCard: {
     padding: 15,
     borderWidth: 1,
@@ -2071,7 +1897,8 @@ const styles = StyleSheet.create({
   },
 
   shopButton: {
-    minHeight: LAYOUT.compactButtonHeight,
+    minHeight:
+      LAYOUT.compactButtonHeight,
     marginTop: 14,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2088,6 +1915,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.secondary,
     fontWeight: '800',
   },
+
+  /* NOTES */
 
   notesCard: {
     flexDirection: 'row',
@@ -2115,6 +1944,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.body,
     lineHeight: 20,
   },
+
+  /* CANCELLATION DETAILS */
 
   cancellationCard: {
     flexDirection: 'row',
@@ -2156,6 +1987,8 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
     fontSize: TYPOGRAPHY.micro,
   },
+
+  /* APPOINTMENT ACTIVITY */
 
   activityCard: {
     overflow: 'hidden',
@@ -2206,6 +2039,8 @@ const styles = StyleSheet.create({
     marginLeft: 60,
     backgroundColor: COLORS.border,
   },
+
+  /* MANAGE BOOKING */
 
   actionsCard: {
     overflow: 'hidden',
@@ -2279,6 +2114,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
+  /* FEEDBACK */
+
   reviewCard: {
     minHeight: 84,
     flexDirection: 'row',
@@ -2328,6 +2165,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.surfaceSoft,
   },
 
+  /* FOOTER NOTICE */
+
   footerNote: {
     marginTop: SPACING.xxl,
     flexDirection: 'row',
@@ -2345,125 +2184,78 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 
-  modalBackdrop: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    padding: 18,
-    backgroundColor: 'rgba(0, 0, 0, 0.42)',
-  },
+  /* ================================================
+     SHARED MODAL CUSTOM CONTENT
+     ================================================ */
 
-  modalCard: {
+  cancelForm: {
     width: '100%',
-    maxWidth: 560,
-    alignSelf: 'center',
-    padding: 16,
-    borderRadius: RADII.xl,
-    backgroundColor: COLORS.surface,
-    ...SHADOWS.floating,
-  },
-
-  modalHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 11,
-  },
-
-  modalIcon: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 14,
-    backgroundColor: COLORS.dangerSoft,
-  },
-
-  modalHeaderCopy: {
-    flex: 1,
-  },
-
-  modalTitle: {
-    color: COLORS.text,
-    fontSize: TYPOGRAPHY.cardTitle,
-    fontWeight: '800',
-  },
-
-  modalText: {
-    marginTop: 3,
-    color: COLORS.textMuted,
-    fontSize: TYPOGRAPHY.caption,
-    lineHeight: 18,
   },
 
   modalLabel: {
-    marginTop: 16,
-    marginBottom: 7,
+    marginBottom: 8,
     color: COLORS.text,
-    fontSize: TYPOGRAPHY.secondary,
-    fontWeight: '800',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  requiredMark: {
+    color: COLORS.danger,
   },
 
   modalInput: {
-    minHeight: 112,
+    minHeight: 96,
     paddingHorizontal: 12,
-    paddingTop: 12,
-    paddingBottom: 12,
+    paddingVertical: 11,
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: RADII.md,
+    borderRadius: 11,
     backgroundColor: COLORS.surfaceSoft,
     color: COLORS.text,
-    fontSize: TYPOGRAPHY.body,
-    lineHeight: 20,
+    fontSize: 13,
+    lineHeight: 19,
+  },
+
+  modalInputInvalid: {
+    borderColor: COLORS.danger,
+  },
+
+  reasonInfoRow: {
+    marginTop: 7,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+
+  reasonHelp: {
+    color: COLORS.textMuted,
+    fontSize: 10,
   },
 
   modalCounter: {
-    marginTop: 6,
     color: COLORS.textLight,
-    fontSize: 9,
+    fontSize: 10,
     textAlign: 'right',
   },
 
-  modalActions: {
-    marginTop: 15,
+  modalErrorRow: {
     flexDirection: 'row',
-    gap: 8,
-  },
-
-  modalSecondaryButton: {
-    flex: 1,
-    minHeight: LAYOUT.compactButtonHeight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.surfaceSoft,
-  },
-
-  modalSecondaryText: {
-    color: COLORS.navy,
-    fontSize: TYPOGRAPHY.secondary,
-    fontWeight: '800',
-  },
-
-  modalDangerButton: {
-    flex: 1.3,
-    minHeight: LAYOUT.compactButtonHeight,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
+    alignItems: 'flex-start',
     gap: 6,
-    paddingHorizontal: 12,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.danger,
+    marginTop: 9,
+    padding: 9,
+    borderRadius: 9,
+    backgroundColor: COLORS.dangerSoft,
   },
 
-  modalDangerText: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.secondary,
-    fontWeight: '800',
+  modalErrorText: {
+    flex: 1,
+    color: COLORS.danger,
+    fontSize: 11,
+    lineHeight: 16,
   },
+
+  /* LOADING STATE */
 
   loadingContainer: {
     flex: 1,
@@ -2497,10 +2289,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  /* UNAVAILABLE STATE */
+
   unavailableContainer: {
     flex: 1,
-    paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingHorizontal:
+      LAYOUT.screenPadding,
+    paddingTop: 40,
   },
 
   unavailableContent: {
@@ -2536,7 +2331,8 @@ const styles = StyleSheet.create({
   },
 
   returnButton: {
-    minHeight: LAYOUT.compactButtonHeight,
+    minHeight:
+      LAYOUT.compactButtonHeight,
     marginTop: 16,
     alignItems: 'center',
     justifyContent: 'center',

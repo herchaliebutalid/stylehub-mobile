@@ -1,10 +1,5 @@
-import {
-  Stack,
-} from 'expo-router';
 
-import {
-  StatusBar,
-} from 'expo-status-bar';
+import { Stack } from 'expo-router';
 
 import {
   SafeAreaProvider,
@@ -20,6 +15,25 @@ import {
   InAppNotificationProvider,
 } from '@/src/context/InAppNotificationContext';
 
+/*
+|--------------------------------------------------------------------------
+| StyleHub Root Layout
+|--------------------------------------------------------------------------
+|
+| Each screen controls its own Android status bar.
+|
+| Customer and Shop Owner dashboards:
+| - Dark navy status bar background
+| - White Android status icons
+|
+| Other screens:
+| - Light background
+| - Dark Android status icons
+|
+| Do not place a global StatusBar with style="dark" here.
+|
+*/
+
 export default function RootLayout() {
   return (
     <SafeAreaProvider>
@@ -27,11 +41,11 @@ export default function RootLayout() {
         <InAppNotificationProvider>
           <Stack
             screenOptions={{
-              headerShown:
-                false,
-
-              animation:
-                'fade',
+              headerShown: false,
+              animation: 'fade',
+              contentStyle: {
+                backgroundColor: '#F3F5F7',
+              },
             }}
           >
             <Stack.Screen
@@ -50,10 +64,6 @@ export default function RootLayout() {
               name="(shop-owner)"
             />
           </Stack>
-
-          <StatusBar
-            style="dark"
-          />
         </InAppNotificationProvider>
       </AuthProvider>
     </SafeAreaProvider>

@@ -1,8 +1,6 @@
+
 import { Ionicons } from '@expo/vector-icons';
-import {
-  router,
-  useLocalSearchParams,
-} from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import type { ComponentProps } from 'react';
 import {
   useCallback,
@@ -13,8 +11,6 @@ import {
 } from 'react';
 import {
   ActivityIndicator,
-  Modal,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -22,7 +18,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
+import StyleHubModal from '@/src/components/StyleHubModal';
 import { COLORS } from '@/src/constants/colors';
 import {
   LAYOUT,
@@ -46,16 +44,14 @@ import type {
 
 const MAX_NOTES_LENGTH = 1000;
 
-type IconName =
-  ComponentProps<
-    typeof Ionicons
-  >['name'];
+type IconName = ComponentProps<typeof Ionicons>['name'];
+
+/* ==========================================================
+   HELPERS
+   ========================================================== */
 
 function getRouteValue(
-  value:
-    | string
-    | string[]
-    | undefined,
+  value: string | string[] | undefined,
 ): string {
   return Array.isArray(value)
     ? value[0] ?? ''
@@ -63,494 +59,306 @@ function getRouteValue(
 }
 
 function parsePositiveId(
-  value:
-    | string
-    | string[]
-    | undefined,
+  value: string | string[] | undefined,
 ): number | null {
-  const parsed =
-    Number(
-      getRouteValue(value),
-    );
+  const parsed = Number(getRouteValue(value));
 
-  return Number.isInteger(parsed)
-  &&
-  parsed > 0
+  return Number.isInteger(parsed) && parsed > 0
     ? parsed
     : null;
 }
 
-function formatPrice(
-  value: string | number,
-): string {
-  const numericValue =
-    Number(value);
+function formatPrice(value: string | number): string {
+  const numericValue = Number(value);
 
-  return Number.isNaN(
-    numericValue,
-  )
+  return Number.isNaN(numericValue)
     ? String(value)
-    : `₱${numericValue.toLocaleString(
-        'en-PH',
-        {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        },
-      )}`;
+    : `₱${numericValue.toLocaleString('en-PH', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
 }
 
-function formatAppointmentDate(
-  value: string,
-): string {
-  const parts =
-    value
-      .split('-')
-      .map(Number);
+function formatAppointmentDate(value: string): string {
+  const parts = value.split('-').map(Number);
 
   if (
-    parts.length !== 3
-    ||
-    parts.some(
-      (part) =>
-        !Number.isFinite(part),
-    )
+    parts.length !== 3 ||
+    parts.some((part) => !Number.isFinite(part))
   ) {
     return value;
   }
 
-  const [
+  const [year, month, day] = parts;
+
+  const date = new Date(
     year,
-    month,
+    month - 1,
     day,
-  ] = parts;
+    12,
+    0,
+    0,
+  );
 
-  const date =
-    new Date(
-      year,
-      month - 1,
-      day,
-      12,
-      0,
-      0,
-    );
-
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return value;
   }
 
   try {
-    return new Intl.DateTimeFormat(
-      'en-PH',
-      {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-        timeZone: 'Asia/Manila',
-      },
-    ).format(date);
+    return new Intl.DateTimeFormat('en-PH', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric',
+      timeZone: 'Asia/Manila',
+    }).format(date);
   } catch {
     return value;
   }
 }
 
-function formatTime(
-  value: string,
-): string {
-  const match =
-    value.match(
-      /^(\d{1,2}):(\d{2})/,
-    );
+function formatTime(value: string): string {
+  const match = value.match(/^(\d{1,2}):(\d{2})/);
 
   if (!match) {
     return value;
   }
 
-  const hour24 =
-    Number(match[1]);
-
-  const minute =
-    match[2];
+  const hour24 = Number(match[1]);
+  const minute = match[2];
 
   if (
-    Number.isNaN(hour24)
-    ||
-    hour24 < 0
-    ||
+    Number.isNaN(hour24) ||
+    hour24 < 0 ||
     hour24 > 23
   ) {
     return value;
   }
 
-  const suffix =
-    hour24 >= 12
-      ? 'PM'
-      : 'AM';
-
-  const hour12 =
-    hour24 % 12 || 12;
+  const suffix = hour24 >= 12 ? 'PM' : 'AM';
+  const hour12 = hour24 % 12 || 12;
 
   return `${hour12}:${minute} ${suffix}`;
 }
 
+/* ==========================================================
+   CUSTOMER BOOKING REVIEW SCREEN
+   ========================================================== */
+
 export default function CustomerBookingReviewScreen() {
-  const params =
-    useLocalSearchParams<{
-      shopId?:
-        | string
-        | string[];
+  const params = useLocalSearchParams<{
+    shopId?: string | string[];
+    serviceId?: string | string[];
+    appointmentDate?: string | string[];
+    startsAt?: string | string[];
+    notes?: string | string[];
+  }>();
 
-      serviceId?:
-        | string
-        | string[];
+  const { token } = useAuth();
 
-      appointmentDate?:
-        | string
-        | string[];
+  const shopId = parsePositiveId(params.shopId);
+  const serviceId = parsePositiveId(params.serviceId);
 
-      startsAt?:
-        | string
-        | string[];
+  const appointmentDate = getRouteValue(
+    params.appointmentDate,
+  ).trim();
 
-      notes?:
-        | string
-        | string[];
-    }>();
+  const startsAt = getRouteValue(
+    params.startsAt,
+  ).trim();
 
-  const { token } =
-    useAuth();
+  const notes = getRouteValue(params.notes).trim();
 
-  const shopId =
-    parsePositiveId(
-      params.shopId,
-    );
+  const [shop, setShop] =
+    useState<CustomerShopDetail | null>(null);
 
-  const serviceId =
-    parsePositiveId(
-      params.serviceId,
-    );
+  const [selectedSlot, setSelectedSlot] =
+    useState<CustomerAvailableSlot | null>(null);
 
-  const appointmentDate =
-    getRouteValue(
-      params.appointmentDate,
-    ).trim();
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const startsAt =
-    getRouteValue(
-      params.startsAt,
-    ).trim();
-
-  const notes =
-    getRouteValue(
-      params.notes,
-    ).trim();
-
-  const [
-    shop,
-    setShop,
-  ] =
-    useState<CustomerShopDetail | null>(
-      null,
-    );
-
-  const [
-    selectedSlot,
-    setSelectedSlot,
-  ] =
-    useState<CustomerAvailableSlot | null>(
-      null,
-    );
-
-  const [
-    isLoading,
-    setIsLoading,
-  ] =
-    useState(true);
-
-  const [
-    isSubmitting,
-    setIsSubmitting,
-  ] =
+  const [isSlotUnavailable, setIsSlotUnavailable] =
     useState(false);
 
-  const [
-    isSlotUnavailable,
-    setIsSlotUnavailable,
-  ] =
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
+
+  const [successVisible, setSuccessVisible] =
     useState(false);
 
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] =
-    useState('');
+  /*
+   * Prevent duplicate booking submissions.
+   * These refs are kept separate from UI loading state.
+   */
 
-  const [
-    successMessage,
-    setSuccessMessage,
-  ] =
-    useState('');
+  const confirmationInFlightRef = useRef(false);
+  const bookingCreatedRef = useRef(false);
 
-  const [
-    successVisible,
-    setSuccessVisible,
-  ] =
-    useState(false);
+  /* ========================================================
+     SELECTED SERVICE
+     ======================================================== */
 
-  const confirmationInFlightRef =
-    useRef(false);
-
-  const bookingCreatedRef =
-    useRef(false);
-
-  const selectedService =
-    useMemo<CustomerService | null>(
-      () => {
-        if (
-          !shop
-          ||
-          !serviceId
-        ) {
-          return null;
-        }
-
-        return (
-          shop
-            .services
-            ?.find(
-              (
-                service,
-              ) =>
-                service.id
-                ===
-                serviceId,
-            )
-          ??
-          null
-        );
-      },
-
-      [
-        shop,
-        serviceId,
-      ],
-    );
-
-  const loadCurrentSelectedSlot =
-    useCallback(
-      async (): Promise<CustomerAvailableSlot | null> => {
-        if (
-          !token
-          ||
-          !shopId
-          ||
-          !serviceId
-          ||
-          appointmentDate ===
-          ''
-          ||
-          startsAt ===
-          ''
-        ) {
-          return null;
-        }
-
-        const response =
-          await getCustomerAvailableSlots(
-            token,
-            shopId,
-            serviceId,
-            appointmentDate,
-          );
-
-        return (
-          response
-            .data
-            .slots
-            .find(
-              (
-                slot,
-              ) =>
-                slot.starts_at
-                ===
-                startsAt,
-            )
-          ??
-          null
-        );
-      },
-
-      [
-        appointmentDate,
-        serviceId,
-        shopId,
-        startsAt,
-        token,
-      ],
-    );
-
-  const loadReviewData =
-    useCallback(
-      async (): Promise<void> => {
-        setErrorMessage('');
-        setIsSlotUnavailable(
-          false,
-        );
-
-        if (!token) {
-          setErrorMessage(
-            'You must be signed in to review this booking.',
-          );
-
-          setIsLoading(false);
-
-          return;
-        }
-
-        if (
-          !shopId
-          ||
-          !serviceId
-          ||
-          appointmentDate ===
-          ''
-          ||
-          startsAt ===
-          ''
-        ) {
-          setErrorMessage(
-            'The booking information is incomplete. Please go back and choose your appointment again.',
-          );
-
-          setIsLoading(false);
-
-          return;
-        }
-
-        if (
-          notes.length
-          >
-          MAX_NOTES_LENGTH
-        ) {
-          setErrorMessage(
-            `Booking notes may not exceed ${MAX_NOTES_LENGTH} characters.`,
-          );
-
-          setIsLoading(false);
-
-          return;
-        }
-
-        setIsLoading(true);
-
-        try {
-          const shopResponse =
-            await getCustomerShop(
-              token,
-              shopId,
-            );
-
-          const loadedShop =
-            shopResponse
-              .data
-              .shop;
-
-          setShop(loadedShop);
-
-          if (
-            !loadedShop
-              .availability
-              .accepts_appointments
-          ) {
-            setSelectedSlot(
-              null,
-            );
-
-            setErrorMessage(
-              'This shop is no longer accepting appointment bookings.',
-            );
-
-            return;
-          }
-
-          const service =
-            loadedShop
-              .services
-              ?.find(
-                (
-                  item,
-                ) =>
-                  item.id
-                  ===
-                  serviceId,
-              );
-
-          if (!service) {
-            setSelectedSlot(
-              null,
-            );
-
-            setErrorMessage(
-              'The selected service is no longer available.',
-            );
-
-            return;
-          }
-
-          const slot =
-            await loadCurrentSelectedSlot();
-
-          setSelectedSlot(
-            slot,
-          );
-
-          if (!slot) {
-            setIsSlotUnavailable(
-              true,
-            );
-
-            setErrorMessage(
-              'The selected appointment time is no longer available. Please choose another time.',
-            );
-          }
-        } catch (error) {
-          setSelectedSlot(null);
-
-          setErrorMessage(
-            error instanceof
-              ApiError
-              ? error.message
-              : 'Unable to prepare your booking review right now.',
-          );
-        } finally {
-          setIsLoading(false);
-        }
-      },
-
-      [
-        appointmentDate,
-        loadCurrentSelectedSlot,
-        notes.length,
-        serviceId,
-        shopId,
-        startsAt,
-        token,
-      ],
-    );
-
-  useEffect(
+  const selectedService = useMemo<CustomerService | null>(
     () => {
-      void loadReviewData();
-    },
+      if (!shop || !serviceId) {
+        return null;
+      }
 
+      return (
+        shop.services?.find(
+          (service) => service.id === serviceId,
+        ) ?? null
+      );
+    },
+    [shop, serviceId],
+  );
+
+  /* ========================================================
+     RECHECK SELECTED SLOT
+     ======================================================== */
+
+  const loadCurrentSelectedSlot = useCallback(
+    async (): Promise<CustomerAvailableSlot | null> => {
+      if (
+        !token ||
+        !shopId ||
+        !serviceId ||
+        appointmentDate === '' ||
+        startsAt === ''
+      ) {
+        return null;
+      }
+
+      const response = await getCustomerAvailableSlots(
+        token,
+        shopId,
+        serviceId,
+        appointmentDate,
+      );
+
+      return (
+        response.data.slots.find(
+          (slot) => slot.starts_at === startsAt,
+        ) ?? null
+      );
+    },
     [
-      loadReviewData,
+      appointmentDate,
+      serviceId,
+      shopId,
+      startsAt,
+      token,
     ],
   );
+
+  /* ========================================================
+     LOAD BOOKING REVIEW
+     ======================================================== */
+
+  const loadReviewData = useCallback(
+    async (): Promise<void> => {
+      setErrorMessage('');
+      setIsSlotUnavailable(false);
+
+      if (!token) {
+        setErrorMessage(
+          'You must be signed in to review this booking.',
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      if (
+        !shopId ||
+        !serviceId ||
+        appointmentDate === '' ||
+        startsAt === ''
+      ) {
+        setErrorMessage(
+          'The booking information is incomplete. Please go back and choose your appointment again.',
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      if (notes.length > MAX_NOTES_LENGTH) {
+        setErrorMessage(
+          `Booking notes may not exceed ${MAX_NOTES_LENGTH} characters.`,
+        );
+        setIsLoading(false);
+        return;
+      }
+
+      setIsLoading(true);
+
+      try {
+        const shopResponse = await getCustomerShop(
+          token,
+          shopId,
+        );
+
+        const loadedShop = shopResponse.data.shop;
+        setShop(loadedShop);
+
+        if (!loadedShop.availability.accepts_appointments) {
+          setSelectedSlot(null);
+          setErrorMessage(
+            'This shop is no longer accepting appointment bookings.',
+          );
+          return;
+        }
+
+        const service = loadedShop.services?.find(
+          (item) => item.id === serviceId,
+        );
+
+        if (!service) {
+          setSelectedSlot(null);
+          setErrorMessage(
+            'The selected service is no longer available.',
+          );
+          return;
+        }
+
+        const slot = await loadCurrentSelectedSlot();
+        setSelectedSlot(slot);
+
+        if (!slot) {
+          setIsSlotUnavailable(true);
+          setErrorMessage(
+            'The selected appointment time is no longer available. Please choose another time.',
+          );
+        }
+      } catch (error) {
+        setSelectedSlot(null);
+        setErrorMessage(
+          error instanceof ApiError
+            ? error.message
+            : 'Unable to prepare your booking review right now.',
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    },
+    [
+      appointmentDate,
+      loadCurrentSelectedSlot,
+      notes.length,
+      serviceId,
+      shopId,
+      startsAt,
+      token,
+    ],
+  );
+
+  useEffect(() => {
+    void loadReviewData();
+  }, [loadReviewData]);
+
+  /* ========================================================
+     NAVIGATION
+     ======================================================== */
 
   function handleEditBooking(): void {
     if (!isSubmitting) {
@@ -564,10 +372,13 @@ export default function CustomerBookingReviewScreen() {
     }
   }
 
+  /* ========================================================
+     CONFIRM BOOKING
+     ======================================================== */
+
   async function handleConfirmBooking(): Promise<void> {
     if (
-      confirmationInFlightRef.current
-      ||
+      confirmationInFlightRef.current ||
       bookingCreatedRef.current
     ) {
       return;
@@ -576,132 +387,96 @@ export default function CustomerBookingReviewScreen() {
     setErrorMessage('');
 
     if (
-      !token
-      ||
-      !shop
-      ||
-      !shopId
-      ||
-      !selectedService
-      ||
-      !serviceId
-      ||
-      !selectedSlot
-      ||
-      appointmentDate ===
-      ''
-      ||
-      startsAt ===
-      ''
+      !token ||
+      !shop ||
+      !shopId ||
+      !selectedService ||
+      !serviceId ||
+      !selectedSlot ||
+      appointmentDate === '' ||
+      startsAt === ''
     ) {
       setErrorMessage(
         'The booking information is no longer valid. Please go back and choose your appointment again.',
       );
-
       return;
     }
 
-    if (
-      notes.length
-      >
-      MAX_NOTES_LENGTH
-    ) {
+    if (notes.length > MAX_NOTES_LENGTH) {
       setErrorMessage(
         `Booking notes may not exceed ${MAX_NOTES_LENGTH} characters.`,
       );
-
       return;
     }
 
-    confirmationInFlightRef.current =
-      true;
-
+    confirmationInFlightRef.current = true;
     setIsSubmitting(true);
 
     try {
-      const latestSlot =
-        await loadCurrentSelectedSlot();
+      /*
+       * Recheck the requested slot immediately
+       * before sending the booking transaction.
+       */
 
-      setSelectedSlot(
-        latestSlot,
-      );
+      const latestSlot = await loadCurrentSelectedSlot();
+      setSelectedSlot(latestSlot);
 
       if (!latestSlot) {
-        setIsSlotUnavailable(
-          true,
-        );
-
+        setIsSlotUnavailable(true);
         setErrorMessage(
           'That appointment time is no longer available. Please choose another time before confirming.',
         );
-
         return;
       }
 
-      setIsSlotUnavailable(
-        false,
+      setIsSlotUnavailable(false);
+
+      const response = await createCustomerAppointment(
+        token,
+        {
+          shopId,
+          serviceId,
+          appointmentDate,
+          startsAt,
+          notes,
+        },
       );
 
-      const response =
-        await createCustomerAppointment(
-          token,
-          {
-            shopId,
-            serviceId,
-            appointmentDate,
-            startsAt,
-            notes,
-          },
-        );
+      /*
+       * A successfully created booking must never
+       * be submitted again from this screen.
+       */
 
-      bookingCreatedRef.current =
-        true;
+      bookingCreatedRef.current = true;
 
       setSuccessMessage(
-        response.message
-        ??
-        'Your appointment has been booked successfully.',
+        response.message ??
+          'Your appointment has been booked successfully.',
       );
 
       setSuccessVisible(true);
     } catch (error) {
-      if (
-        error instanceof
-        ApiError
-      ) {
-        if (
-          error.status
-          ===
-          422
-        ) {
+      if (error instanceof ApiError) {
+        if (error.status === 422) {
           try {
             const refreshedSlot =
               await loadCurrentSelectedSlot();
 
-            setSelectedSlot(
-              refreshedSlot,
-            );
+            setSelectedSlot(refreshedSlot);
 
             if (!refreshedSlot) {
-              setIsSlotUnavailable(
-                true,
-              );
-
+              setIsSlotUnavailable(true);
               setErrorMessage(
                 'That appointment time was just taken or is no longer available. Please choose another time.',
               );
-
               return;
             }
           } catch {
-            // Keep the original Laravel validation error below.
+            // Keep the original Laravel validation error.
           }
         }
 
-        setErrorMessage(
-          error.message,
-        );
-
+        setErrorMessage(error.message);
         return;
       }
 
@@ -709,12 +484,14 @@ export default function CustomerBookingReviewScreen() {
         'Unable to confirm your appointment. Please try again.',
       );
     } finally {
-      confirmationInFlightRef.current =
-        false;
-
+      confirmationInFlightRef.current = false;
       setIsSubmitting(false);
     }
   }
+
+  /* ========================================================
+     SUCCESS NAVIGATION
+     ======================================================== */
 
   function handleViewBookings(): void {
     setSuccessVisible(false);
@@ -732,104 +509,86 @@ export default function CustomerBookingReviewScreen() {
     );
   }
 
+  /* ========================================================
+     LOADING SCREEN
+     ======================================================== */
+
   if (isLoading) {
     return (
       <SafeAreaView
+        edges={['top', 'bottom']}
         style={styles.safeArea}
       >
         <StatusBar
           barStyle="dark-content"
-          backgroundColor={
-            COLORS.background
-          }
+          backgroundColor={COLORS.background}
+          translucent={false}
         />
 
-        <View
-          style={
-            styles.loadingContainer
-          }
-        >
-          <View
-            style={
-              styles.loadingIcon
-            }
-          >
+        <View style={styles.loadingContainer}>
+          <View style={styles.loadingIcon}>
             <ActivityIndicator
               size="small"
               color={COLORS.navy}
             />
           </View>
 
-          <Text
-            style={
-              styles.loadingTitle
-            }
-          >
+          <Text style={styles.loadingTitle}>
             Preparing booking review
           </Text>
 
-          <Text
-            style={
-              styles.loadingText
-            }
-          >
-            Rechecking the shop, service, and exact appointment slot before confirmation.
+          <Text style={styles.loadingText}>
+            Rechecking the shop, service, and exact
+            appointment slot before confirmation.
           </Text>
         </View>
       </SafeAreaView>
     );
   }
 
-  const canConfirm =
-    Boolean(
-      token
-      &&
-      shop
-      &&
-      selectedService
-      &&
-      selectedSlot
-      &&
-      !isSlotUnavailable
-      &&
-      shop
-        .availability
-        .accepts_appointments
-      &&
+  /* ========================================================
+     FINAL CONFIRMATION STATE
+     ======================================================== */
+
+  const canConfirm = Boolean(
+    token &&
+      shop &&
+      selectedService &&
+      selectedSlot &&
+      !isSlotUnavailable &&
+      shop.availability.accepts_appointments &&
       !bookingCreatedRef.current,
-    );
+  );
+
+  /* ========================================================
+     MAIN SCREEN
+     ======================================================== */
 
   return (
     <SafeAreaView
+      edges={['top', 'bottom']}
       style={styles.safeArea}
     >
       <StatusBar
         barStyle="dark-content"
-        backgroundColor={
-          COLORS.background
-        }
+        backgroundColor={COLORS.background}
+        translucent={false}
       />
 
       <ScrollView
-        showsVerticalScrollIndicator={
-          false
-        }
-        contentContainerStyle={
-          styles.container
-        }
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.container}
       >
+        {/* TOP NAVIGATION */}
+
         <View style={styles.topBar}>
           <TouchableOpacity
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel="Go back and edit booking"
             disabled={isSubmitting}
-            onPress={
-              handleEditBooking
-            }
-            style={
-              styles.topIconButton
-            }
+            onPress={handleEditBooking}
+            style={styles.topIconButton}
           >
             <Ionicons
               name="arrow-back"
@@ -838,24 +597,12 @@ export default function CustomerBookingReviewScreen() {
             />
           </TouchableOpacity>
 
-          <View
-            style={
-              styles.topBarTitleBlock
-            }
-          >
-            <Text
-              style={
-                styles.topBarTitle
-              }
-            >
+          <View style={styles.topBarTitleBlock}>
+            <Text style={styles.topBarTitle}>
               Review booking
             </Text>
 
-            <Text
-              style={
-                styles.topBarCaption
-              }
-            >
+            <Text style={styles.topBarCaption}>
               Final check before submission
             </Text>
           </View>
@@ -865,12 +612,8 @@ export default function CustomerBookingReviewScreen() {
             accessibilityRole="button"
             accessibilityLabel="Refresh booking review"
             disabled={isSubmitting}
-            onPress={() =>
-              void loadReviewData()
-            }
-            style={
-              styles.topIconButton
-            }
+            onPress={() => void loadReviewData()}
+            style={styles.topIconButton}
           >
             <Ionicons
               name="refresh-outline"
@@ -879,6 +622,8 @@ export default function CustomerBookingReviewScreen() {
             />
           </TouchableOpacity>
         </View>
+
+        {/* PAGE HEADER */}
 
         <View style={styles.header}>
           <Text style={styles.eyebrow}>
@@ -889,12 +634,16 @@ export default function CustomerBookingReviewScreen() {
             Check every detail before booking
           </Text>
 
-          <Text
-            style={styles.subtitle}
-          >
-            StyleHub rechecks the exact slot before sending the final booking request. The Laravel booking transaction remains the final authority if availability changes at the same moment.
+          <Text style={styles.subtitle}>
+            StyleHub rechecks the exact slot before
+            sending the final booking request. The
+            Laravel booking transaction remains the
+            final authority if availability changes
+            at the same moment.
           </Text>
         </View>
+
+        {/* ERROR */}
 
         {errorMessage ? (
           <MessageBox
@@ -903,27 +652,15 @@ export default function CustomerBookingReviewScreen() {
                 ? 'Selected time changed'
                 : 'Booking needs attention'
             }
-            message={
-              errorMessage
-            }
+            message={errorMessage}
           />
         ) : null}
 
-        <View
-          style={
-            styles.reviewHero
-          }
-        >
-          <View
-            style={
-              styles.reviewHeroTopRow
-            }
-          >
-            <View
-              style={
-                styles.reviewHeroIcon
-              }
-            >
+        {/* BOOKING SUMMARY HERO */}
+
+        <View style={styles.reviewHero}>
+          <View style={styles.reviewHeroTopRow}>
+            <View style={styles.reviewHeroIcon}>
               <Ionicons
                 name="calendar-outline"
                 size={24}
@@ -934,12 +671,10 @@ export default function CustomerBookingReviewScreen() {
             <View
               style={[
                 styles.slotBadge,
-
                 {
-                  backgroundColor:
-                    isSlotUnavailable
-                      ? COLORS.dangerSoft
-                      : COLORS.greenSoft,
+                  backgroundColor: isSlotUnavailable
+                    ? COLORS.dangerSoft
+                    : COLORS.greenSoft,
                 },
               ]}
             >
@@ -960,12 +695,10 @@ export default function CustomerBookingReviewScreen() {
               <Text
                 style={[
                   styles.slotBadgeText,
-
                   {
-                    color:
-                      isSlotUnavailable
-                        ? COLORS.danger
-                        : COLORS.green,
+                    color: isSlotUnavailable
+                      ? COLORS.danger
+                      : COLORS.green,
                   },
                 ]}
               >
@@ -976,87 +709,50 @@ export default function CustomerBookingReviewScreen() {
             </View>
           </View>
 
-          <Text
-            style={
-              styles.reviewHeroService
-            }
-          >
-            {selectedService
-              ?.name
-            ??
-            'Selected service'}
+          <Text style={styles.reviewHeroService}>
+            {selectedService?.name ?? 'Selected service'}
           </Text>
 
-          <Text
-            style={
-              styles.reviewHeroShop
-            }
-          >
-            {shop?.name
-            ??
-            'StyleHub Shop'}
+          <Text style={styles.reviewHeroShop}>
+            {shop?.name ?? 'StyleHub Shop'}
           </Text>
 
-          <View
-            style={
-              styles.reviewHeroDetails
-            }
-          >
+          <View style={styles.reviewHeroDetails}>
             <HeroDetail
               icon="calendar-outline"
               label="Date"
               value={
                 appointmentDate
-                  ? formatAppointmentDate(
-                      appointmentDate,
-                    )
+                  ? formatAppointmentDate(appointmentDate)
                   : '—'
               }
             />
 
-            <View
-              style={
-                styles.reviewHeroDivider
-              }
-            />
+            <View style={styles.reviewHeroDivider} />
 
             <HeroDetail
               icon="time-outline"
               label="Time"
               value={
-                selectedSlot
-                  ?.label
-                ??
-                (
-                  startsAt
-                    ? formatTime(
-                        startsAt,
-                      )
-                    : '—'
-                )
+                selectedSlot?.label ??
+                (startsAt ? formatTime(startsAt) : '—')
               }
             />
           </View>
         </View>
+
+        {/* SHOP INFORMATION */}
 
         <SectionHeading
           title="Shop"
           subtitle="Where this appointment request will be sent."
         />
 
-        <View
-          style={
-            styles.detailCard
-          }
-        >
+        <View style={styles.detailCard}>
           <DetailRow
             icon="storefront-outline"
             label="Shop"
-            value={
-              shop?.name
-              ??
-              'Unavailable'
-            }
+            value={shop?.name ?? 'Unavailable'}
           />
 
           <DetailDivider />
@@ -1078,25 +774,18 @@ export default function CustomerBookingReviewScreen() {
           />
         </View>
 
+        {/* SERVICE INFORMATION */}
+
         <SectionHeading
           title="Service"
           subtitle="The selected service, duration, and listed price."
         />
 
-        <View
-          style={
-            styles.detailCard
-          }
-        >
+        <View style={styles.detailCard}>
           <DetailRow
             icon="cut-outline"
             label="Service"
-            value={
-              selectedService
-                ?.name
-              ??
-              'Unavailable'
-            }
+            value={selectedService?.name ?? 'Unavailable'}
           />
 
           <DetailDivider />
@@ -1118,33 +807,27 @@ export default function CustomerBookingReviewScreen() {
             label="Price"
             value={
               selectedService
-                ? formatPrice(
-                    selectedService.price,
-                  )
+                ? formatPrice(selectedService.price)
                 : '—'
             }
             emphasized
           />
         </View>
 
+        {/* APPOINTMENT SCHEDULE */}
+
         <SectionHeading
           title="Schedule"
           subtitle="The exact date and time currently being checked for availability."
         />
 
-        <View
-          style={
-            styles.detailCard
-          }
-        >
+        <View style={styles.detailCard}>
           <DetailRow
             icon="calendar-outline"
             label="Date"
             value={
               appointmentDate
-                ? formatAppointmentDate(
-                    appointmentDate,
-                  )
+                ? formatAppointmentDate(appointmentDate)
                 : '—'
             }
           />
@@ -1155,48 +838,37 @@ export default function CustomerBookingReviewScreen() {
             icon="time-outline"
             label="Start time"
             value={
-              selectedSlot
-                ?.label
-              ??
-              (
-                startsAt
-                  ? formatTime(
-                      startsAt,
-                    )
-                  : '—'
-              )
+              selectedSlot?.label ??
+              (startsAt ? formatTime(startsAt) : '—')
             }
           />
 
-          {selectedSlot
-            ?.ends_at ? (
+          {selectedSlot?.ends_at ? (
             <>
               <DetailDivider />
 
               <DetailRow
                 icon="hourglass-outline"
                 label="Time range"
-                value={`${formatTime(selectedSlot.starts_at)} – ${formatTime(selectedSlot.ends_at)}`}
+                value={`${formatTime(
+                  selectedSlot.starts_at,
+                )} – ${formatTime(
+                  selectedSlot.ends_at,
+                )}`}
               />
             </>
           ) : null}
         </View>
+
+        {/* BOOKING NOTE */}
 
         <SectionHeading
           title="Booking note"
           subtitle="Optional note that will be sent with the appointment."
         />
 
-        <View
-          style={
-            styles.notesCard
-          }
-        >
-          <View
-            style={
-              styles.notesIcon
-            }
-          >
+        <View style={styles.notesCard}>
+          <View style={styles.notesIcon}>
             <Ionicons
               name="document-text-outline"
               size={19}
@@ -1207,11 +879,7 @@ export default function CustomerBookingReviewScreen() {
           <Text
             style={[
               styles.notesText,
-
-              notes ===
-              ''
-              &&
-                styles.emptyNotesText,
+              notes === '' && styles.emptyNotesText,
             ]}
           >
             {notes === ''
@@ -1220,16 +888,10 @@ export default function CustomerBookingReviewScreen() {
           </Text>
         </View>
 
-        <View
-          style={
-            styles.pendingNotice
-          }
-        >
-          <View
-            style={
-              styles.pendingNoticeIcon
-            }
-          >
+        {/* PENDING BOOKING NOTICE */}
+
+        <View style={styles.pendingNotice}>
+          <View style={styles.pendingNoticeIcon}>
             <Ionicons
               name="time-outline"
               size={20}
@@ -1237,40 +899,28 @@ export default function CustomerBookingReviewScreen() {
             />
           </View>
 
-          <View
-            style={
-              styles.pendingNoticeCopy
-            }
-          >
-            <Text
-              style={
-                styles.pendingNoticeTitle
-              }
-            >
+          <View style={styles.pendingNoticeCopy}>
+            <Text style={styles.pendingNoticeTitle}>
               Booking starts as pending
             </Text>
 
-            <Text
-              style={
-                styles.pendingNoticeText
-              }
-            >
-              Confirming creates the appointment request. The Shop Owner must still confirm it before it becomes a confirmed appointment.
+            <Text style={styles.pendingNoticeText}>
+              Confirming creates the appointment
+              request. The Shop Owner must still confirm
+              it before it becomes a confirmed appointment.
             </Text>
           </View>
         </View>
+
+        {/* CONFIRM OR CHOOSE ANOTHER TIME */}
 
         {isSlotUnavailable ? (
           <TouchableOpacity
             activeOpacity={0.84}
             accessibilityRole="button"
             disabled={isSubmitting}
-            onPress={
-              handleChooseAnotherTime
-            }
-            style={
-              styles.chooseAnotherButton
-            }
+            onPress={handleChooseAnotherTime}
+            style={styles.chooseAnotherButton}
           >
             <Ionicons
               name="calendar-outline"
@@ -1278,11 +928,7 @@ export default function CustomerBookingReviewScreen() {
               color={COLORS.white}
             />
 
-            <Text
-              style={
-                styles.chooseAnotherButtonText
-              }
-            >
+            <Text style={styles.chooseAnotherButtonText}>
               Choose another time
             </Text>
           </TouchableOpacity>
@@ -1290,23 +936,11 @@ export default function CustomerBookingReviewScreen() {
           <TouchableOpacity
             activeOpacity={0.84}
             accessibilityRole="button"
-            disabled={
-              isSubmitting
-              ||
-              !canConfirm
-            }
-            onPress={() =>
-              void handleConfirmBooking()
-            }
+            disabled={isSubmitting || !canConfirm}
+            onPress={() => void handleConfirmBooking()}
             style={[
               styles.confirmButton,
-
-              (
-                isSubmitting
-                ||
-                !canConfirm
-              )
-              &&
+              (isSubmitting || !canConfirm) &&
                 styles.disabledButton,
             ]}
           >
@@ -1323,11 +957,7 @@ export default function CustomerBookingReviewScreen() {
               />
             )}
 
-            <Text
-              style={
-                styles.confirmButtonText
-              }
-            >
+            <Text style={styles.confirmButtonText}>
               {isSubmitting
                 ? 'Confirming booking...'
                 : 'Confirm booking'}
@@ -1335,17 +965,15 @@ export default function CustomerBookingReviewScreen() {
           </TouchableOpacity>
         )}
 
+        {/* EDIT BOOKING */}
+
         {!isSlotUnavailable ? (
           <TouchableOpacity
             activeOpacity={0.76}
             accessibilityRole="button"
             disabled={isSubmitting}
-            onPress={
-              handleEditBooking
-            }
-            style={
-              styles.editButton
-            }
+            onPress={handleEditBooking}
+            style={styles.editButton}
           >
             <Ionicons
               name="create-outline"
@@ -1353,31 +981,23 @@ export default function CustomerBookingReviewScreen() {
               color={COLORS.navy}
             />
 
-            <Text
-              style={
-                styles.editButtonText
-              }
-            >
+            <Text style={styles.editButtonText}>
               Edit booking
             </Text>
           </TouchableOpacity>
         ) : null}
 
-        {errorMessage
-        &&
-        !isSlotUnavailable
-        &&
+        {/* RETRY REVIEW */}
+
+        {errorMessage &&
+        !isSlotUnavailable &&
         !canConfirm ? (
           <TouchableOpacity
             activeOpacity={0.76}
             accessibilityRole="button"
             disabled={isSubmitting}
-            onPress={() =>
-              void loadReviewData()
-            }
-            style={
-              styles.refreshButton
-            }
+            onPress={() => void loadReviewData()}
+            style={styles.refreshButton}
           >
             <Ionicons
               name="refresh-outline"
@@ -1385,135 +1005,58 @@ export default function CustomerBookingReviewScreen() {
               color={COLORS.navy}
             />
 
-            <Text
-              style={
-                styles.refreshButtonText
-              }
-            >
+            <Text style={styles.refreshButtonText}>
               Refresh review
             </Text>
           </TouchableOpacity>
         ) : null}
       </ScrollView>
 
-      <Modal
-        visible={
-          successVisible
-        }
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={
-          handleSuccessDone
-        }
+      {/* ================================================
+          SHARED COMPACT STYLEHUB SUCCESS MODAL
+          ================================================ */}
+
+      <StyleHubModal
+        visible={successVisible}
+        onClose={handleSuccessDone}
+        title="Appointment booked"
+        message={successMessage}
+        tone="success"
+        icon="checkmark-circle-outline"
+        dismissOnBackdrop={false}
+        actions={[
+          {
+            label: 'Done',
+            variant: 'secondary',
+            onPress: handleSuccessDone,
+          },
+          {
+            label: 'View bookings',
+            variant: 'primary',
+            icon: 'arrow-forward',
+            onPress: handleViewBookings,
+          },
+        ]}
       >
-        <View
-          style={
-            styles.modalOverlay
-          }
-        >
-          <View
-            style={
-              styles.successModal
-            }
-          >
-            <View
-              style={
-                styles.successIcon
-              }
-            >
-              <Ionicons
-                name="checkmark"
-                size={30}
-                color={COLORS.white}
-              />
-            </View>
+        <View style={styles.modalPendingNotice}>
+          <Ionicons
+            name="time-outline"
+            size={16}
+            color={COLORS.navy}
+          />
 
-            <Text
-              style={
-                styles.successTitle
-              }
-            >
-              Appointment booked
-            </Text>
-
-            <Text
-              style={
-                styles.successDescription
-              }
-            >
-              {successMessage}
-            </Text>
-
-            <View
-              style={
-                styles.modalPendingNotice
-              }
-            >
-              <Ionicons
-                name="time-outline"
-                size={18}
-                color={COLORS.violet}
-              />
-
-              <Text
-                style={
-                  styles.modalPendingText
-                }
-              >
-                The appointment is pending until the Shop Owner confirms it.
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              activeOpacity={0.84}
-              accessibilityRole="button"
-              onPress={
-                handleViewBookings
-              }
-              style={
-                styles.viewBookingsButton
-              }
-            >
-              <Text
-                style={
-                  styles.viewBookingsText
-                }
-              >
-                View my bookings
-              </Text>
-
-              <Ionicons
-                name="arrow-forward"
-                size={17}
-                color={COLORS.white}
-              />
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              activeOpacity={0.72}
-              accessibilityRole="button"
-              onPress={
-                handleSuccessDone
-              }
-              style={
-                styles.doneButton
-              }
-            >
-              <Text
-                style={
-                  styles.doneText
-                }
-              >
-                Done
-              </Text>
-            </TouchableOpacity>
-          </View>
+          <Text style={styles.modalPendingText}>
+            Pending Shop Owner confirmation.
+          </Text>
         </View>
-      </Modal>
+      </StyleHubModal>
     </SafeAreaView>
   );
 }
+
+/* ==========================================================
+   SECTION HEADING
+   ========================================================== */
 
 function SectionHeading({
   title,
@@ -1523,29 +1066,21 @@ function SectionHeading({
   subtitle: string;
 }) {
   return (
-    <View
-      style={
-        styles.sectionHeading
-      }
-    >
-      <Text
-        style={
-          styles.sectionTitle
-        }
-      >
+    <View style={styles.sectionHeading}>
+      <Text style={styles.sectionTitle}>
         {title}
       </Text>
 
-      <Text
-        style={
-          styles.sectionSubtitle
-        }
-      >
+      <Text style={styles.sectionSubtitle}>
         {subtitle}
       </Text>
     </View>
   );
 }
+
+/* ==========================================================
+   HERO DETAIL
+   ========================================================== */
 
 function HeroDetail({
   icon,
@@ -1557,42 +1092,32 @@ function HeroDetail({
   value: string;
 }) {
   return (
-    <View
-      style={
-        styles.heroDetail
-      }
-    >
-      <View
-        style={
-          styles.heroDetailLabelRow
-        }
-      >
+    <View style={styles.heroDetail}>
+      <View style={styles.heroDetailLabelRow}>
         <Ionicons
           name={icon}
           size={13}
           color="#AEB8C5"
         />
 
-        <Text
-          style={
-            styles.heroDetailLabel
-          }
-        >
+        <Text style={styles.heroDetailLabel}>
           {label}
         </Text>
       </View>
 
       <Text
         numberOfLines={2}
-        style={
-          styles.heroDetailValue
-        }
+        style={styles.heroDetailValue}
       >
         {value}
       </Text>
     </View>
   );
 }
+
+/* ==========================================================
+   DETAIL ROW
+   ========================================================== */
 
 function DetailRow({
   icon,
@@ -1606,16 +1131,8 @@ function DetailRow({
   emphasized?: boolean;
 }) {
   return (
-    <View
-      style={
-        styles.detailRow
-      }
-    >
-      <View
-        style={
-          styles.detailIcon
-        }
-      >
+    <View style={styles.detailRow}>
+      <View style={styles.detailIcon}>
         <Ionicons
           name={icon}
           size={18}
@@ -1623,16 +1140,8 @@ function DetailRow({
         />
       </View>
 
-      <View
-        style={
-          styles.detailCopy
-        }
-      >
-        <Text
-          style={
-            styles.detailLabel
-          }
-        >
+      <View style={styles.detailCopy}>
+        <Text style={styles.detailLabel}>
           {label}
         </Text>
 
@@ -1640,10 +1149,7 @@ function DetailRow({
           numberOfLines={3}
           style={[
             styles.detailValue,
-
-            emphasized
-            &&
-              styles.detailValueEmphasized,
+            emphasized && styles.detailValueEmphasized,
           ]}
         >
           {value}
@@ -1653,15 +1159,17 @@ function DetailRow({
   );
 }
 
+/* ==========================================================
+   DETAIL DIVIDER
+   ========================================================== */
+
 function DetailDivider() {
-  return (
-    <View
-      style={
-        styles.detailDivider
-      }
-    />
-  );
+  return <View style={styles.detailDivider} />;
 }
+
+/* ==========================================================
+   MESSAGE BOX
+   ========================================================== */
 
 function MessageBox({
   title,
@@ -1693,6 +1201,10 @@ function MessageBox({
   );
 }
 
+/* ==========================================================
+   COMPLETE SCREEN STYLES
+   ========================================================== */
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -1704,9 +1216,11 @@ const styles = StyleSheet.create({
     maxWidth: LAYOUT.contentMaxWidth,
     alignSelf: 'center',
     paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingTop: 40,
     paddingBottom: 48,
   },
+
+  /* TOP NAVIGATION */
 
   topBar: {
     minHeight: 48,
@@ -1741,6 +1255,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  /* PAGE HEADER */
+
   header: {
     marginTop: SPACING.lg,
   },
@@ -1769,6 +1285,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.body,
     lineHeight: 21,
   },
+
+  /* ERROR MESSAGE */
 
   errorBox: {
     marginTop: SPACING.lg,
@@ -1805,6 +1323,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 18,
   },
+
+  /* REVIEW SUMMARY HERO */
 
   reviewHero: {
     marginTop: SPACING.xl,
@@ -1900,6 +1420,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.navyMuted,
   },
 
+  /* SECTION HEADING */
+
   sectionHeading: {
     marginTop: SPACING.xxl,
     marginBottom: 12,
@@ -1918,6 +1440,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 17,
   },
+
+  /* DETAIL CARDS */
 
   detailCard: {
     overflow: 'hidden',
@@ -1977,6 +1501,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.border,
   },
 
+  /* BOOKING NOTES */
+
   notesCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -2008,6 +1534,8 @@ const styles = StyleSheet.create({
     color: COLORS.textLight,
     fontStyle: 'italic',
   },
+
+  /* PENDING NOTICE */
 
   pendingNotice: {
     marginTop: 12,
@@ -2045,6 +1573,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
+  /* CONFIRM BOOKING */
+
   confirmButton: {
     minHeight: LAYOUT.buttonHeight,
     marginTop: 14,
@@ -2079,6 +1609,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
+  /* EDIT BOOKING */
+
   editButton: {
     minHeight: LAYOUT.compactButtonHeight,
     marginTop: 8,
@@ -2097,6 +1629,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.secondary,
     fontWeight: '800',
   },
+
+  /* REFRESH BOOKING REVIEW */
 
   refreshButton: {
     minHeight: LAYOUT.compactButtonHeight,
@@ -2117,96 +1651,33 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
-  modalOverlay: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 18,
-    backgroundColor:
-      'rgba(0, 0, 0, 0.42)',
-  },
-
-  successModal: {
-    width: '100%',
-    maxWidth: 500,
-    padding: 18,
-    borderRadius: RADII.xl,
-    backgroundColor: COLORS.surface,
-    ...SHADOWS.floating,
-  },
-
-  successIcon: {
-    width: 58,
-    height: 58,
-    alignSelf: 'center',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 29,
-    backgroundColor: COLORS.green,
-  },
-
-  successTitle: {
-    marginTop: 13,
-    color: COLORS.text,
-    fontSize: TYPOGRAPHY.section,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-
-  successDescription: {
-    marginTop: 6,
-    color: COLORS.textMuted,
-    fontSize: TYPOGRAPHY.body,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
+  /* ================================================
+     SMALL PENDING LABEL IN SHARED MODAL
+     ================================================ */
 
   modalPendingNotice: {
-    marginTop: 15,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    padding: 11,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.violetSoft,
-  },
-
-  modalPendingText: {
-    flex: 1,
-    color: COLORS.textMuted,
-    fontSize: TYPOGRAPHY.micro,
-    lineHeight: 16,
-  },
-
-  viewBookingsButton: {
-    minHeight: LAYOUT.buttonHeight,
-    marginTop: 16,
+    width: '100%',
+    minHeight: 38,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
     borderRadius: RADII.md,
-    backgroundColor: COLORS.primary,
+    backgroundColor: COLORS.surfaceSoft,
   },
 
-  viewBookingsText: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.body,
-    fontWeight: '800',
+  modalPendingText: {
+    flexShrink: 1,
+    color: COLORS.textMuted,
+    fontSize: TYPOGRAPHY.micro,
+    lineHeight: 16,
+    fontWeight: '600',
+    textAlign: 'center',
   },
 
-  doneButton: {
-    minHeight: LAYOUT.compactButtonHeight,
-    marginTop: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-
-  doneText: {
-    color: COLORS.navy,
-    fontSize: TYPOGRAPHY.secondary,
-    fontWeight: '800',
-  },
+  /* LOADING SCREEN */
 
   loadingContainer: {
     flex: 1,

@@ -1,3 +1,4 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 import { router } from 'expo-router';
@@ -11,7 +12,6 @@ import {
 import {
   ActivityIndicator,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -19,6 +19,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import LeafletMap from '@/src/components/LeafletMap';
 import { COLORS } from '@/src/constants/colors';
@@ -100,16 +101,27 @@ function getMapZoom(
 export default function ShopOwnerLocationScreen() {
   const { token } = useAuth();
 
-  const [location, setLocation] = useState<ShopLocation | null>(null);
-  const [draftCoordinate, setDraftCoordinate] = useState<Coordinate | null>(null);
-  const [currentUserCoordinate, setCurrentUserCoordinate] = useState<Coordinate | null>(null);
-  const [mapRegion, setMapRegion] = useState<MapRegion>(DEFAULT_REGION);
+  const [location, setLocation] =
+    useState<ShopLocation | null>(null);
+
+  const [draftCoordinate, setDraftCoordinate] =
+    useState<Coordinate | null>(null);
+
+  const [currentUserCoordinate, setCurrentUserCoordinate] =
+    useState<Coordinate | null>(null);
+
+  const [mapRegion, setMapRegion] =
+    useState<MapRegion>(DEFAULT_REGION);
+
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isLocating, setIsLocating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+
+  /* LOAD SHOP LOCATION */
 
   const loadLocation = useCallback(
     async (
@@ -136,9 +148,9 @@ export default function ShopOwnerLocationScreen() {
         setLocation(loadedLocation);
 
         if (
-          loadedLocation.has_location
-          && loadedLocation.latitude !== null
-          && loadedLocation.longitude !== null
+          loadedLocation.has_location &&
+          loadedLocation.latitude !== null &&
+          loadedLocation.longitude !== null
         ) {
           const coordinate: Coordinate = {
             latitude: loadedLocation.latitude,
@@ -169,15 +181,17 @@ export default function ShopOwnerLocationScreen() {
     void loadLocation();
   }, [loadLocation]);
 
+  /* DETECT UNSAVED CHANGES */
+
   const isDirty = useMemo(() => {
     if (!draftCoordinate) {
       return false;
     }
 
     if (
-      !location
-      || location.latitude === null
-      || location.longitude === null
+      !location ||
+      location.latitude === null ||
+      location.longitude === null
     ) {
       return true;
     }
@@ -185,17 +199,17 @@ export default function ShopOwnerLocationScreen() {
     return (
       Math.abs(
         draftCoordinate.latitude - location.latitude,
-      ) > 0.00000005
-      || Math.abs(
+      ) > 0.00000005 ||
+      Math.abs(
         draftCoordinate.longitude - location.longitude,
       ) > 0.00000005
     );
   }, [draftCoordinate, location]);
 
   const hasSavedLocation = Boolean(
-    location?.has_location
-    && location.latitude !== null
-    && location.longitude !== null,
+    location?.has_location &&
+    location.latitude !== null &&
+    location.longitude !== null,
   );
 
   const mapZoom = useMemo(
@@ -218,6 +232,8 @@ export default function ShopOwnerLocationScreen() {
       .join(', ');
   }, [location]);
 
+  /* PIN STATUS */
+
   const pinStatus = !draftCoordinate
     ? {
         label: 'Pin not set',
@@ -239,6 +255,8 @@ export default function ShopOwnerLocationScreen() {
           icon: 'checkmark-circle-outline' as IconName,
         };
 
+  /* SELECT COORDINATES */
+
   const selectCoordinate = useCallback(
     (
       coordinate: Coordinate,
@@ -258,6 +276,8 @@ export default function ShopOwnerLocationScreen() {
     },
     [],
   );
+
+  /* MAP EVENTS */
 
   const handleMapPress = useCallback(
     (
@@ -289,13 +309,15 @@ export default function ShopOwnerLocationScreen() {
     [],
   );
 
+  /* RESTORE SAVED PIN */
+
   function resetToSavedLocation(): void {
     if (
-      !location
-      || location.latitude === null
-      || location.longitude === null
-      || isSaving
-      || isLocating
+      !location ||
+      location.latitude === null ||
+      location.longitude === null ||
+      isSaving ||
+      isLocating
     ) {
       return;
     }
@@ -311,6 +333,8 @@ export default function ShopOwnerLocationScreen() {
     setSuccessMessage('');
   }
 
+  /* GET DEVICE LOCATION */
+
   async function handleUseCurrentLocation(): Promise<void> {
     if (isLocating || isSaving) {
       return;
@@ -321,7 +345,8 @@ export default function ShopOwnerLocationScreen() {
     setSuccessMessage('');
 
     try {
-      const permission = await Location.requestForegroundPermissionsAsync();
+      const permission =
+        await Location.requestForegroundPermissionsAsync();
 
       if (!permission.granted) {
         setCurrentUserCoordinate(null);
@@ -331,9 +356,10 @@ export default function ShopOwnerLocationScreen() {
         return;
       }
 
-      const currentPosition = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.High,
-      });
+      const currentPosition =
+        await Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.High,
+        });
 
       const coordinate: Coordinate = {
         latitude: currentPosition.coords.latitude,
@@ -352,12 +378,14 @@ export default function ShopOwnerLocationScreen() {
     }
   }
 
+  /* SAVE SHOP LOCATION */
+
   async function saveLocation(): Promise<void> {
     if (
-      !token
-      || !draftCoordinate
-      || isSaving
-      || !isDirty
+      !token ||
+      !draftCoordinate ||
+      isSaving ||
+      !isDirty
     ) {
       return;
     }
@@ -380,8 +408,8 @@ export default function ShopOwnerLocationScreen() {
       setLocation(savedLocation);
 
       if (
-        savedLocation.latitude !== null
-        && savedLocation.longitude !== null
+        savedLocation.latitude !== null &&
+        savedLocation.longitude !== null
       ) {
         const savedCoordinate: Coordinate = {
           latitude: savedLocation.latitude,
@@ -393,8 +421,8 @@ export default function ShopOwnerLocationScreen() {
       }
 
       setSuccessMessage(
-        response.message
-        ?? 'Shop location updated successfully.',
+        response.message ??
+          'Shop location updated successfully.',
       );
     } catch (error) {
       setErrorMessage(
@@ -407,11 +435,17 @@ export default function ShopOwnerLocationScreen() {
     }
   }
 
+  /* MAIN SCREEN */
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView
+      edges={['top', 'bottom']}
+      style={styles.safeArea}
+    >
       <StatusBar
         barStyle="dark-content"
         backgroundColor={COLORS.background}
+        translucent={false}
       />
 
       <ScrollView
@@ -426,6 +460,8 @@ export default function ShopOwnerLocationScreen() {
         }
         contentContainerStyle={styles.container}
       >
+        {/* TOP NAVIGATION */}
+
         <View style={styles.topBar}>
           <TouchableOpacity
             activeOpacity={0.7}
@@ -459,7 +495,8 @@ export default function ShopOwnerLocationScreen() {
             onPress={() => void loadLocation(true)}
             style={[
               styles.topIconButton,
-              (isSaving || isLocating) && styles.disabledButton,
+              (isSaving || isLocating) &&
+                styles.disabledButton,
             ]}
           >
             <Ionicons
@@ -469,6 +506,8 @@ export default function ShopOwnerLocationScreen() {
             />
           </TouchableOpacity>
         </View>
+
+        {/* PAGE HEADER */}
 
         <View style={styles.header}>
           <Text style={styles.eyebrow}>
@@ -480,9 +519,13 @@ export default function ShopOwnerLocationScreen() {
           </Text>
 
           <Text style={styles.subtitle}>
-            Place the pin on your real shop location. Customers use the saved coordinates when viewing your shop on the map and opening directions.
+            Place the pin on your real shop location.
+            Customers use the saved coordinates when viewing
+            your shop on the map and opening directions.
           </Text>
         </View>
+
+        {/* ERROR MESSAGE */}
 
         {errorMessage ? (
           <MessageBox
@@ -492,6 +535,8 @@ export default function ShopOwnerLocationScreen() {
           />
         ) : null}
 
+        {/* SUCCESS MESSAGE */}
+
         {successMessage ? (
           <MessageBox
             type="success"
@@ -499,6 +544,8 @@ export default function ShopOwnerLocationScreen() {
             message={successMessage}
           />
         ) : null}
+
+        {/* LOADING STATE */}
 
         {isLoading ? (
           <View style={styles.loadingCard}>
@@ -519,6 +566,8 @@ export default function ShopOwnerLocationScreen() {
           </View>
         ) : (
           <>
+            {/* SHOP LOCATION OVERVIEW */}
+
             <View style={styles.overviewCard}>
               <View style={styles.overviewTopRow}>
                 <View style={styles.overviewIcon}>
@@ -596,6 +645,8 @@ export default function ShopOwnerLocationScreen() {
               </View>
             </View>
 
+            {/* MAP SECTION */}
+
             <SectionHeading
               title="Place the shop pin"
               subtitle="Tap the map to choose a location, or drag the shop marker for a more precise position."
@@ -617,10 +668,13 @@ export default function ShopOwnerLocationScreen() {
                   </Text>
 
                   <Text style={styles.mapHeaderText}>
-                    Tap or drag the pin, then save the coordinates below.
+                    Tap or drag the pin, then save the
+                    coordinates below.
                   </Text>
                 </View>
               </View>
+
+              {/* INTERACTIVE LEAFLET MAP */}
 
               <View style={styles.mapFrame}>
                 <LeafletMap
@@ -637,8 +691,11 @@ export default function ShopOwnerLocationScreen() {
                             id: 'shop-location',
                             coordinate: draftCoordinate,
                             draggable: true,
-                            title: location?.shop_name ?? 'Shop location',
-                            description: 'Drag this pin to fine-tune the location.',
+                            title:
+                              location?.shop_name ??
+                              'Shop location',
+                            description:
+                              'Drag this pin to fine-tune the location.',
                           },
                         ]
                       : []
@@ -649,6 +706,8 @@ export default function ShopOwnerLocationScreen() {
                   onMapError={handleMapError}
                 />
               </View>
+
+              {/* MAP LEGEND */}
 
               <View style={styles.mapLegend}>
                 <LegendItem
@@ -662,6 +721,8 @@ export default function ShopOwnerLocationScreen() {
                 />
               </View>
             </View>
+
+            {/* LOCATION INSTRUCTIONS */}
 
             <View style={styles.instructionsCard}>
               <InstructionRow
@@ -687,15 +748,20 @@ export default function ShopOwnerLocationScreen() {
               />
             </View>
 
+            {/* USE CURRENT LOCATION */}
+
             <TouchableOpacity
               activeOpacity={0.82}
               disabled={isLocating || isSaving}
               accessibilityRole="button"
               accessibilityLabel="Use my current location"
-              onPress={() => void handleUseCurrentLocation()}
+              onPress={() =>
+                void handleUseCurrentLocation()
+              }
               style={[
                 styles.currentLocationButton,
-                (isLocating || isSaving) && styles.disabledButton,
+                (isLocating || isSaving) &&
+                  styles.disabledButton,
               ]}
             >
               <View style={styles.currentLocationButtonIcon}>
@@ -736,6 +802,8 @@ export default function ShopOwnerLocationScreen() {
               ) : null}
             </TouchableOpacity>
 
+            {/* SELECTED COORDINATES */}
+
             <SectionHeading
               title="Selected coordinates"
               subtitle="These exact latitude and longitude values are sent to Laravel when you save."
@@ -745,11 +813,9 @@ export default function ShopOwnerLocationScreen() {
               <CoordinateRow
                 icon="navigate-outline"
                 label="Latitude"
-                value={
-                  formatCoordinate(
-                    draftCoordinate?.latitude ?? null,
-                  )
-                }
+                value={formatCoordinate(
+                  draftCoordinate?.latitude ?? null,
+                )}
               />
 
               <View style={styles.coordinateDivider} />
@@ -757,13 +823,13 @@ export default function ShopOwnerLocationScreen() {
               <CoordinateRow
                 icon="compass-outline"
                 label="Longitude"
-                value={
-                  formatCoordinate(
-                    draftCoordinate?.longitude ?? null,
-                  )
-                }
+                value={formatCoordinate(
+                  draftCoordinate?.longitude ?? null,
+                )}
               />
             </View>
+
+            {/* RESTORE SAVED LOCATION */}
 
             {isDirty && hasSavedLocation ? (
               <TouchableOpacity
@@ -785,6 +851,8 @@ export default function ShopOwnerLocationScreen() {
                 </Text>
               </TouchableOpacity>
             ) : null}
+
+            {/* SAVE LOCATION */}
 
             <View style={styles.saveCard}>
               <View style={styles.saveHeader}>
@@ -822,10 +890,10 @@ export default function ShopOwnerLocationScreen() {
               <TouchableOpacity
                 activeOpacity={0.84}
                 disabled={
-                  !draftCoordinate
-                  || !isDirty
-                  || isSaving
-                  || isLocating
+                  !draftCoordinate ||
+                  !isDirty ||
+                  isSaving ||
+                  isLocating
                 }
                 accessibilityRole="button"
                 accessibilityLabel="Save shop location"
@@ -833,10 +901,10 @@ export default function ShopOwnerLocationScreen() {
                 style={[
                   styles.primaryButton,
                   (
-                    !draftCoordinate
-                    || !isDirty
-                    || isSaving
-                    || isLocating
+                    !draftCoordinate ||
+                    !isDirty ||
+                    isSaving ||
+                    isLocating
                   ) && styles.disabledButton,
                 ]}
               >
@@ -873,6 +941,8 @@ export default function ShopOwnerLocationScreen() {
   );
 }
 
+/* SECTION HEADING */
+
 function SectionHeading({
   title,
   subtitle,
@@ -892,6 +962,8 @@ function SectionHeading({
     </View>
   );
 }
+
+/* OVERVIEW ITEM */
 
 function OverviewItem({
   label,
@@ -915,6 +987,8 @@ function OverviewItem({
     </View>
   );
 }
+
+/* MAP LEGEND ITEM */
 
 function LegendItem({
   color,
@@ -940,6 +1014,8 @@ function LegendItem({
     </View>
   );
 }
+
+/* LOCATION INSTRUCTION */
 
 function InstructionRow({
   icon,
@@ -972,6 +1048,8 @@ function InstructionRow({
     </View>
   );
 }
+
+/* COORDINATE ROW */
 
 function CoordinateRow({
   icon,
@@ -1008,6 +1086,8 @@ function CoordinateRow({
   );
 }
 
+/* MESSAGE BOX */
+
 function MessageBox({
   type,
   title,
@@ -1024,10 +1104,9 @@ function MessageBox({
       style={[
         styles.messageBox,
         {
-          backgroundColor:
-            success
-              ? COLORS.successSoft
-              : COLORS.dangerSoft,
+          backgroundColor: success
+            ? COLORS.successSoft
+            : COLORS.dangerSoft,
         },
       ]}
     >
@@ -1052,10 +1131,9 @@ function MessageBox({
           style={[
             styles.messageTitle,
             {
-              color:
-                success
-                  ? COLORS.success
-                  : COLORS.danger,
+              color: success
+                ? COLORS.success
+                : COLORS.danger,
             },
           ]}
         >
@@ -1070,18 +1148,22 @@ function MessageBox({
   );
 }
 
+/* STYLES */
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
 
+  // UPDATED: Same 40px top spacing
+  // as your other Shop Owner screens.
   container: {
     width: '100%',
     maxWidth: LAYOUT.contentMaxWidth,
     alignSelf: 'center',
     paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingTop: 40,
     paddingBottom: 48,
   },
 
@@ -1324,6 +1406,8 @@ const styles = StyleSheet.create({
     lineHeight: 17,
   },
 
+  /* LEAFLET MAP */
+
   mapCard: {
     overflow: 'hidden',
     borderWidth: 1,
@@ -1411,6 +1495,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  /* LOCATION INSTRUCTIONS */
+
   instructionsCard: {
     marginTop: 12,
     overflow: 'hidden',
@@ -1461,6 +1547,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.border,
   },
 
+  /* CURRENT LOCATION */
+
   currentLocationButton: {
     minHeight: 68,
     marginTop: 12,
@@ -1500,6 +1588,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.micro,
     lineHeight: 16,
   },
+
+  /* COORDINATES */
 
   coordinateCard: {
     overflow: 'hidden',
@@ -1550,6 +1640,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.border,
   },
 
+  /* RESTORE BUTTON */
+
   restoreButton: {
     minHeight: LAYOUT.compactButtonHeight,
     marginTop: 10,
@@ -1569,6 +1661,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.secondary,
     fontWeight: '800',
   },
+
+  /* SAVE LOCATION */
 
   saveCard: {
     marginTop: 14,

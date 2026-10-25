@@ -1,3 +1,4 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import type { ComponentProps } from 'react';
@@ -6,7 +7,6 @@ import {
   ActivityIndicator,
   Image,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -14,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import ShopOwnerAvatar from '@/src/components/ShopOwnerAvatar';
 import { COLORS } from '@/src/constants/colors';
@@ -32,6 +33,7 @@ import {
   getCustomerShops,
 } from '@/src/services/customer-api';
 import { getCustomerProfile } from '@/src/services/customer-profile-api';
+
 import type { AuthUser } from '@/src/types/auth';
 import type {
   AppointmentStatus,
@@ -40,16 +42,35 @@ import type {
   ShopAvailabilityStatus,
 } from '@/src/types/customer';
 
+/* ==========================================================
+   STYLEHUB THEME
+   ========================================================== */
+
+const THEME = {
+  navy: '#08131F',
+  navyDark: '#06101A',
+  navyLight: '#162635',
+  orange: '#D99202',
+  orangeDark: '#C78200',
+  orangeSoft: '#F8E8CC',
+  white: '#FFFFFF',
+  background: '#F3F5F7',
+  surfaceSoft: '#F7F8FA',
+  text: '#152432',
+  muted: '#6B7A89',
+  mutedLight: '#B7C2CE',
+  border: '#E7EBF0',
+  iconSoft: '#EDF1F5',
+};
+
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
-function formatBadgeCount(
-  count: number,
-): string {
-  if (count > 99) {
-    return '99+';
-  }
+/* ==========================================================
+   HELPERS
+   ========================================================== */
 
-  return String(count);
+function formatBadgeCount(count: number): string {
+  return count > 99 ? '99+' : String(count);
 }
 
 function customerDisplayName(
@@ -57,8 +78,8 @@ function customerDisplayName(
   fallbackUser: AuthUser | null,
 ): string {
   const fullName =
-    accountUser?.full_name?.trim()
-    || fallbackUser?.full_name?.trim();
+    accountUser?.full_name?.trim() ||
+    fallbackUser?.full_name?.trim();
 
   if (fullName) {
     return fullName;
@@ -73,8 +94,7 @@ function customerDisplayName(
   ]
     .filter(
       (value): value is string =>
-        typeof value === 'string'
-        && value.trim() !== '',
+        typeof value === 'string' && value.trim() !== '',
     )
     .join(' ')
     .trim();
@@ -87,61 +107,48 @@ function firstNameFromUser(
   fallbackUser: AuthUser | null,
 ): string {
   const explicit =
-    accountUser?.first_name?.trim()
-    || fallbackUser?.first_name?.trim();
+    accountUser?.first_name?.trim() ||
+    fallbackUser?.first_name?.trim();
 
   if (explicit) {
     return explicit;
   }
 
-  return customerDisplayName(
-    accountUser,
-    fallbackUser,
-  )
-    .split(/\s+/)
-    .filter(Boolean)[0]
-    || 'Customer';
+  return (
+    customerDisplayName(accountUser, fallbackUser)
+      .split(/\s+/)
+      .filter(Boolean)[0] || 'Customer'
+  );
 }
 
-function formatDate(
-  value: string,
-): string {
+function formatDate(value: string): string {
   const parts = value.split('-').map(Number);
 
   if (
-    parts.length !== 3
-    || parts.some((part) => Number.isNaN(part))
+    parts.length !== 3 ||
+    parts.some((part) => Number.isNaN(part))
   ) {
     return value;
   }
 
-  const [
-    year,
-    month,
-    day,
-  ] = parts;
+  const [year, month, day] = parts;
 
-  return new Intl.DateTimeFormat(
-    'en-PH',
-    {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      timeZone: 'Asia/Manila',
-    },
-  ).format(
+  return new Intl.DateTimeFormat('en-PH', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone: 'Asia/Manila',
+  }).format(
     new Date(
-      `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00+08:00`,
+      `${year}-${String(month).padStart(2, '0')}-${String(
+        day,
+      ).padStart(2, '0')}T12:00:00+08:00`,
     ),
   );
 }
 
-function formatTime(
-  value: string,
-): string {
-  const match = value.match(
-    /^(\d{1,2}):(\d{2})/,
-  );
+function formatTime(value: string): string {
+  const match = value.match(/^(\d{1,2}):(\d{2})/);
 
   if (!match) {
     return value;
@@ -151,17 +158,16 @@ function formatTime(
   const minute = match[2];
 
   if (
-    Number.isNaN(hour24)
-    || hour24 < 0
-    || hour24 > 23
+    Number.isNaN(hour24) ||
+    hour24 < 0 ||
+    hour24 > 23
   ) {
     return value;
   }
 
   const suffix = hour24 >= 12 ? 'PM' : 'AM';
-  const hour12 = hour24 % 12 || 12;
 
-  return `${hour12}:${minute} ${suffix}`;
+  return `${hour24 % 12 || 12}:${minute} ${suffix}`;
 }
 
 function appointmentSortKey(
@@ -244,47 +250,31 @@ function availabilityPresentation(
   }
 }
 
+/* ==========================================================
+   CUSTOMER DASHBOARD
+   ========================================================== */
+
 export default function CustomerHomeScreen() {
-  const {
-    user,
-    token,
-  } = useAuth();
+  const { user, token } = useAuth();
+  const { unreadCount } = useInAppNotifications();
 
-  const {
-    unreadCount,
-  } = useInAppNotifications();
+  const [accountUser, setAccountUser] =
+    useState<AuthUser | null>(user);
 
-  const [
-    accountUser,
-    setAccountUser,
-  ] = useState<AuthUser | null>(user);
+  const [shops, setShops] = useState<CustomerShop[]>([]);
 
-  const [
-    shops,
-    setShops,
-  ] = useState<CustomerShop[]>([]);
+  const [appointments, setAppointments] =
+    useState<CustomerAppointment[]>([]);
 
-  const [
-    appointments,
-    setAppointments,
-  ] = useState<CustomerAppointment[]>([]);
-
-  const [
-    isLoading,
-    setIsLoading,
-  ] = useState(true);
-
-  const [
-    isRefreshing,
-    setIsRefreshing,
-  ] = useState(false);
-
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const hasLoadedOnce = useRef(false);
+
+  /* ========================================================
+     LOAD CUSTOMER DATA
+     ======================================================== */
 
   const loadDashboard = useCallback(
     async (
@@ -312,27 +302,18 @@ export default function CustomerHomeScreen() {
           appointmentResponse,
         ] = await Promise.all([
           getCustomerProfile(token),
-          getCustomerShops(
-            token,
-            {
-              perPage: 3,
-              page: 1,
-            },
-          ),
+          getCustomerShops(token, {
+            perPage: 3,
+            page: 1,
+          }),
           getCustomerAppointments(token),
         ]);
 
-        if (
-          profileResponse.data.user.role === 'customer'
-        ) {
-          setAccountUser(
-            profileResponse.data.user,
-          );
+        if (profileResponse.data.user.role === 'customer') {
+          setAccountUser(profileResponse.data.user);
         }
 
-        setShops(
-          shopResponse.data.shops,
-        );
+        setShops(shopResponse.data.shops);
 
         setAppointments(
           appointmentResponse.data.appointments,
@@ -364,19 +345,22 @@ export default function CustomerHomeScreen() {
     }, [loadDashboard]),
   );
 
+  /* ========================================================
+     UPCOMING BOOKINGS
+     ======================================================== */
+
   const upcomingAppointments = useMemo(
     () =>
       appointments
         .filter(
           (appointment) =>
-            appointment.status === 'pending'
-            || appointment.status === 'confirmed',
+            appointment.status === 'pending' ||
+            appointment.status === 'confirmed',
         )
-        .sort(
-          (first, second) =>
-            appointmentSortKey(first).localeCompare(
-              appointmentSortKey(second),
-            ),
+        .sort((first, second) =>
+          appointmentSortKey(first).localeCompare(
+            appointmentSortKey(second),
+          ),
         ),
     [appointments],
   );
@@ -389,9 +373,11 @@ export default function CustomerHomeScreen() {
     user,
   );
 
-  function openShop(
-    shopId: number,
-  ): void {
+  /* ========================================================
+     NAVIGATION
+     ======================================================== */
+
+  function openShop(shopId: number): void {
     router.push({
       pathname: '/(customer)/shop/[shopId]',
       params: {
@@ -400,303 +386,378 @@ export default function CustomerHomeScreen() {
     });
   }
 
-  function openAppointment(
-    appointmentId: number,
-  ): void {
+  function openAppointment(appointmentId: number): void {
     router.push({
-      pathname: '/(customer)/customer-appointment/[appointmentId]',
+      pathname:
+        '/(customer)/customer-appointment/[appointmentId]',
       params: {
         appointmentId: String(appointmentId),
       },
     });
   }
 
+  /* ========================================================
+     MAIN SCREEN
+     ======================================================== */
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView
+      edges={['top']}
+      style={styles.safeArea}
+    >
+      {/* WHITE ANDROID STATUS ICONS */}
+
       <StatusBar
-        barStyle="dark-content"
-        backgroundColor={COLORS.background}
+        barStyle="light-content"
+        backgroundColor={THEME.navy}
+        translucent={false}
       />
 
       <ScrollView
+        style={styles.scrollView}
         showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.scrollContent}
         refreshControl={
           <RefreshControl
             refreshing={isRefreshing}
             onRefresh={() => void loadDashboard(true)}
-            tintColor={COLORS.navy}
-            colors={[COLORS.navy]}
+            tintColor={THEME.navy}
+            colors={[THEME.navy]}
+            progressBackgroundColor={THEME.white}
           />
         }
-        contentContainerStyle={styles.container}
       >
-        <View style={styles.topBar}>
-          <View style={styles.brandRow}>
-            <View style={styles.logoFrame}>
-              <Image
-                source={require('../../../assets/images/stylehub-splash.png')}
-                resizeMode="contain"
-                style={styles.brandLogo}
-              />
+        {/* ==================================================
+            DARK NAVY HEADER
+            ================================================== */}
+
+        <View style={styles.topHeaderBar}>
+          <View style={styles.headerInner}>
+            <View style={styles.brandRow}>
+              <View style={styles.logoContainer}>
+                <Image
+                  source={require('../../../assets/images/stylehub-splash.png')}
+                  resizeMode="contain"
+                  style={styles.logo}
+                />
+              </View>
+
+              <Text style={styles.brandName}>
+                Style
+                <Text style={styles.brandAccent}>Hub</Text>
+              </Text>
             </View>
 
-            <Text style={styles.brandName}>
-              StyleHub
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                activeOpacity={0.72}
+                accessibilityRole="button"
+                accessibilityLabel="Open saved shops"
+                onPress={() =>
+                  router.push('/(customer)/saved-shops')
+                }
+                style={styles.notificationShell}
+              >
+                <Ionicons
+                  name="bookmark-outline"
+                  size={21}
+                  color={THEME.navy}
+                />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                activeOpacity={0.72}
+                accessibilityRole="button"
+                accessibilityLabel="Open notifications"
+                onPress={() =>
+                  router.push(
+                    '/(customer)/customer/notifications',
+                  )
+                }
+                style={styles.notificationShell}
+              >
+                <Ionicons
+                  name="notifications-outline"
+                  size={21}
+                  color={THEME.navy}
+                />
+
+                {unreadCount > 0 ? (
+                  <View style={styles.notificationBadge}>
+                    <Text style={styles.notificationBadgeText}>
+                      {formatBadgeCount(unreadCount)}
+                    </Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
+            </View>
+          </View>
+
+          <View style={styles.topHeaderDivider} />
+        </View>
+
+        {/* ==================================================
+            LIGHT CUSTOMER DASHBOARD
+            ================================================== */}
+
+        <View style={styles.container}>
+          {/* WELCOME */}
+
+          <View style={styles.welcomeBlock}>
+            <Text style={styles.welcomeEyebrow}>
+              WELCOME BACK
+            </Text>
+
+            <Text style={styles.welcomeTitle}>
+              Hi, {firstName}
+            </Text>
+
+            <Text style={styles.welcomeText}>
+              Find a barber or beauty shop, compare options,
+              and keep your appointments in one place.
             </Text>
           </View>
 
-          <View style={styles.topActions}>
-            <TouchableOpacity
-              activeOpacity={0.72}
-              accessibilityRole="button"
-              accessibilityLabel="Open saved shops"
-              onPress={() => router.push('/(customer)/saved-shops')}
-              style={styles.topActionButton}
-            >
-              <Ionicons
-                name="bookmark-outline"
-                size={21}
-                color={COLORS.navy}
-              />
-            </TouchableOpacity>
+          {/* WHITE DISCOVERY CARD */}
 
-            <TouchableOpacity
-              activeOpacity={0.72}
-              accessibilityRole="button"
-              accessibilityLabel="Open notifications"
-              onPress={() => router.push('/(customer)/customer/notifications')}
-              style={styles.topActionButton}
-            >
-              <Ionicons
-                name="notifications-outline"
-                size={21}
-                color={COLORS.navy}
-              />
+          <TouchableOpacity
+            activeOpacity={0.86}
+            accessibilityRole="button"
+            accessibilityLabel="Discover shops"
+            onPress={() =>
+              router.push('/(customer)/customer/shops')
+            }
+            style={styles.discoveryHero}
+          >
+            <View style={styles.discoveryHeroTopRow}>
+              <View style={styles.discoveryHeroIcon}>
+                <Ionicons
+                  name="sparkles-outline"
+                  size={23}
+                  color={THEME.navy}
+                />
+              </View>
 
-              {unreadCount > 0 ? (
-                <View style={styles.notificationBadge}>
-                  <Text style={styles.notificationBadgeText}>
-                    {formatBadgeCount(unreadCount)}
-                  </Text>
-                </View>
-              ) : null}
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.welcomeBlock}>
-          <Text style={styles.welcomeEyebrow}>
-            WELCOME BACK
-          </Text>
-
-          <Text style={styles.welcomeTitle}>
-            Hi, {firstName}
-          </Text>
-
-          <Text style={styles.welcomeText}>
-            Find a barber or beauty shop, compare options, and keep your appointments in one place.
-          </Text>
-        </View>
-
-        <TouchableOpacity
-          activeOpacity={0.86}
-          accessibilityRole="button"
-          accessibilityLabel="Discover shops"
-          onPress={() => router.push('/(customer)/customer/shops')}
-          style={styles.discoveryHero}
-        >
-          <View style={styles.discoveryHeroTopRow}>
-            <View style={styles.discoveryHeroIcon}>
-              <Ionicons
-                name="sparkles-outline"
-                size={23}
-                color={COLORS.white}
-              />
+              <View style={styles.discoveryHeroArrow}>
+                <Ionicons
+                  name="arrow-forward"
+                  size={18}
+                  color={THEME.white}
+                />
+              </View>
             </View>
 
-            <View style={styles.discoveryHeroArrow}>
-              <Ionicons
-                name="arrow-forward"
-                size={18}
-                color={COLORS.white}
-              />
-            </View>
-          </View>
-
-          <Text style={styles.discoveryHeroTitle}>
-            Discover your next look
-          </Text>
-
-          <Text style={styles.discoveryHeroText}>
-            Browse approved shops, services, ratings, availability, and current offers before booking.
-          </Text>
-
-          <View style={styles.discoveryHeroFooter}>
-            <View style={styles.discoveryHeroFooterItem}>
-              <Ionicons
-                name="storefront-outline"
-                size={15}
-                color="#D4DAE1"
-              />
-
-              <Text style={styles.discoveryHeroFooterText}>
-                Approved shops
-              </Text>
-            </View>
-
-            <View style={styles.discoveryHeroFooterItem}>
-              <Ionicons
-                name="star-outline"
-                size={15}
-                color="#D4DAE1"
-              />
-
-              <Text style={styles.discoveryHeroFooterText}>
-                Verified ratings
-              </Text>
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        <View style={styles.quickActions}>
-          <QuickAction
-            icon="navigate-outline"
-            label="Nearby"
-            helper="Map view"
-            onPress={() => router.push('/(customer)/customer/nearby')}
-          />
-
-          <QuickAction
-            icon="calendar-outline"
-            label="Bookings"
-            helper={`${upcomingAppointments.length} upcoming`}
-            onPress={() => router.push('/(customer)/customer/appointments')}
-          />
-
-          <QuickAction
-            icon="bookmark-outline"
-            label="Saved"
-            helper="Your shops"
-            onPress={() => router.push('/(customer)/saved-shops')}
-          />
-        </View>
-
-        {errorMessage ? (
-          <View style={styles.errorBox}>
-            <View style={styles.errorIcon}>
-              <Ionicons
-                name="alert-circle-outline"
-                size={19}
-                color={COLORS.danger}
-              />
-            </View>
-
-            <View style={styles.errorCopy}>
-              <Text style={styles.errorTitle}>
-                Home needs attention
-              </Text>
-
-              <Text style={styles.errorText}>
-                {errorMessage}
-              </Text>
-            </View>
-          </View>
-        ) : null}
-
-        <SectionHeading
-          title="Next booking"
-          subtitle="Your nearest pending or confirmed appointment."
-          actionLabel="All bookings"
-          onAction={() => router.push('/(customer)/customer/appointments')}
-        />
-
-        {isLoading ? (
-          <LoadingCard message="Loading your next appointment..." />
-        ) : nextAppointment ? (
-          <NextBookingCard
-            appointment={nextAppointment}
-            onPress={() => openAppointment(nextAppointment.id)}
-          />
-        ) : (
-          <View style={styles.bookingEmptyCard}>
-            <View style={styles.bookingEmptyIcon}>
-              <Ionicons
-                name="calendar-outline"
-                size={24}
-                color={COLORS.navy}
-              />
-            </View>
-
-            <View style={styles.bookingEmptyCopy}>
-              <Text style={styles.bookingEmptyTitle}>
-                No upcoming booking
-              </Text>
-
-              <Text style={styles.bookingEmptyText}>
-                Discover a shop when you are ready to schedule your next service.
-              </Text>
-            </View>
-
-            <TouchableOpacity
-              activeOpacity={0.78}
-              accessibilityRole="button"
-              accessibilityLabel="Find a shop"
-              onPress={() => router.push('/(customer)/customer/shops')}
-              style={styles.bookingEmptyButton}
-            >
-              <Ionicons
-                name="arrow-forward"
-                size={17}
-                color={COLORS.white}
-              />
-            </TouchableOpacity>
-          </View>
-        )}
-
-        <SectionHeading
-          title="Discover shops"
-          subtitle="A few approved shops you can explore right now."
-          actionLabel="See all"
-          onAction={() => router.push('/(customer)/customer/shops')}
-        />
-
-        {isLoading ? (
-          <LoadingCard message="Loading shops..." />
-        ) : shops.length === 0 ? (
-          <View style={styles.emptyCard}>
-            <View style={styles.emptyIcon}>
-              <Ionicons
-                name="storefront-outline"
-                size={26}
-                color={COLORS.navy}
-              />
-            </View>
-
-            <Text style={styles.emptyTitle}>
-              No shops available yet
+            <Text style={styles.discoveryHeroTitle}>
+              Discover your next look
             </Text>
 
-            <Text style={styles.emptyText}>
-              Pull down to refresh, or check Discover again later.
+            <Text style={styles.discoveryHeroText}>
+              Browse approved shops, services, ratings,
+              availability, and current offers before booking.
             </Text>
+
+            <View style={styles.discoveryHeroFooter}>
+              <View style={styles.discoveryHeroFooterItem}>
+                <Ionicons
+                  name="storefront-outline"
+                  size={15}
+                  color={THEME.navy}
+                />
+
+                <Text style={styles.discoveryHeroFooterText}>
+                  Approved shops
+                </Text>
+              </View>
+
+              <View style={styles.discoveryHeroFooterItem}>
+                <Ionicons
+                  name="star-outline"
+                  size={15}
+                  color={THEME.navy}
+                />
+
+                <Text style={styles.discoveryHeroFooterText}>
+                  Verified ratings
+                </Text>
+              </View>
+            </View>
+          </TouchableOpacity>
+
+          {/* QUICK ACTIONS */}
+
+          <View style={styles.quickActions}>
+            <QuickAction
+              icon="navigate-outline"
+              label="Nearby"
+              helper="Map view"
+              onPress={() =>
+                router.push(
+                  '/(customer)/customer/nearby',
+                )
+              }
+            />
+
+            <QuickAction
+              icon="calendar-outline"
+              label="Bookings"
+              helper={`${upcomingAppointments.length} upcoming`}
+              onPress={() =>
+                router.push(
+                  '/(customer)/customer/appointments',
+                )
+              }
+            />
+
+            <QuickAction
+              icon="bookmark-outline"
+              label="Saved"
+              helper="Your shops"
+              onPress={() =>
+                router.push('/(customer)/saved-shops')
+              }
+            />
           </View>
-        ) : (
-          <View style={styles.shopList}>
-            {shops.map(
-              (shop) => (
+
+          {/* ERROR MESSAGE */}
+
+          {errorMessage ? (
+            <View style={styles.errorBox}>
+              <View style={styles.errorIcon}>
+                <Ionicons
+                  name="alert-circle-outline"
+                  size={19}
+                  color={COLORS.danger}
+                />
+              </View>
+
+              <View style={styles.errorCopy}>
+                <Text style={styles.errorTitle}>
+                  Home needs attention
+                </Text>
+
+                <Text style={styles.errorText}>
+                  {errorMessage}
+                </Text>
+              </View>
+            </View>
+          ) : null}
+
+          {/* NEXT BOOKING */}
+
+          <SectionHeading
+            title="Next booking"
+            subtitle="Your nearest pending or confirmed appointment."
+            actionLabel="All bookings"
+            onAction={() =>
+              router.push(
+                '/(customer)/customer/appointments',
+              )
+            }
+          />
+
+          {isLoading ? (
+            <LoadingCard
+              message="Loading your next appointment..."
+            />
+          ) : nextAppointment ? (
+            <NextBookingCard
+              appointment={nextAppointment}
+              onPress={() =>
+                openAppointment(nextAppointment.id)
+              }
+            />
+          ) : (
+            <View style={styles.bookingEmptyCard}>
+              <View style={styles.bookingEmptyIcon}>
+                <Ionicons
+                  name="calendar-outline"
+                  size={24}
+                  color={THEME.navy}
+                />
+              </View>
+
+              <View style={styles.bookingEmptyCopy}>
+                <Text style={styles.bookingEmptyTitle}>
+                  No upcoming booking
+                </Text>
+
+                <Text style={styles.bookingEmptyText}>
+                  Discover a shop when you are ready to
+                  schedule your next service.
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                activeOpacity={0.78}
+                accessibilityRole="button"
+                accessibilityLabel="Find a shop"
+                onPress={() =>
+                  router.push(
+                    '/(customer)/customer/shops',
+                  )
+                }
+                style={styles.bookingEmptyButton}
+              >
+                <Ionicons
+                  name="arrow-forward"
+                  size={17}
+                  color={THEME.white}
+                />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* DISCOVER SHOPS */}
+
+          <SectionHeading
+            title="Discover shops"
+            subtitle="A few approved shops you can explore right now."
+            actionLabel="See all"
+            onAction={() =>
+              router.push('/(customer)/customer/shops')
+            }
+          />
+
+          {isLoading ? (
+            <LoadingCard message="Loading shops..." />
+          ) : shops.length === 0 ? (
+            <View style={styles.emptyCard}>
+              <View style={styles.emptyIcon}>
+                <Ionicons
+                  name="storefront-outline"
+                  size={26}
+                  color={THEME.navy}
+                />
+              </View>
+
+              <Text style={styles.emptyTitle}>
+                No shops available yet
+              </Text>
+
+              <Text style={styles.emptyText}>
+                Pull down to refresh, or check Discover again later.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.shopList}>
+              {shops.map((shop) => (
                 <HomeShopCard
                   key={shop.id}
                   shop={shop}
                   onPress={() => openShop(shop.id)}
                 />
-              ),
-            )}
-          </View>
-        )}
+              ))}
+            </View>
+          )}
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
 }
+
+/* ==========================================================
+   QUICK ACTION
+   ========================================================== */
 
 function QuickAction({
   icon,
@@ -721,7 +782,7 @@ function QuickAction({
         <Ionicons
           name={icon}
           size={19}
-          color={COLORS.navy}
+          color={THEME.navy}
         />
       </View>
 
@@ -738,6 +799,10 @@ function QuickAction({
     </TouchableOpacity>
   );
 }
+
+/* ==========================================================
+   SECTION HEADING
+   ========================================================== */
 
 function SectionHeading({
   title,
@@ -776,12 +841,16 @@ function SectionHeading({
         <Ionicons
           name="chevron-forward"
           size={15}
-          color={COLORS.navy}
+          color={THEME.navy}
         />
       </TouchableOpacity>
     </View>
   );
 }
+
+/* ==========================================================
+   NEXT BOOKING
+   ========================================================== */
 
 function NextBookingCard({
   appointment,
@@ -807,24 +876,20 @@ function NextBookingCard({
           <Ionicons
             name="calendar-outline"
             size={20}
-            color={COLORS.white}
+            color={THEME.white}
           />
         </View>
 
         <View
           style={[
             styles.bookingStatusBadge,
-            {
-              backgroundColor: status.background,
-            },
+            { backgroundColor: status.background },
           ]}
         >
           <Text
             style={[
               styles.bookingStatusText,
-              {
-                color: status.color,
-              },
+              { color: status.color },
             ]}
           >
             {appointment.status_label}
@@ -880,12 +945,16 @@ function NextBookingCard({
         <Ionicons
           name="arrow-forward"
           size={17}
-          color={COLORS.white}
+          color={THEME.white}
         />
       </View>
     </TouchableOpacity>
   );
 }
+
+/* ==========================================================
+   SHOP CARD
+   ========================================================== */
 
 function HomeShopCard({
   shop,
@@ -935,10 +1004,7 @@ function HomeShopCard({
           />
         </View>
 
-        <Text
-          numberOfLines={1}
-          style={styles.shopType}
-        >
+        <Text numberOfLines={1} style={styles.shopType}>
           {shop.type_label}
         </Text>
 
@@ -978,16 +1044,18 @@ function HomeShopCard({
             ) : null}
           </View>
 
-          {typeof shop.active_services_count === 'number' ? (
+          {typeof shop.active_services_count ===
+          'number' ? (
             <View style={styles.serviceCountPill}>
               <Ionicons
                 name="cut-outline"
                 size={12}
-                color={COLORS.textMuted}
+                color={THEME.muted}
               />
 
               <Text style={styles.serviceCountText}>
-                {shop.active_services_count} service{shop.active_services_count === 1 ? '' : 's'}
+                {shop.active_services_count} service
+                {shop.active_services_count === 1 ? '' : 's'}
               </Text>
             </View>
           ) : null}
@@ -997,9 +1065,7 @@ function HomeShopCard({
       <View
         style={[
           styles.availabilityBadge,
-          {
-            backgroundColor: availability.background,
-          },
+          { backgroundColor: availability.background },
         ]}
       >
         <Ionicons
@@ -1011,9 +1077,7 @@ function HomeShopCard({
         <Text
           style={[
             styles.availabilityText,
-            {
-              color: availability.color,
-            },
+            { color: availability.color },
           ]}
         >
           {shop.availability.status_label}
@@ -1022,6 +1086,10 @@ function HomeShopCard({
     </TouchableOpacity>
   );
 }
+
+/* ==========================================================
+   LOADING CARD
+   ========================================================== */
 
 function LoadingCard({
   message,
@@ -1032,7 +1100,7 @@ function LoadingCard({
     <View style={styles.loadingCard}>
       <ActivityIndicator
         size="small"
-        color={COLORS.navy}
+        color={THEME.navy}
       />
 
       <Text style={styles.loadingText}>
@@ -1042,131 +1110,197 @@ function LoadingCard({
   );
 }
 
+/* ==========================================================
+   STYLES
+   ========================================================== */
+
 const styles = StyleSheet.create({
+  /* ========================================================
+     TOP SAFE AREA
+
+     The top safe area is navy so it matches the header.
+     Do not change this to THEME.background.
+     ======================================================== */
+
   safeArea: {
     flex: 1,
-    backgroundColor: COLORS.background,
+    backgroundColor: THEME.navy,
   },
 
-  container: {
+  /* LIGHT DASHBOARD BELOW HEADER */
+
+  scrollView: {
+    flex: 1,
+    backgroundColor: THEME.background,
+  },
+
+  scrollContent: {
+    flexGrow: 1,
+    width: '100%',
+    paddingBottom: 0,
+    backgroundColor: THEME.background,
+  },
+
+  /* ========================================================
+     NAVY HEADER
+     ======================================================== */
+
+  topHeaderBar: {
+    width: '100%',
+    alignSelf: 'stretch',
+    backgroundColor: THEME.navy,
+    paddingTop: 40,
+    paddingHorizontal: LAYOUT.screenPadding,
+    paddingBottom: 0,
+    marginBottom: 0,
+    borderBottomWidth: 0,
+  },
+
+  headerInner: {
     width: '100%',
     maxWidth: LAYOUT.contentMaxWidth,
     alignSelf: 'center',
-    paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
-    paddingBottom: 110,
-  },
-
-  topBar: {
-    minHeight: 54,
+    minHeight: 52,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
+    paddingBottom: 30,
+    backgroundColor: THEME.navy,
   },
+
+  topHeaderDivider: {
+    width: '100%',
+    maxWidth: LAYOUT.contentMaxWidth,
+    alignSelf: 'center',
+    height: 1,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+
+  /* BRAND */
 
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
   },
 
-  logoFrame: {
-    width: 43,
-    height: 43,
-    position: 'relative',
-    overflow: 'hidden',
-    borderRadius: 14,
-    backgroundColor: COLORS.surface,
+  logoContainer: {
+    width: 41,
+    height: 41,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 13,
+    backgroundColor: THEME.white,
   },
 
-  brandLogo: {
-    position: 'absolute',
-    width: 67,
-    height: 67,
-    left: -12,
-    top: -12,
+  logo: {
+    width: 34,
+    height: 34,
   },
 
   brandName: {
-    marginLeft: 9,
-    color: COLORS.navy,
-    fontSize: 21,
-    lineHeight: 26,
+    color: THEME.white,
+    fontSize: 20,
     fontWeight: '800',
-    letterSpacing: -0.5,
+    letterSpacing: -0.4,
   },
 
-  topActions: {
+  brandAccent: {
+    color: THEME.orange,
+  },
+
+  headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 7,
+    gap: 8,
   },
 
-  topActionButton: {
-    width: LAYOUT.iconButtonSize,
-    height: LAYOUT.iconButtonSize,
+  notificationShell: {
+    width: 43,
+    height: 43,
     position: 'relative',
     alignItems: 'center',
     justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 14,
-    backgroundColor: COLORS.surface,
+    borderRadius: 13,
+    backgroundColor: THEME.white,
   },
 
   notificationBadge: {
     minWidth: 18,
     height: 18,
     position: 'absolute',
-    top: 3,
-    right: 3,
+    top: 2,
+    right: 2,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 4,
     borderWidth: 2,
-    borderColor: COLORS.surface,
+    borderColor: THEME.white,
     borderRadius: 9,
     backgroundColor: COLORS.danger,
   },
 
   notificationBadgeText: {
-    color: COLORS.white,
+    color: THEME.white,
     fontSize: 8,
     fontWeight: '800',
   },
 
+  /* ========================================================
+     MAIN DASHBOARD
+     ======================================================== */
+
+  container: {
+    width: '100%',
+    maxWidth: LAYOUT.contentMaxWidth,
+    alignSelf: 'center',
+    paddingHorizontal: LAYOUT.screenPadding,
+    paddingTop: 20,
+    paddingBottom: 32,
+    backgroundColor: THEME.background,
+  },
+
+  /* WELCOME */
+
   welcomeBlock: {
-    marginTop: SPACING.lg,
+    marginTop: 0,
   },
 
   welcomeEyebrow: {
-    color: COLORS.accent,
+    color: THEME.orange,
     fontSize: TYPOGRAPHY.micro,
     fontWeight: '800',
     letterSpacing: 1.2,
   },
 
   welcomeTitle: {
-    marginTop: 4,
-    color: COLORS.text,
-    fontSize: TYPOGRAPHY.title,
-    lineHeight: 30,
+    marginTop: 5,
+    color: THEME.text,
+    fontSize: TYPOGRAPHY.display,
+    lineHeight: 36,
     fontWeight: '800',
-    letterSpacing: -0.6,
+    letterSpacing: -0.8,
   },
 
   welcomeText: {
-    maxWidth: 580,
-    marginTop: 6,
-    color: COLORS.textMuted,
+    maxWidth: 460,
+    marginTop: 8,
+    color: THEME.muted,
     fontSize: TYPOGRAPHY.body,
     lineHeight: 21,
   },
 
+  /* ========================================================
+     WHITE DISCOVERY CARD
+     ======================================================== */
+
   discoveryHero: {
     marginTop: SPACING.xl,
     padding: 18,
+    borderWidth: 1,
+    borderColor: THEME.border,
     borderRadius: RADII.xl,
-    backgroundColor: COLORS.primary,
+    backgroundColor: THEME.white,
     ...SHADOWS.card,
   },
 
@@ -1182,7 +1316,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 15,
-    backgroundColor: COLORS.navyMuted,
+    backgroundColor: THEME.iconSoft,
   },
 
   discoveryHeroArrow: {
@@ -1191,12 +1325,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 12,
-    backgroundColor: COLORS.navyMuted,
+    backgroundColor: THEME.navy,
   },
 
   discoveryHeroTitle: {
     marginTop: 17,
-    color: COLORS.white,
+    color: THEME.navy,
     fontSize: 23,
     lineHeight: 29,
     fontWeight: '800',
@@ -1206,7 +1340,7 @@ const styles = StyleSheet.create({
   discoveryHeroText: {
     maxWidth: 540,
     marginTop: 6,
-    color: '#D4DAE1',
+    color: THEME.muted,
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 18,
   },
@@ -1218,7 +1352,7 @@ const styles = StyleSheet.create({
     flexWrap: 'wrap',
     gap: 15,
     borderTopWidth: 1,
-    borderTopColor: COLORS.navyMuted,
+    borderTopColor: THEME.border,
   },
 
   discoveryHeroFooterItem: {
@@ -1228,10 +1362,14 @@ const styles = StyleSheet.create({
   },
 
   discoveryHeroFooterText: {
-    color: '#D4DAE1',
+    color: THEME.muted,
     fontSize: TYPOGRAPHY.micro,
     fontWeight: '600',
   },
+
+  /* ========================================================
+     QUICK ACTIONS
+     ======================================================== */
 
   quickActions: {
     marginTop: 12,
@@ -1244,9 +1382,9 @@ const styles = StyleSheet.create({
     minWidth: 0,
     padding: 12,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: THEME.border,
     borderRadius: RADII.lg,
-    backgroundColor: COLORS.surface,
+    backgroundColor: THEME.white,
   },
 
   quickActionIcon: {
@@ -1255,21 +1393,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 12,
-    backgroundColor: COLORS.accentSoft,
+    backgroundColor: THEME.iconSoft,
   },
 
   quickActionLabel: {
     marginTop: 10,
-    color: COLORS.text,
+    color: THEME.text,
     fontSize: TYPOGRAPHY.secondary,
     fontWeight: '800',
   },
 
   quickActionHelper: {
     marginTop: 2,
-    color: COLORS.textMuted,
+    color: THEME.muted,
     fontSize: TYPOGRAPHY.micro,
   },
+
+  /* ERROR */
 
   errorBox: {
     marginTop: 14,
@@ -1287,7 +1427,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 10,
-    backgroundColor: COLORS.surface,
+    backgroundColor: THEME.white,
   },
 
   errorCopy: {
@@ -1302,10 +1442,14 @@ const styles = StyleSheet.create({
 
   errorText: {
     marginTop: 3,
-    color: COLORS.textMuted,
+    color: THEME.muted,
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 18,
   },
+
+  /* ========================================================
+     SECTION HEADING
+     ======================================================== */
 
   sectionHeading: {
     marginTop: SPACING.xxl,
@@ -1320,7 +1464,7 @@ const styles = StyleSheet.create({
   },
 
   sectionTitle: {
-    color: COLORS.text,
+    color: THEME.text,
     fontSize: TYPOGRAPHY.section,
     fontWeight: '800',
     letterSpacing: -0.3,
@@ -1328,7 +1472,7 @@ const styles = StyleSheet.create({
 
   sectionSubtitle: {
     marginTop: 3,
-    color: COLORS.textMuted,
+    color: THEME.muted,
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 17,
   },
@@ -1342,15 +1486,19 @@ const styles = StyleSheet.create({
   },
 
   sectionActionText: {
-    color: COLORS.navy,
+    color: THEME.navy,
     fontSize: TYPOGRAPHY.micro,
     fontWeight: '800',
   },
 
+  /* ========================================================
+     NEXT BOOKING
+     ======================================================== */
+
   nextBookingCard: {
     padding: 16,
     borderRadius: RADII.xl,
-    backgroundColor: COLORS.primary,
+    backgroundColor: THEME.navy,
     ...SHADOWS.card,
   },
 
@@ -1366,7 +1514,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 14,
-    backgroundColor: COLORS.navyMuted,
+    backgroundColor: THEME.navyLight,
   },
 
   bookingStatusBadge: {
@@ -1384,7 +1532,7 @@ const styles = StyleSheet.create({
 
   nextBookingService: {
     marginTop: 15,
-    color: COLORS.white,
+    color: THEME.white,
     fontSize: 20,
     lineHeight: 25,
     fontWeight: '800',
@@ -1423,14 +1571,16 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     borderTopWidth: 1,
-    borderTopColor: COLORS.navyMuted,
+    borderTopColor: THEME.navyLight,
   },
 
   nextBookingFooterText: {
-    color: COLORS.white,
+    color: THEME.white,
     fontSize: TYPOGRAPHY.caption,
     fontWeight: '800',
   },
+
+  /* EMPTY BOOKING */
 
   bookingEmptyCard: {
     minHeight: 96,
@@ -1439,9 +1589,9 @@ const styles = StyleSheet.create({
     gap: 11,
     padding: 14,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: THEME.border,
     borderRadius: RADII.lg,
-    backgroundColor: COLORS.surface,
+    backgroundColor: THEME.white,
   },
 
   bookingEmptyIcon: {
@@ -1450,7 +1600,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 15,
-    backgroundColor: COLORS.accentSoft,
+    backgroundColor: THEME.iconSoft,
   },
 
   bookingEmptyCopy: {
@@ -1458,14 +1608,14 @@ const styles = StyleSheet.create({
   },
 
   bookingEmptyTitle: {
-    color: COLORS.text,
+    color: THEME.text,
     fontSize: TYPOGRAPHY.secondary,
     fontWeight: '800',
   },
 
   bookingEmptyText: {
     marginTop: 3,
-    color: COLORS.textMuted,
+    color: THEME.muted,
     fontSize: TYPOGRAPHY.micro,
     lineHeight: 16,
   },
@@ -1476,8 +1626,12 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 12,
-    backgroundColor: COLORS.primary,
+    backgroundColor: THEME.navy,
   },
+
+  /* ========================================================
+     SHOP LIST
+     ======================================================== */
 
   shopList: {
     gap: 10,
@@ -1491,9 +1645,9 @@ const styles = StyleSheet.create({
     padding: 14,
     paddingTop: 16,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: THEME.border,
     borderRadius: RADII.lg,
-    backgroundColor: COLORS.surface,
+    backgroundColor: THEME.white,
     ...SHADOWS.card,
   },
 
@@ -1519,14 +1673,14 @@ const styles = StyleSheet.create({
 
   shopName: {
     flex: 1,
-    color: COLORS.text,
+    color: THEME.text,
     fontSize: TYPOGRAPHY.cardTitle,
     fontWeight: '800',
   },
 
   shopType: {
     marginTop: 2,
-    color: COLORS.textMuted,
+    color: THEME.muted,
     fontSize: TYPOGRAPHY.micro,
     fontWeight: '600',
   },
@@ -1540,7 +1694,7 @@ const styles = StyleSheet.create({
 
   shopLocation: {
     flex: 1,
-    color: COLORS.textMuted,
+    color: THEME.muted,
     fontSize: TYPOGRAPHY.caption,
   },
 
@@ -1562,13 +1716,13 @@ const styles = StyleSheet.create({
   },
 
   ratingText: {
-    color: COLORS.text,
+    color: THEME.text,
     fontSize: 10,
     fontWeight: '800',
   },
 
   reviewCountText: {
-    color: COLORS.textMuted,
+    color: THEME.muted,
     fontSize: 9,
     fontWeight: '600',
   },
@@ -1580,11 +1734,11 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 8,
     borderRadius: RADII.pill,
-    backgroundColor: COLORS.surfaceSoft,
+    backgroundColor: THEME.surfaceSoft,
   },
 
   serviceCountText: {
-    color: COLORS.textMuted,
+    color: THEME.muted,
     fontSize: 9,
     fontWeight: '700',
   },
@@ -1606,6 +1760,10 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
+  /* ========================================================
+     LOADING
+     ======================================================== */
+
   loadingCard: {
     minHeight: 84,
     flexDirection: 'row',
@@ -1614,24 +1772,28 @@ const styles = StyleSheet.create({
     gap: 9,
     padding: 14,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: THEME.border,
     borderRadius: RADII.lg,
-    backgroundColor: COLORS.surface,
+    backgroundColor: THEME.white,
   },
 
   loadingText: {
-    color: COLORS.textMuted,
+    color: THEME.muted,
     fontSize: TYPOGRAPHY.caption,
   },
+
+  /* ========================================================
+     EMPTY SHOPS
+     ======================================================== */
 
   emptyCard: {
     alignItems: 'center',
     paddingHorizontal: 24,
     paddingVertical: 28,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: THEME.border,
     borderRadius: RADII.xl,
-    backgroundColor: COLORS.surface,
+    backgroundColor: THEME.white,
   },
 
   emptyIcon: {
@@ -1640,19 +1802,19 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 18,
-    backgroundColor: COLORS.accentSoft,
+    backgroundColor: THEME.iconSoft,
   },
 
   emptyTitle: {
     marginTop: 12,
-    color: COLORS.text,
+    color: THEME.text,
     fontSize: TYPOGRAPHY.cardTitle,
     fontWeight: '800',
   },
 
   emptyText: {
     marginTop: 5,
-    color: COLORS.textMuted,
+    color: THEME.muted,
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 18,
     textAlign: 'center',

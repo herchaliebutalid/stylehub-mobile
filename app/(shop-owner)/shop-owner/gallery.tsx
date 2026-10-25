@@ -1,3 +1,4 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { router, useFocusEffect } from 'expo-router';
@@ -5,12 +6,10 @@ import type { ComponentProps } from 'react';
 import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Modal,
   Platform,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -19,7 +18,9 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
+import StyleHubModal from '@/src/components/StyleHubModal';
 import { COLORS } from '@/src/constants/colors';
 import {
   LAYOUT,
@@ -41,61 +42,44 @@ import { resolveApiAssetUrl } from '@/src/utils/api-asset-url';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
-/* ==========================================================================
-   CONFIGURATION
-   ========================================================================== */
+type GalleryDialog =
+  | 'galleryFull'
+  | 'permission'
+  | 'tooLarge'
+  | 'dimensions'
+  | 'unsupported'
+  | 'remove'
+  | 'removeSuccess'
+  | null;
 
-const MAX_UPLOAD_BYTES =
-  5 * 1024 * 1024;
-
-const MAX_IMAGE_DIMENSION =
-  4096;
-
-const ALLOWED_MIME_TYPES =
-  new Set([
-    'image/jpeg',
-    'image/png',
-    'image/webp',
-  ]);
-
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const MAX_IMAGE_DIMENSION = 4096;
 const GRID_GAP = 12;
 
-/* ==========================================================================
-   FORM DATA
-   ========================================================================== */
+const ALLOWED_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+]);
 
 function buildGalleryImageFormData(
   asset: ImagePicker.ImagePickerAsset,
 ): FormData {
-  const formData =
-    new FormData();
+  const formData = new FormData();
 
   const fileName =
-    asset.fileName?.trim()
-    ||
+    asset.fileName?.trim() ||
     `stylehub-gallery-${Date.now()}.jpg`;
 
   const mimeType =
-    asset.mimeType?.trim()
-    ||
-    'image/jpeg';
+    asset.mimeType?.trim() || 'image/jpeg';
 
-  const webAsset =
-    asset as ImagePicker.ImagePickerAsset & {
-      file?: Blob | null;
-    };
+  const webAsset = asset as ImagePicker.ImagePickerAsset & {
+    file?: Blob | null;
+  };
 
-  if (
-    Platform.OS === 'web'
-    &&
-    webAsset.file
-  ) {
-    formData.append(
-      'image',
-      webAsset.file,
-      fileName,
-    );
-
+  if (Platform.OS === 'web' && webAsset.file) {
+    formData.append('image', webAsset.file, fileName);
     return formData;
   }
 
@@ -105,351 +89,205 @@ function buildGalleryImageFormData(
     type: mimeType,
   } as unknown as Blob;
 
-  formData.append(
-    'image',
-    nativeImage,
-  );
-
+  formData.append('image', nativeImage);
   return formData;
 }
-
-/* ==========================================================================
-   DATE
-   ========================================================================== */
 
 function formatUploadedDate(
   value?: string | null,
 ): string | null {
-  if (!value) {
-    return null;
-  }
+  if (!value) return null;
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return null;
   }
 
   try {
-    return new Intl.DateTimeFormat(
-      'en-PH',
-      {
-        dateStyle: 'medium',
-        timeZone: 'Asia/Manila',
-      },
-    ).format(date);
+    return new Intl.DateTimeFormat('en-PH', {
+      dateStyle: 'medium',
+      timeZone: 'Asia/Manila',
+    }).format(date);
   } catch {
     return null;
   }
 }
 
-/* ==========================================================================
-   SCREEN
-   ========================================================================== */
-
 export default function ShopOwnerGalleryScreen() {
-  const {
-    token,
-  } = useAuth();
+  const { token } = useAuth();
+  const { width: windowWidth } = useWindowDimensions();
 
-  const {
-    width: windowWidth,
-  } = useWindowDimensions();
+  const [images, setImages] =
+    useState<ShopGalleryImage[]>([]);
 
-  const [
-    images,
-    setImages,
-  ] = useState<ShopGalleryImage[]>([]);
+  const [maxImages, setMaxImages] = useState(10);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [isReordering, setIsReordering] = useState(false);
 
-  const [
-    maxImages,
-    setMaxImages,
-  ] = useState(10);
+  const [deletingImageId, setDeletingImageId] =
+    useState<number | null>(null);
 
-  const [
-    isLoading,
-    setIsLoading,
-  ] = useState(true);
+  const [previewImageId, setPreviewImageId] =
+    useState<number | null>(null);
 
-  const [
-    isRefreshing,
-    setIsRefreshing,
-  ] = useState(false);
+  const [failedImageIds, setFailedImageIds] =
+    useState<Set<number>>(() => new Set());
 
-  const [
-    isUploading,
-    setIsUploading,
-  ] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
-  const [
-    isReordering,
-    setIsReordering,
-  ] = useState(false);
+  // Shared dialog state for warnings and confirmations.
+  const [activeDialog, setActiveDialog] =
+    useState<GalleryDialog>(null);
 
-  const [
-    deletingImageId,
-    setDeletingImageId,
-  ] = useState<number | null>(null);
+  const [removeTarget, setRemoveTarget] =
+    useState<ShopGalleryImage | null>(null);
 
-  const [
-    previewImageId,
-    setPreviewImageId,
-  ] = useState<number | null>(null);
+  const [dialogError, setDialogError] = useState('');
 
-  const [
-    failedImageIds,
-    setFailedImageIds,
-  ] = useState<Set<number>>(
-    () => new Set(),
+  /* RESPONSIVE GALLERY */
+
+  const contentWidth = Math.max(
+    0,
+    Math.min(windowWidth, LAYOUT.contentMaxWidth) -
+      LAYOUT.screenPadding * 2,
   );
 
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] = useState('');
+  const columnCount = contentWidth >= 560 ? 3 : 2;
 
-  const [
-    successMessage,
-    setSuccessMessage,
-  ] = useState('');
-
-  /* ========================================================================
-     LAYOUT
-     ======================================================================== */
-
-  const contentWidth =
-    Math.max(
-      0,
-      Math.min(
-        windowWidth,
-        LAYOUT.contentMaxWidth,
-      )
-      -
-      LAYOUT.screenPadding * 2,
-    );
-
-  const columnCount =
-    contentWidth >= 560
-      ? 3
-      : 2;
-
-  const imageCardWidth =
-    Math.max(
-      138,
-      (
-        contentWidth
-        -
-        GRID_GAP * (columnCount - 1)
-      )
-      /
+  const imageCardWidth = Math.max(
+    138,
+    (contentWidth - GRID_GAP * (columnCount - 1)) /
       columnCount,
-    );
+  );
 
-  const remainingSlots =
-    Math.max(
-      0,
-      maxImages - images.length,
-    );
+  const remainingSlots = Math.max(
+    0,
+    maxImages - images.length,
+  );
 
   const galleryProgress =
     maxImages > 0
-      ? Math.min(
-          1,
-          images.length / maxImages,
-        )
+      ? Math.min(1, images.length / maxImages)
       : 0;
 
-  const previewImage =
-    useMemo(
-      () =>
-        images.find(
-          (image) =>
-            image.id === previewImageId,
-        )
-        ?? null,
-      [
-        images,
-        previewImageId,
-      ],
-    );
-
-  const previewImageIndex =
-    previewImage
-      ? images.findIndex(
-          (image) =>
-            image.id === previewImage.id,
-        )
-      : -1;
-
-  /* ========================================================================
-     LOAD
-     ======================================================================== */
-
-  const loadGallery =
-    useCallback(
-      async (
-        refreshing = false,
-      ): Promise<void> => {
-        if (!token) {
-          setIsLoading(false);
-          return;
-        }
-
-        if (refreshing) {
-          setIsRefreshing(true);
-        } else {
-          setIsLoading(true);
-        }
-
-        setErrorMessage('');
-
-        try {
-          const response =
-            await getShopOwnerGallery(
-              token,
-            );
-
-          setImages(
-            response.data.images,
-          );
-
-          setMaxImages(
-            response.data.max_images,
-          );
-
-          setFailedImageIds(
-            new Set(),
-          );
-        } catch (error) {
-          setErrorMessage(
-            error instanceof ApiError
-              ? error.message
-              : 'Unable to load your shop gallery.',
-          );
-        } finally {
-          setIsLoading(false);
-          setIsRefreshing(false);
-        }
-      },
-      [token],
-    );
-
-  useFocusEffect(
-    useCallback(
-      () => {
-        void loadGallery();
-      },
-      [loadGallery],
-    ),
+  const previewImage = useMemo(
+    () =>
+      images.find((image) => image.id === previewImageId) ??
+      null,
+    [images, previewImageId],
   );
 
-  /* ========================================================================
-     PICK + UPLOAD
-     ======================================================================== */
+  const previewImageIndex = previewImage
+    ? images.findIndex(
+        (image) => image.id === previewImage.id,
+      )
+    : -1;
+
+  /* LOAD GALLERY */
+
+  const loadGallery = useCallback(
+    async (refreshing = false): Promise<void> => {
+      if (!token) {
+        setIsLoading(false);
+        return;
+      }
+
+      if (refreshing) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
+
+      setErrorMessage('');
+
+      try {
+        const response = await getShopOwnerGallery(token);
+
+        setImages(response.data.images);
+        setMaxImages(response.data.max_images);
+        setFailedImageIds(new Set());
+      } catch (error) {
+        setErrorMessage(
+          error instanceof ApiError
+            ? error.message
+            : 'Unable to load your shop gallery.',
+        );
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [token],
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void loadGallery();
+    }, [loadGallery]),
+  );
+
+  /* CHOOSE AND UPLOAD PHOTO */
 
   async function chooseGalleryImage(): Promise<void> {
     if (
-      !token
-      ||
-      isUploading
-      ||
-      isReordering
-      ||
+      !token ||
+      isUploading ||
+      isReordering ||
       deletingImageId !== null
     ) {
       return;
     }
 
-    if (
-      images.length >= maxImages
-    ) {
-      Alert.alert(
-        'Gallery Full',
-        `Your shop gallery can contain up to ${maxImages} images. Remove an image before adding another.`,
-      );
+    if (images.length >= maxImages) {
+      setActiveDialog('galleryFull');
       return;
     }
 
     const permissionResult =
       await ImagePicker.requestMediaLibraryPermissionsAsync();
 
-    if (
-      !permissionResult.granted
-    ) {
-      Alert.alert(
-        'Photo Permission Required',
-        'StyleHub needs permission to access your photos so you can add an image to your shop gallery.',
-      );
+    if (!permissionResult.granted) {
+      setActiveDialog('permission');
       return;
     }
 
-    const result =
-      await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: [
-          'images',
-        ],
-        allowsEditing: true,
-        aspect: [
-          4,
-          3,
-        ],
-        quality: 0.85,
-      });
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsEditing: true,
+      aspect: [4, 3],
+      quality: 0.85,
+    });
 
-    if (
-      result.canceled
-      ||
-      result.assets.length === 0
-    ) {
+    if (result.canceled || result.assets.length === 0) {
       return;
     }
 
-    const asset =
-      result.assets[0];
+    const asset = result.assets[0];
 
     if (
-      typeof asset.fileSize === 'number'
-      &&
+      typeof asset.fileSize === 'number' &&
       asset.fileSize > MAX_UPLOAD_BYTES
     ) {
-      Alert.alert(
-        'Image Too Large',
-        'Please choose an image no larger than 5 MB.',
-      );
+      setActiveDialog('tooLarge');
       return;
     }
 
     if (
-      asset.width > MAX_IMAGE_DIMENSION
-      ||
+      asset.width > MAX_IMAGE_DIMENSION ||
       asset.height > MAX_IMAGE_DIMENSION
     ) {
-      Alert.alert(
-        'Image Dimensions Too Large',
-        'Please choose an image no larger than 4096 × 4096 pixels.',
-      );
+      setActiveDialog('dimensions');
       return;
     }
 
-    const mimeType =
-      asset.mimeType?.trim().toLowerCase();
+    const mimeType = asset.mimeType?.trim().toLowerCase();
 
-    if (
-      mimeType
-      &&
-      !ALLOWED_MIME_TYPES.has(
-        mimeType,
-      )
-    ) {
-      Alert.alert(
-        'Unsupported Image',
-        'StyleHub accepts JPG, JPEG, PNG, and WebP images. Try cropping the image in the picker or choose another image.',
-      );
+    if (mimeType && !ALLOWED_MIME_TYPES.has(mimeType)) {
+      setActiveDialog('unsupported');
       return;
     }
 
@@ -458,18 +296,14 @@ export default function ShopOwnerGalleryScreen() {
     setSuccessMessage('');
 
     try {
-      const response =
-        await uploadShopOwnerGalleryImage(
-          token,
-          buildGalleryImageFormData(
-            asset,
-          ),
-        );
+      const response = await uploadShopOwnerGalleryImage(
+        token,
+        buildGalleryImageFormData(asset),
+      );
 
       setSuccessMessage(
-        response.message
-        ??
-        'Gallery image uploaded successfully.',
+        response.message ??
+          'Gallery image uploaded successfully.',
       );
 
       await loadGallery();
@@ -484,52 +318,37 @@ export default function ShopOwnerGalleryScreen() {
     }
   }
 
-  /* ========================================================================
-     REORDER
-     ======================================================================== */
+  /* REORDER PHOTOS */
 
   async function moveImage(
     imageId: number,
     direction: 'up' | 'down',
   ): Promise<void> {
     if (
-      !token
-      ||
-      isUploading
-      ||
-      isReordering
-      ||
+      !token ||
+      isUploading ||
+      isReordering ||
       deletingImageId !== null
     ) {
       return;
     }
 
-    const currentIndex =
-      images.findIndex(
-        (image) => image.id === imageId,
-      );
+    const currentIndex = images.findIndex(
+      (image) => image.id === imageId,
+    );
 
-    if (
-      currentIndex < 0
-    ) {
-      return;
-    }
+    if (currentIndex < 0) return;
 
     const nextIndex =
       direction === 'up'
         ? currentIndex - 1
         : currentIndex + 1;
 
-    if (
-      nextIndex < 0
-      ||
-      nextIndex >= images.length
-    ) {
+    if (nextIndex < 0 || nextIndex >= images.length) {
       return;
     }
 
-    const nextImages =
-      [...images];
+    const nextImages = [...images];
 
     [
       nextImages[currentIndex],
@@ -544,22 +363,16 @@ export default function ShopOwnerGalleryScreen() {
     setSuccessMessage('');
 
     try {
-      const response =
-        await reorderShopOwnerGallery(
-          token,
-          nextImages.map(
-            (image) => image.id,
-          ),
-        );
-
-      setImages(
-        response.data.images,
+      const response = await reorderShopOwnerGallery(
+        token,
+        nextImages.map((image) => image.id),
       );
 
+      setImages(response.data.images);
+
       setSuccessMessage(
-        response.message
-        ??
-        'Gallery order updated successfully.',
+        response.message ??
+          'Gallery order updated successfully.',
       );
     } catch (error) {
       setErrorMessage(
@@ -572,86 +385,52 @@ export default function ShopOwnerGalleryScreen() {
     }
   }
 
-  /* ========================================================================
-     DELETE
-     ======================================================================== */
+  /* REMOVE PHOTO CONFIRMATION */
 
-  function confirmDelete(
-    image: ShopGalleryImage,
-  ): void {
+  function confirmDelete(image: ShopGalleryImage): void {
     if (
-      deletingImageId !== null
-      ||
-      isUploading
-      ||
+      deletingImageId !== null ||
+      isUploading ||
       isReordering
     ) {
       return;
     }
 
-    const imageIndex =
-      images.findIndex(
-        (item) => item.id === image.id,
-      );
-
-    Alert.alert(
-      'Remove Gallery Image?',
-      imageIndex === 0
-        ? 'This is the first photo customers see in your gallery. Removing it will move the next photo into the first position.'
-        : 'This image will no longer appear to customers.',
-      [
-        {
-          text: 'Keep Photo',
-          style: 'cancel',
-        },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => {
-            void removeImage(
-              image.id,
-            );
-          },
-        },
-      ],
-    );
+    setDialogError('');
+    setRemoveTarget(image);
+    setActiveDialog('remove');
   }
 
-  async function removeImage(
-    imageId: number,
-  ): Promise<void> {
-    if (!token) {
-      return;
-    }
+  /* REMOVE PHOTO THROUGH LARAVEL */
 
-    setDeletingImageId(
-      imageId,
-    );
+  async function removeImage(imageId: number): Promise<void> {
+    if (!token) return;
+
+    setDeletingImageId(imageId);
     setErrorMessage('');
     setSuccessMessage('');
 
     try {
-      const response =
-        await deleteShopOwnerGalleryImage(
-          token,
-          imageId,
-        );
+      const response = await deleteShopOwnerGalleryImage(
+        token,
+        imageId,
+      );
 
-      if (
-        previewImageId === imageId
-      ) {
+      if (previewImageId === imageId) {
         setPreviewImageId(null);
       }
 
       setSuccessMessage(
-        response.message
-        ??
-        'Gallery image removed successfully.',
+        response.message ??
+          'Gallery image removed successfully.',
       );
+
+      setRemoveTarget(null);
+      setActiveDialog('removeSuccess');
 
       await loadGallery();
     } catch (error) {
-      setErrorMessage(
+      setDialogError(
         error instanceof ApiError
           ? error.message
           : 'Unable to remove this gallery image.',
@@ -661,48 +440,42 @@ export default function ShopOwnerGalleryScreen() {
     }
   }
 
-  /* ========================================================================
-     IMAGE FAILURE
-     ======================================================================== */
+  function closeGalleryDialog(): void {
+    if (deletingImageId !== null) return;
 
-  function markImageFailed(
-    imageId: number,
-  ): void {
-    setFailedImageIds(
-      (current) => {
-        const next =
-          new Set(current);
-
-        next.add(
-          imageId,
-        );
-
-        return next;
-      },
-    );
+    setActiveDialog(null);
+    setRemoveTarget(null);
+    setDialogError('');
   }
 
-  /* ========================================================================
-     RENDER
-     ======================================================================== */
+  /* IMAGE FAILURE */
+
+  function markImageFailed(imageId: number): void {
+    setFailedImageIds((current) => {
+      const next = new Set(current);
+      next.add(imageId);
+      return next;
+    });
+  }
 
   const isBusy =
-    isUploading
-    ||
-    isReordering
-    ||
+    isUploading ||
+    isReordering ||
     deletingImageId !== null;
 
-  const galleryFull =
-    images.length >= maxImages;
+  const galleryFull = images.length >= maxImages;
+
+  /* MAIN SCREEN */
 
   return (
     <SafeAreaView
+      edges={['top', 'bottom']}
       style={styles.safeArea}
     >
       <StatusBar
         barStyle="dark-content"
         backgroundColor={COLORS.background}
+        translucent={false}
       />
 
       <ScrollView
@@ -712,17 +485,12 @@ export default function ShopOwnerGalleryScreen() {
             refreshing={isRefreshing}
             onRefresh={() => void loadGallery(true)}
             tintColor={COLORS.navy}
-            colors={[
-              COLORS.navy,
-            ]}
+            colors={[COLORS.navy]}
           />
         }
         contentContainerStyle={styles.container}
       >
-
-        {/* ================================================================
-            TOP BAR
-            ================================================================ */}
+        {/* TOP BAR */}
 
         <View style={styles.topBar}>
           <TouchableOpacity
@@ -753,11 +521,12 @@ export default function ShopOwnerGalleryScreen() {
             activeOpacity={0.8}
             accessibilityRole="button"
             accessibilityLabel="Add gallery photo"
-            disabled={isBusy || galleryFull}
+            disabled={isBusy}
             onPress={() => void chooseGalleryImage()}
             style={[
               styles.topAddButton,
-              (isBusy || galleryFull) && styles.disabledButton,
+              (isBusy || galleryFull) &&
+                styles.disabledButton,
             ]}
           >
             {isUploading ? (
@@ -775,9 +544,7 @@ export default function ShopOwnerGalleryScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* ================================================================
-            HEADER
-            ================================================================ */}
+        {/* PAGE HEADER */}
 
         <View style={styles.header}>
           <Text style={styles.eyebrow}>
@@ -789,13 +556,13 @@ export default function ShopOwnerGalleryScreen() {
           </Text>
 
           <Text style={styles.subtitle}>
-            Add clear photos of your work, interior, equipment, and atmosphere. The order below is the same order customers see.
+            Add clear photos of your work, interior, equipment,
+            and atmosphere. The order below is the same order
+            customers see.
           </Text>
         </View>
 
-        {/* ================================================================
-            OVERVIEW
-            ================================================================ */}
+        {/* GALLERY OVERVIEW */}
 
         <View style={styles.overviewCard}>
           <View style={styles.overviewHeader}>
@@ -863,18 +630,14 @@ export default function ShopOwnerGalleryScreen() {
                 />
 
                 <Text style={styles.overviewStatusText}>
-                  {images.length > 0
-                    ? 'Visible'
-                    : 'Empty'}
+                  {images.length > 0 ? 'Visible' : 'Empty'}
                 </Text>
               </View>
             </View>
           </View>
         </View>
 
-        {/* ================================================================
-            ADD PHOTO
-            ================================================================ */}
+        {/* ADD PHOTO */}
 
         <View style={styles.uploadCard}>
           <View style={styles.uploadHeader}>
@@ -892,20 +655,22 @@ export default function ShopOwnerGalleryScreen() {
               </Text>
 
               <Text style={styles.uploadText}>
-                JPG, PNG, or WebP · up to 5 MB · maximum 4096 × 4096 pixels.
+                JPG, PNG, or WebP · up to 5 MB · maximum
+                4096 × 4096 pixels.
               </Text>
             </View>
           </View>
 
           <TouchableOpacity
             activeOpacity={0.84}
-            disabled={isBusy || galleryFull}
+            disabled={isBusy}
             accessibilityRole="button"
             accessibilityLabel="Choose and upload a gallery photo"
             onPress={() => void chooseGalleryImage()}
             style={[
               styles.uploadButton,
-              (isBusy || galleryFull) && styles.disabledButton,
+              (isBusy || galleryFull) &&
+                styles.disabledButton,
             ]}
           >
             {isUploading ? (
@@ -935,9 +700,7 @@ export default function ShopOwnerGalleryScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* ================================================================
-            MESSAGES
-            ================================================================ */}
+        {/* STATUS MESSAGES */}
 
         {errorMessage ? (
           <MessageBox
@@ -955,9 +718,7 @@ export default function ShopOwnerGalleryScreen() {
           />
         ) : null}
 
-        {/* ================================================================
-            SECTION HEADING
-            ================================================================ */}
+        {/* CUSTOMER DISPLAY ORDER */}
 
         <View style={styles.sectionHeading}>
           <View style={styles.sectionHeadingCopy}>
@@ -966,7 +727,8 @@ export default function ShopOwnerGalleryScreen() {
             </Text>
 
             <Text style={styles.sectionSubtitle}>
-              Photo 1 appears first. Use Earlier and Later to control the portfolio sequence.
+              Photo 1 appears first. Use Earlier and Later to
+              control the portfolio sequence.
             </Text>
           </View>
 
@@ -984,9 +746,7 @@ export default function ShopOwnerGalleryScreen() {
           ) : null}
         </View>
 
-        {/* ================================================================
-            LOADING
-            ================================================================ */}
+        {/* LOADING */}
 
         {isLoading ? (
           <View style={styles.stateCard}>
@@ -1007,9 +767,7 @@ export default function ShopOwnerGalleryScreen() {
           </View>
         ) : null}
 
-        {/* ================================================================
-            EMPTY
-            ================================================================ */}
+        {/* EMPTY GALLERY */}
 
         {!isLoading && images.length === 0 ? (
           <View style={styles.emptyCard}>
@@ -1026,7 +784,9 @@ export default function ShopOwnerGalleryScreen() {
             </Text>
 
             <Text style={styles.emptyText}>
-              Start with a clean photo of your shop, then add examples of your work and facilities so customers know what to expect.
+              Start with a clean photo of your shop, then add
+              examples of your work and facilities so customers
+              know what to expect.
             </Text>
 
             <TouchableOpacity
@@ -1051,182 +811,178 @@ export default function ShopOwnerGalleryScreen() {
           </View>
         ) : null}
 
-        {/* ================================================================
-            GALLERY GRID
-            ================================================================ */}
+        {/* GALLERY GRID */}
 
         {!isLoading && images.length > 0 ? (
           <View style={styles.galleryGrid}>
-            {images.map(
-              (image, index) => {
-                const imageUrl =
-                  resolveApiAssetUrl(
-                    image.image_url,
-                  );
+            {images.map((image, index) => {
+              const imageUrl = resolveApiAssetUrl(
+                image.image_url,
+              );
 
-                const imageFailed =
-                  failedImageIds.has(
-                    image.id,
-                  );
+              const imageFailed = failedImageIds.has(
+                image.id,
+              );
 
-                const isDeleting =
-                  deletingImageId === image.id;
+              const isDeleting =
+                deletingImageId === image.id;
 
-                const uploadedDate =
-                  formatUploadedDate(
-                    image.created_at,
-                  );
+              const uploadedDate = formatUploadedDate(
+                image.created_at,
+              );
 
-                return (
-                  <View
-                    key={image.id}
-                    style={[
-                      styles.imageCard,
-                      {
-                        width: imageCardWidth,
-                      },
-                    ]}
+              return (
+                <View
+                  key={image.id}
+                  style={[
+                    styles.imageCard,
+                    { width: imageCardWidth },
+                  ]}
+                >
+                  <TouchableOpacity
+                    activeOpacity={0.88}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Preview gallery photo ${
+                      index + 1
+                    }`}
+                    disabled={!imageUrl || imageFailed}
+                    onPress={() =>
+                      setPreviewImageId(image.id)
+                    }
+                    style={styles.imagePreviewButton}
                   >
-                    <TouchableOpacity
-                      activeOpacity={0.88}
-                      accessibilityRole="button"
-                      accessibilityLabel={`Preview gallery photo ${index + 1}`}
-                      disabled={!imageUrl || imageFailed}
-                      onPress={
-                        () =>
-                          setPreviewImageId(
-                            image.id,
-                          )
-                      }
-                      style={styles.imagePreviewButton}
-                    >
-                      {imageUrl && !imageFailed ? (
-                        <Image
-                          source={{
-                            uri: imageUrl,
-                          }}
-                          resizeMode="cover"
-                          onError={
-                            () =>
-                              markImageFailed(
-                                image.id,
-                              )
-                          }
-                          style={styles.galleryImage}
+                    {imageUrl && !imageFailed ? (
+                      <Image
+                        source={{ uri: imageUrl }}
+                        resizeMode="cover"
+                        onError={() =>
+                          markImageFailed(image.id)
+                        }
+                        style={styles.galleryImage}
+                      />
+                    ) : (
+                      <View style={styles.imageFallback}>
+                        <Ionicons
+                          name="image-outline"
+                          size={28}
+                          color={COLORS.textLight}
                         />
-                      ) : (
-                        <View style={styles.imageFallback}>
-                          <Ionicons
-                            name="image-outline"
-                            size={28}
-                            color={COLORS.textLight}
-                          />
 
-                          <Text style={styles.imageFallbackText}>
-                            Image unavailable
-                          </Text>
-                        </View>
-                      )}
-
-                      <View style={styles.positionBadge}>
-                        <Text style={styles.positionBadgeText}>
-                          {index + 1}
+                        <Text style={styles.imageFallbackText}>
+                          Image unavailable
                         </Text>
                       </View>
+                    )}
 
-                      {index === 0 ? (
-                        <View style={styles.firstBadge}>
-                          <Ionicons
-                            name="star"
-                            size={11}
-                            color={COLORS.white}
-                          />
+                    <View style={styles.positionBadge}>
+                      <Text style={styles.positionBadgeText}>
+                        {index + 1}
+                      </Text>
+                    </View>
 
-                          <Text style={styles.firstBadgeText}>
-                            First
-                          </Text>
-                        </View>
-                      ) : null}
-
-                      <View style={styles.previewBadge}>
+                    {index === 0 ? (
+                      <View style={styles.firstBadge}>
                         <Ionicons
-                          name="expand-outline"
-                          size={14}
+                          name="star"
+                          size={11}
                           color={COLORS.white}
                         />
+
+                        <Text style={styles.firstBadgeText}>
+                          First
+                        </Text>
                       </View>
-                    </TouchableOpacity>
+                    ) : null}
 
-                    <View style={styles.imageContent}>
-                      <Text
-                        style={styles.imageTitle}
-                        numberOfLines={1}
+                    <View style={styles.previewBadge}>
+                      <Ionicons
+                        name="expand-outline"
+                        size={14}
+                        color={COLORS.white}
+                      />
+                    </View>
+                  </TouchableOpacity>
+
+                  <View style={styles.imageContent}>
+                    <Text
+                      numberOfLines={1}
+                      style={styles.imageTitle}
+                    >
+                      Photo {index + 1}
+                    </Text>
+
+                    <Text
+                      numberOfLines={1}
+                      style={styles.imageMeta}
+                    >
+                      {uploadedDate
+                        ? `Added ${uploadedDate}`
+                        : `Display position ${index + 1}`}
+                    </Text>
+
+                    <View style={styles.imageActions}>
+                      <IconActionButton
+                        icon="arrow-up"
+                        label="Earlier"
+                        accessibilityLabel={`Move photo ${
+                          index + 1
+                        } earlier`}
+                        disabled={isBusy || index === 0}
+                        onPress={() =>
+                          void moveImage(image.id, 'up')
+                        }
+                      />
+
+                      <IconActionButton
+                        icon="arrow-down"
+                        label="Later"
+                        accessibilityLabel={`Move photo ${
+                          index + 1
+                        } later`}
+                        disabled={
+                          isBusy ||
+                          index === images.length - 1
+                        }
+                        onPress={() =>
+                          void moveImage(image.id, 'down')
+                        }
+                      />
+
+                      <TouchableOpacity
+                        activeOpacity={0.76}
+                        disabled={isBusy}
+                        accessibilityRole="button"
+                        accessibilityLabel={`Remove photo ${
+                          index + 1
+                        }`}
+                        onPress={() => confirmDelete(image)}
+                        style={[
+                          styles.deleteButton,
+                          isBusy && styles.disabledButton,
+                        ]}
                       >
-                        Photo {index + 1}
-                      </Text>
-
-                      <Text
-                        style={styles.imageMeta}
-                        numberOfLines={1}
-                      >
-                        {uploadedDate
-                          ? `Added ${uploadedDate}`
-                          : `Display position ${index + 1}`}
-                      </Text>
-
-                      <View style={styles.imageActions}>
-                        <IconActionButton
-                          icon="arrow-up"
-                          label="Earlier"
-                          accessibilityLabel={`Move photo ${index + 1} earlier`}
-                          disabled={isBusy || index === 0}
-                          onPress={() => void moveImage(image.id, 'up')}
-                        />
-
-                        <IconActionButton
-                          icon="arrow-down"
-                          label="Later"
-                          accessibilityLabel={`Move photo ${index + 1} later`}
-                          disabled={isBusy || index === images.length - 1}
-                          onPress={() => void moveImage(image.id, 'down')}
-                        />
-
-                        <TouchableOpacity
-                          activeOpacity={0.76}
-                          disabled={isBusy}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Remove photo ${index + 1}`}
-                          onPress={() => confirmDelete(image)}
-                          style={[
-                            styles.deleteButton,
-                            isBusy && styles.disabledButton,
-                          ]}
-                        >
-                          {isDeleting ? (
-                            <ActivityIndicator
-                              size="small"
-                              color={COLORS.danger}
-                            />
-                          ) : (
-                            <Ionicons
-                              name="trash-outline"
-                              size={17}
-                              color={COLORS.danger}
-                            />
-                          )}
-                        </TouchableOpacity>
-                      </View>
+                        {isDeleting ? (
+                          <ActivityIndicator
+                            size="small"
+                            color={COLORS.danger}
+                          />
+                        ) : (
+                          <Ionicons
+                            name="trash-outline"
+                            size={17}
+                            color={COLORS.danger}
+                          />
+                        )}
+                      </TouchableOpacity>
                     </View>
                   </View>
-                );
-              },
-            )}
+                </View>
+              );
+            })}
           </View>
         ) : null}
 
-        {/* ================================================================
-            PORTFOLIO TIP
-            ================================================================ */}
+        {/* PORTFOLIO TIP */}
 
         {!isLoading ? (
           <View style={styles.tipCard}>
@@ -1244,29 +1000,133 @@ export default function ShopOwnerGalleryScreen() {
               </Text>
 
               <Text style={styles.tipText}>
-                Put your clearest and most representative shop photo first. Customers see this gallery while deciding whether to book.
+                Put your clearest and most representative shop
+                photo first. Customers see this gallery while
+                deciding whether to book.
               </Text>
             </View>
           </View>
         ) : null}
       </ScrollView>
 
-      {/* ================================================================
-          IMAGE PREVIEW MODAL
-          ================================================================ */}
+      {/* SHARED COMPACT MODALS */}
+
+      <StyleHubModal
+        visible={activeDialog !== null}
+        onClose={closeGalleryDialog}
+        title={
+          activeDialog === 'galleryFull'
+            ? 'Gallery is full'
+            : activeDialog === 'permission'
+              ? 'Photo access needed'
+              : activeDialog === 'tooLarge'
+                ? 'Image too large'
+                : activeDialog === 'dimensions'
+                  ? 'Image dimensions too large'
+                  : activeDialog === 'unsupported'
+                    ? 'Unsupported image'
+                    : activeDialog === 'remove'
+                      ? 'Remove gallery photo?'
+                      : 'Photo removed'
+        }
+        message={
+          activeDialog === 'galleryFull'
+            ? `Your shop gallery can contain up to ${maxImages} photos. Remove one before uploading another.`
+            : activeDialog === 'permission'
+              ? 'Allow photo-library access in your phone settings to upload shop photos.'
+              : activeDialog === 'tooLarge'
+                ? 'Choose a photo no larger than 5 MB.'
+                : activeDialog === 'dimensions'
+                  ? 'Choose a photo no larger than 4096 × 4096 pixels.'
+                  : activeDialog === 'unsupported'
+                    ? 'StyleHub accepts JPG, JPEG, PNG, and WebP photos. Please choose a supported image.'
+                    : activeDialog === 'remove'
+                      ? removeTarget &&
+                        images[0]?.id === removeTarget.id
+                        ? 'This is the first photo customers see. Removing it will move the next photo into first position.'
+                        : 'This photo will no longer appear in your public shop gallery.'
+                      : successMessage ||
+                        'Gallery photo removed successfully.'
+        }
+        tone={
+          activeDialog === 'remove'
+            ? 'danger'
+            : activeDialog === 'removeSuccess'
+              ? 'success'
+              : 'warning'
+        }
+        icon={
+          activeDialog === 'remove'
+            ? 'trash-outline'
+            : activeDialog === 'removeSuccess'
+              ? 'checkmark-circle-outline'
+              : activeDialog === 'galleryFull'
+                ? 'images-outline'
+                : activeDialog === 'permission'
+                  ? 'lock-closed-outline'
+                  : 'alert-circle-outline'
+        }
+        dismissOnBackdrop={
+          activeDialog !== 'remove' &&
+          deletingImageId === null
+        }
+        actions={
+          activeDialog === 'remove'
+            ? [
+                {
+                  label: 'Keep photo',
+                  variant: 'secondary',
+                  onPress: closeGalleryDialog,
+                },
+                {
+                  label: 'Remove photo',
+                  variant: 'danger',
+                  icon: 'trash-outline',
+                  loading: deletingImageId !== null,
+                  onPress: () => {
+                    if (removeTarget) {
+                      void removeImage(removeTarget.id);
+                    }
+                  },
+                },
+              ]
+            : [
+                {
+                  label: 'Got it',
+                  variant: 'primary',
+                  onPress: closeGalleryDialog,
+                },
+              ]
+        }
+      >
+        {activeDialog === 'remove' && dialogError ? (
+          <View style={styles.dialogError}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={16}
+              color={COLORS.danger}
+            />
+            <Text style={styles.dialogErrorText}>
+              {dialogError}
+            </Text>
+          </View>
+        ) : null}
+      </StyleHubModal>
+
+      {/* FULL-SCREEN IMAGE PREVIEW */}
 
       <Modal
         visible={previewImage !== null}
         transparent
         animationType="fade"
         statusBarTranslucent
-        onRequestClose={
-          () =>
-            setPreviewImageId(null)
-        }
+        onRequestClose={() => setPreviewImageId(null)}
       >
         <View style={styles.previewOverlay}>
-          <SafeAreaView style={styles.previewSafeArea}>
+          <SafeAreaView
+            edges={['top', 'bottom']}
+            style={styles.previewSafeArea}
+          >
             <View style={styles.previewTopBar}>
               <View style={styles.previewHeading}>
                 <Text style={styles.previewTitle}>
@@ -1284,10 +1144,7 @@ export default function ShopOwnerGalleryScreen() {
                 activeOpacity={0.75}
                 accessibilityRole="button"
                 accessibilityLabel="Close image preview"
-                onPress={
-                  () =>
-                    setPreviewImageId(null)
-                }
+                onPress={() => setPreviewImageId(null)}
                 style={styles.previewCloseButton}
               >
                 <Ionicons
@@ -1305,8 +1162,7 @@ export default function ShopOwnerGalleryScreen() {
                     uri:
                       resolveApiAssetUrl(
                         previewImage.image_url,
-                      )
-                      ?? '',
+                      ) ?? '',
                   }}
                   resizeMode="contain"
                   style={styles.previewImage}
@@ -1322,7 +1178,8 @@ export default function ShopOwnerGalleryScreen() {
               />
 
               <Text style={styles.previewFooterText}>
-                Use the Earlier and Later controls on the gallery screen to change where this photo appears.
+                Use the Earlier and Later controls on the
+                gallery screen to change where this photo appears.
               </Text>
             </View>
           </SafeAreaView>
@@ -1332,9 +1189,7 @@ export default function ShopOwnerGalleryScreen() {
   );
 }
 
-/* ==========================================================================
-   OVERVIEW STAT
-   ========================================================================== */
+/* OVERVIEW STAT */
 
 function OverviewStat({
   value,
@@ -1348,7 +1203,6 @@ function OverviewStat({
       <Text style={styles.overviewStatValue}>
         {value}
       </Text>
-
       <Text style={styles.overviewStatLabel}>
         {label}
       </Text>
@@ -1356,9 +1210,7 @@ function OverviewStat({
   );
 }
 
-/* ==========================================================================
-   ICON ACTION BUTTON
-   ========================================================================== */
+/* IMAGE ORDER BUTTON */
 
 function IconActionButton({
   icon,
@@ -1390,7 +1242,6 @@ function IconActionButton({
         size={16}
         color={COLORS.navy}
       />
-
       <Text style={styles.orderButtonText}>
         {label}
       </Text>
@@ -1398,9 +1249,7 @@ function IconActionButton({
   );
 }
 
-/* ==========================================================================
-   MESSAGE
-   ========================================================================== */
+/* MESSAGE BOX */
 
 function MessageBox({
   type,
@@ -1411,18 +1260,16 @@ function MessageBox({
   title: string;
   message: string;
 }) {
-  const success =
-    type === 'success';
+  const success = type === 'success';
 
   return (
     <View
       style={[
         styles.messageBox,
         {
-          backgroundColor:
-            success
-              ? COLORS.successSoft
-              : COLORS.dangerSoft,
+          backgroundColor: success
+            ? COLORS.successSoft
+            : COLORS.dangerSoft,
         },
       ]}
     >
@@ -1447,10 +1294,9 @@ function MessageBox({
           style={[
             styles.messageTitle,
             {
-              color:
-                success
-                  ? COLORS.success
-                  : COLORS.danger,
+              color: success
+                ? COLORS.success
+                : COLORS.danger,
             },
           ]}
         >
@@ -1465,692 +1311,106 @@ function MessageBox({
   );
 }
 
-/* ==========================================================================
-   STYLES
-   ========================================================================== */
+/* COMPLETE ORIGINAL SCREEN STYLES */
 
 const styles = StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: COLORS.background,
-  },
-
-  container: {
-    width: '100%',
-    maxWidth: LAYOUT.contentMaxWidth,
-    alignSelf: 'center',
-    paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
-    paddingBottom: 48,
-  },
-
-  topBar: {
-    minHeight: 48,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-
-  topIconButton: {
-    width: LAYOUT.iconButtonSize,
-    height: LAYOUT.iconButtonSize,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: RADII.pill,
-  },
-
-  topBarTitleBlock: {
-    flex: 1,
-    marginHorizontal: 6,
-  },
-
-  topBarTitle: {
-    color: COLORS.text,
-    fontSize: TYPOGRAPHY.cardTitle,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-
-  topBarCaption: {
-    marginTop: 1,
-    color: COLORS.textMuted,
-    fontSize: TYPOGRAPHY.micro,
-    textAlign: 'center',
-  },
-
-  topAddButton: {
-    width: LAYOUT.iconButtonSize,
-    height: LAYOUT.iconButtonSize,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 14,
-    backgroundColor: COLORS.primary,
-  },
-
-  header: {
-    marginTop: SPACING.lg,
-  },
-
-  eyebrow: {
-    color: COLORS.accent,
-    fontSize: TYPOGRAPHY.micro,
-    fontWeight: '800',
-    letterSpacing: 1.2,
-  },
-
-  title: {
-    maxWidth: 560,
-    marginTop: 5,
-    color: COLORS.text,
-    fontSize: TYPOGRAPHY.title,
-    lineHeight: 30,
-    fontWeight: '800',
-    letterSpacing: -0.6,
-  },
-
-  subtitle: {
-    maxWidth: 610,
-    marginTop: 8,
-    color: COLORS.textMuted,
-    fontSize: TYPOGRAPHY.body,
-    lineHeight: 21,
-  },
-
-  overviewCard: {
-    marginTop: SPACING.xl,
-    padding: 18,
-    borderRadius: RADII.xl,
-    backgroundColor: COLORS.primary,
-    ...SHADOWS.card,
-  },
-
-  overviewHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-
-  overviewLabel: {
-    color: '#D4DAE1',
-    fontSize: TYPOGRAPHY.caption,
-    fontWeight: '600',
-  },
-
-  overviewValue: {
-    marginTop: 4,
-    color: COLORS.white,
-    fontSize: 27,
-    lineHeight: 33,
-    fontWeight: '800',
-    letterSpacing: -0.5,
-  },
-
-  overviewIcon: {
-    width: 48,
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 16,
-    backgroundColor: COLORS.navyMuted,
-  },
-
-  progressTrack: {
-    height: 7,
-    marginTop: 18,
-    overflow: 'hidden',
-    borderRadius: RADII.pill,
-    backgroundColor: COLORS.navyMuted,
-  },
-
-  progressFill: {
-    height: '100%',
-    borderRadius: RADII.pill,
-    backgroundColor: COLORS.white,
-  },
-
-  overviewStats: {
-    marginTop: 16,
-    paddingTop: 15,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: COLORS.navyMuted,
-  },
-
-  overviewStat: {
-    minWidth: 58,
-  },
-
-  overviewStatValue: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.cardTitle,
-    fontWeight: '800',
-  },
-
-  overviewStatLabel: {
-    marginTop: 3,
-    color: '#D4DAE1',
-    fontSize: TYPOGRAPHY.micro,
-  },
-
-  overviewDivider: {
-    width: 1,
-    height: 34,
-    marginHorizontal: 14,
-    backgroundColor: COLORS.navyMuted,
-  },
-
-  overviewStatus: {
-    flex: 1,
-    minWidth: 0,
-  },
-
-  overviewStatusLabel: {
-    color: '#D4DAE1',
-    fontSize: TYPOGRAPHY.micro,
-  },
-
-  overviewStatusRow: {
-    marginTop: 5,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-
-  overviewStatusDot: {
-    width: 7,
-    height: 7,
-    borderRadius: 4,
-  },
-
-  overviewStatusText: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.caption,
-    fontWeight: '800',
-  },
-
-  uploadCard: {
-    marginTop: 12,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.xl,
-    backgroundColor: COLORS.surface,
-  },
-
-  uploadHeader: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 11,
-  },
-
-  uploadIcon: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 14,
-    backgroundColor: COLORS.accentSoft,
-  },
-
-  uploadCopy: {
-    flex: 1,
-  },
-
-  uploadTitle: {
-    color: COLORS.text,
-    fontSize: TYPOGRAPHY.cardTitle,
-    fontWeight: '800',
-  },
-
-  uploadText: {
-    marginTop: 3,
-    color: COLORS.textMuted,
-    fontSize: TYPOGRAPHY.caption,
-    lineHeight: 18,
-  },
-
-  uploadButton: {
-    minHeight: LAYOUT.buttonHeight,
-    marginTop: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    paddingHorizontal: 16,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.primary,
-  },
-
-  uploadButtonText: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.body,
-    fontWeight: '800',
-  },
-
-  messageBox: {
-    marginTop: 12,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 10,
-    padding: 14,
-    borderRadius: RADII.md,
-  },
-
-  messageIcon: {
-    width: 31,
-    height: 31,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 10,
-    backgroundColor: COLORS.surface,
-  },
-
-  messageContent: {
-    flex: 1,
-  },
-
-  messageTitle: {
-    fontSize: TYPOGRAPHY.secondary,
-    fontWeight: '800',
-  },
-
-  messageText: {
-    marginTop: 3,
-    color: COLORS.textMuted,
-    fontSize: TYPOGRAPHY.caption,
-    lineHeight: 18,
-  },
-
-  sectionHeading: {
-    marginTop: SPACING.xxl,
-    marginBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 12,
-  },
-
-  sectionHeadingCopy: {
-    flex: 1,
-  },
-
-  sectionTitle: {
-    color: COLORS.text,
-    fontSize: TYPOGRAPHY.section,
-    fontWeight: '800',
-    letterSpacing: -0.3,
-  },
-
-  sectionSubtitle: {
-    marginTop: 3,
-    color: COLORS.textMuted,
-    fontSize: TYPOGRAPHY.caption,
-    lineHeight: 17,
-  },
-
-  reorderingBadge: {
-    minHeight: 32,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 9,
-    borderRadius: RADII.pill,
-    backgroundColor: COLORS.blueSoft,
-  },
-
-  reorderingText: {
-    color: COLORS.blue,
-    fontSize: TYPOGRAPHY.micro,
-    fontWeight: '800',
-  },
-
-  stateCard: {
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 34,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.xl,
-    backgroundColor: COLORS.surface,
-  },
-
-  stateIcon: {
-    width: 54,
-    height: 54,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 18,
-    backgroundColor: COLORS.surfaceSoft,
-  },
-
-  stateTitle: {
-    marginTop: 14,
-    color: COLORS.text,
-    fontSize: TYPOGRAPHY.cardTitle,
-    fontWeight: '800',
-  },
-
-  stateText: {
-    maxWidth: 330,
-    marginTop: 5,
-    color: COLORS.textMuted,
-    fontSize: TYPOGRAPHY.caption,
-    lineHeight: 18,
-    textAlign: 'center',
-  },
-
-  emptyCard: {
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingVertical: 34,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.xl,
-    backgroundColor: COLORS.surface,
-  },
-
-  emptyIcon: {
-    width: 60,
-    height: 60,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 20,
-    backgroundColor: COLORS.accentSoft,
-  },
-
-  emptyTitle: {
-    marginTop: 14,
-    color: COLORS.text,
-    fontSize: TYPOGRAPHY.cardTitle,
-    fontWeight: '800',
-  },
-
-  emptyText: {
-    maxWidth: 360,
-    marginTop: 6,
-    color: COLORS.textMuted,
-    fontSize: TYPOGRAPHY.body,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-
-  emptyButton: {
-    minHeight: LAYOUT.compactButtonHeight,
-    marginTop: 18,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    paddingHorizontal: 17,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.primary,
-  },
-
-  emptyButtonText: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.secondary,
-    fontWeight: '800',
-  },
-
-  galleryGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: GRID_GAP,
-    alignItems: 'flex-start',
-  },
-
-  imageCard: {
-    overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.lg,
-    backgroundColor: COLORS.surface,
-    ...SHADOWS.card,
-  },
-
-  imagePreviewButton: {
-    position: 'relative',
-    width: '100%',
-    aspectRatio: 4 / 3,
-    overflow: 'hidden',
-    backgroundColor: COLORS.surfaceSoft,
-  },
-
-  galleryImage: {
-    width: '100%',
-    height: '100%',
-    backgroundColor: COLORS.surfaceSoft,
-  },
-
-  imageFallback: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-    backgroundColor: COLORS.surfaceSoft,
-  },
-
-  imageFallbackText: {
-    marginTop: 6,
-    color: COLORS.textLight,
-    fontSize: TYPOGRAPHY.micro,
-    textAlign: 'center',
-  },
-
-  positionBadge: {
-    position: 'absolute',
-    top: 8,
-    left: 8,
-    minWidth: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 7,
-    borderRadius: RADII.pill,
-    backgroundColor: 'rgba(23, 33, 43, 0.88)',
-  },
-
-  positionBadgeText: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.micro,
-    fontWeight: '800',
-  },
-
-  firstBadge: {
-    position: 'absolute',
-    left: 8,
-    bottom: 8,
-    minHeight: 27,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 8,
-    borderRadius: RADII.pill,
-    backgroundColor: 'rgba(23, 33, 43, 0.88)',
-  },
-
-  firstBadgeText: {
-    color: COLORS.white,
-    fontSize: 10,
-    fontWeight: '800',
-  },
-
-  previewBadge: {
-    position: 'absolute',
-    right: 8,
-    bottom: 8,
-    width: 30,
-    height: 30,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: RADII.pill,
-    backgroundColor: 'rgba(23, 33, 43, 0.76)',
-  },
-
-  imageContent: {
-    padding: 10,
-  },
-
-  imageTitle: {
-    color: COLORS.text,
-    fontSize: TYPOGRAPHY.secondary,
-    fontWeight: '800',
-  },
-
-  imageMeta: {
-    marginTop: 3,
-    color: COLORS.textMuted,
-    fontSize: TYPOGRAPHY.micro,
-  },
-
-  imageActions: {
-    marginTop: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-  },
-
-  orderButton: {
-    flex: 1,
-    minWidth: 0,
-    minHeight: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 2,
-    paddingHorizontal: 4,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 11,
-    backgroundColor: COLORS.surfaceSoft,
-  },
-
-  orderButtonText: {
-    color: COLORS.navy,
-    fontSize: 9,
-    fontWeight: '800',
-  },
-
-  deleteButton: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.danger,
-    borderRadius: 11,
-    backgroundColor: COLORS.dangerSoft,
-  },
-
-  tipCard: {
-    marginTop: SPACING.xxl,
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 11,
-    padding: 15,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.lg,
-    backgroundColor: COLORS.surface,
-  },
-
-  tipIcon: {
-    width: 40,
-    height: 40,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 13,
-    backgroundColor: COLORS.orangeSoft,
-  },
-
-  tipContent: {
-    flex: 1,
-  },
-
-  tipTitle: {
-    color: COLORS.text,
-    fontSize: TYPOGRAPHY.secondary,
-    fontWeight: '800',
-  },
-
-  tipText: {
-    marginTop: 3,
-    color: COLORS.textMuted,
-    fontSize: TYPOGRAPHY.caption,
-    lineHeight: 18,
-  },
-
-  disabledButton: {
-    opacity: 0.46,
-  },
-
-  previewOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(10, 18, 27, 0.96)',
-  },
-
-  previewSafeArea: {
-    flex: 1,
-  },
-
-  previewTopBar: {
-    minHeight: 70,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingHorizontal: 18,
-    paddingTop: 8,
-  },
-
-  previewHeading: {
-    flex: 1,
-  },
-
-  previewTitle: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.cardTitle,
-    fontWeight: '800',
-  },
-
-  previewCaption: {
-    marginTop: 2,
-    color: '#AEB8C5',
-    fontSize: TYPOGRAPHY.micro,
-  },
-
-  previewCloseButton: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: RADII.pill,
-    backgroundColor: 'rgba(255, 255, 255, 0.10)',
-  },
-
-  previewImageStage: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 18,
-  },
-
-  previewImage: {
-    width: '100%',
-    height: '100%',
-  },
-
-  previewFooter: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    paddingHorizontal: 20,
-    paddingTop: 12,
-    paddingBottom: 22,
-  },
-
-  previewFooterText: {
-    flex: 1,
-    color: '#D4DAE1',
-    fontSize: TYPOGRAPHY.caption,
-    lineHeight: 18,
-  },
+  safeArea: { flex: 1, backgroundColor: COLORS.background },
+  container: { width: '100%', maxWidth: LAYOUT.contentMaxWidth, alignSelf: 'center', paddingHorizontal: LAYOUT.screenPadding, paddingTop: 40, paddingBottom: 48 },
+  topBar: { minHeight: 48, flexDirection: 'row', alignItems: 'center' },
+  topIconButton: { width: LAYOUT.iconButtonSize, height: LAYOUT.iconButtonSize, alignItems: 'center', justifyContent: 'center', borderRadius: RADII.pill },
+  topBarTitleBlock: { flex: 1, marginHorizontal: 6 },
+  topBarTitle: { color: COLORS.text, fontSize: TYPOGRAPHY.cardTitle, fontWeight: '800', textAlign: 'center' },
+  topBarCaption: { marginTop: 1, color: COLORS.textMuted, fontSize: TYPOGRAPHY.micro, textAlign: 'center' },
+  topAddButton: { width: LAYOUT.iconButtonSize, height: LAYOUT.iconButtonSize, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: COLORS.primary },
+  header: { marginTop: SPACING.lg },
+  eyebrow: { color: COLORS.accent, fontSize: TYPOGRAPHY.micro, fontWeight: '800', letterSpacing: 1.2 },
+  title: { maxWidth: 560, marginTop: 5, color: COLORS.text, fontSize: TYPOGRAPHY.title, lineHeight: 30, fontWeight: '800', letterSpacing: -0.6 },
+  subtitle: { maxWidth: 610, marginTop: 8, color: COLORS.textMuted, fontSize: TYPOGRAPHY.body, lineHeight: 21 },
+  overviewCard: { marginTop: SPACING.xl, padding: 18, borderRadius: RADII.xl, backgroundColor: COLORS.primary, ...SHADOWS.card },
+  overviewHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  overviewLabel: { color: '#D4DAE1', fontSize: TYPOGRAPHY.caption, fontWeight: '600' },
+  overviewValue: { marginTop: 4, color: COLORS.white, fontSize: 27, lineHeight: 33, fontWeight: '800', letterSpacing: -0.5 },
+  overviewIcon: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center', borderRadius: 16, backgroundColor: COLORS.navyMuted },
+  progressTrack: { height: 7, marginTop: 18, overflow: 'hidden', borderRadius: RADII.pill, backgroundColor: COLORS.navyMuted },
+  progressFill: { height: '100%', borderRadius: RADII.pill, backgroundColor: COLORS.white },
+  overviewStats: { marginTop: 16, paddingTop: 15, flexDirection: 'row', alignItems: 'center', borderTopWidth: 1, borderTopColor: COLORS.navyMuted },
+  overviewStat: { minWidth: 58 },
+  overviewStatValue: { color: COLORS.white, fontSize: TYPOGRAPHY.cardTitle, fontWeight: '800' },
+  overviewStatLabel: { marginTop: 3, color: '#D4DAE1', fontSize: TYPOGRAPHY.micro },
+  overviewDivider: { width: 1, height: 34, marginHorizontal: 14, backgroundColor: COLORS.navyMuted },
+  overviewStatus: { flex: 1, minWidth: 0 },
+  overviewStatusLabel: { color: '#D4DAE1', fontSize: TYPOGRAPHY.micro },
+  overviewStatusRow: { marginTop: 5, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  overviewStatusDot: { width: 7, height: 7, borderRadius: 4 },
+  overviewStatusText: { color: COLORS.white, fontSize: TYPOGRAPHY.caption, fontWeight: '800' },
+  uploadCard: { marginTop: 12, padding: 16, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADII.xl, backgroundColor: COLORS.surface },
+  uploadHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 11 },
+  uploadIcon: { width: 42, height: 42, alignItems: 'center', justifyContent: 'center', borderRadius: 14, backgroundColor: COLORS.accentSoft },
+  uploadCopy: { flex: 1 },
+  uploadTitle: { color: COLORS.text, fontSize: TYPOGRAPHY.cardTitle, fontWeight: '800' },
+  uploadText: { marginTop: 3, color: COLORS.textMuted, fontSize: TYPOGRAPHY.caption, lineHeight: 18 },
+  uploadButton: { minHeight: LAYOUT.buttonHeight, marginTop: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 16, borderRadius: RADII.md, backgroundColor: COLORS.primary },
+  uploadButtonText: { color: COLORS.white, fontSize: TYPOGRAPHY.body, fontWeight: '800' },
+  messageBox: { marginTop: 12, flexDirection: 'row', alignItems: 'flex-start', gap: 10, padding: 14, borderRadius: RADII.md },
+  messageIcon: { width: 31, height: 31, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: COLORS.surface },
+  messageContent: { flex: 1 },
+  messageTitle: { fontSize: TYPOGRAPHY.secondary, fontWeight: '800' },
+  messageText: { marginTop: 3, color: COLORS.textMuted, fontSize: TYPOGRAPHY.caption, lineHeight: 18 },
+  sectionHeading: { marginTop: SPACING.xxl, marginBottom: 12, flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
+  sectionHeadingCopy: { flex: 1 },
+  sectionTitle: { color: COLORS.text, fontSize: TYPOGRAPHY.section, fontWeight: '800', letterSpacing: -0.3 },
+  sectionSubtitle: { marginTop: 3, color: COLORS.textMuted, fontSize: TYPOGRAPHY.caption, lineHeight: 17 },
+  reorderingBadge: { minHeight: 32, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 9, borderRadius: RADII.pill, backgroundColor: COLORS.blueSoft },
+  reorderingText: { color: COLORS.blue, fontSize: TYPOGRAPHY.micro, fontWeight: '800' },
+  stateCard: { alignItems: 'center', paddingHorizontal: 24, paddingVertical: 34, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADII.xl, backgroundColor: COLORS.surface },
+  stateIcon: { width: 54, height: 54, alignItems: 'center', justifyContent: 'center', borderRadius: 18, backgroundColor: COLORS.surfaceSoft },
+  stateTitle: { marginTop: 14, color: COLORS.text, fontSize: TYPOGRAPHY.cardTitle, fontWeight: '800' },
+  stateText: { maxWidth: 330, marginTop: 5, color: COLORS.textMuted, fontSize: TYPOGRAPHY.caption, lineHeight: 18, textAlign: 'center' },
+  emptyCard: { alignItems: 'center', paddingHorizontal: 24, paddingVertical: 34, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADII.xl, backgroundColor: COLORS.surface },
+  emptyIcon: { width: 60, height: 60, alignItems: 'center', justifyContent: 'center', borderRadius: 20, backgroundColor: COLORS.accentSoft },
+  emptyTitle: { marginTop: 14, color: COLORS.text, fontSize: TYPOGRAPHY.cardTitle, fontWeight: '800' },
+  emptyText: { maxWidth: 360, marginTop: 6, color: COLORS.textMuted, fontSize: TYPOGRAPHY.body, lineHeight: 20, textAlign: 'center' },
+  emptyButton: { minHeight: LAYOUT.compactButtonHeight, marginTop: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, paddingHorizontal: 17, borderRadius: RADII.md, backgroundColor: COLORS.primary },
+  emptyButtonText: { color: COLORS.white, fontSize: TYPOGRAPHY.secondary, fontWeight: '800' },
+  galleryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: GRID_GAP, alignItems: 'flex-start' },
+  imageCard: { overflow: 'hidden', borderWidth: 1, borderColor: COLORS.border, borderRadius: RADII.lg, backgroundColor: COLORS.surface, ...SHADOWS.card },
+  imagePreviewButton: { position: 'relative', width: '100%', aspectRatio: 4 / 3, overflow: 'hidden', backgroundColor: COLORS.surfaceSoft },
+  galleryImage: { width: '100%', height: '100%', backgroundColor: COLORS.surfaceSoft },
+  imageFallback: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 10, backgroundColor: COLORS.surfaceSoft },
+  imageFallbackText: { marginTop: 6, color: COLORS.textLight, fontSize: TYPOGRAPHY.micro, textAlign: 'center' },
+  positionBadge: { position: 'absolute', top: 8, left: 8, minWidth: 28, height: 28, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7, borderRadius: RADII.pill, backgroundColor: 'rgba(23, 33, 43, 0.88)' },
+  positionBadgeText: { color: COLORS.white, fontSize: TYPOGRAPHY.micro, fontWeight: '800' },
+  firstBadge: { position: 'absolute', left: 8, bottom: 8, minHeight: 27, flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 8, borderRadius: RADII.pill, backgroundColor: 'rgba(23, 33, 43, 0.88)' },
+  firstBadgeText: { color: COLORS.white, fontSize: 10, fontWeight: '800' },
+  previewBadge: { position: 'absolute', right: 8, bottom: 8, width: 30, height: 30, alignItems: 'center', justifyContent: 'center', borderRadius: RADII.pill, backgroundColor: 'rgba(23, 33, 43, 0.76)' },
+  imageContent: { padding: 10 },
+  imageTitle: { color: COLORS.text, fontSize: TYPOGRAPHY.secondary, fontWeight: '800' },
+  imageMeta: { marginTop: 3, color: COLORS.textMuted, fontSize: TYPOGRAPHY.micro },
+  imageActions: { marginTop: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  orderButton: { flex: 1, minWidth: 0, minHeight: 40, alignItems: 'center', justifyContent: 'center', gap: 2, paddingHorizontal: 4, borderWidth: 1, borderColor: COLORS.border, borderRadius: 11, backgroundColor: COLORS.surfaceSoft },
+  orderButtonText: { color: COLORS.navy, fontSize: 9, fontWeight: '800' },
+  deleteButton: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.danger, borderRadius: 11, backgroundColor: COLORS.dangerSoft },
+  tipCard: { marginTop: SPACING.xxl, flexDirection: 'row', alignItems: 'flex-start', gap: 11, padding: 15, borderWidth: 1, borderColor: COLORS.border, borderRadius: RADII.lg, backgroundColor: COLORS.surface },
+  tipIcon: { width: 40, height: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 13, backgroundColor: COLORS.orangeSoft },
+  tipContent: { flex: 1 },
+  tipTitle: { color: COLORS.text, fontSize: TYPOGRAPHY.secondary, fontWeight: '800' },
+  tipText: { marginTop: 3, color: COLORS.textMuted, fontSize: TYPOGRAPHY.caption, lineHeight: 18 },
+  disabledButton: { opacity: 0.46 },
+
+  // New shared modal error styles.
+  dialogError: { width: '100%', flexDirection: 'row', alignItems: 'flex-start', gap: 8, padding: 10, borderRadius: RADII.md, backgroundColor: COLORS.dangerSoft },
+  dialogErrorText: { flex: 1, color: COLORS.danger, fontSize: TYPOGRAPHY.caption, lineHeight: 18 },
+
+  // Full-screen image preview remains unchanged.
+  previewOverlay: { flex: 1, backgroundColor: 'rgba(10, 18, 27, 0.96)' },
+  previewSafeArea: { flex: 1 },
+  previewTopBar: { minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 18, paddingTop: 8 },
+  previewHeading: { flex: 1 },
+  previewTitle: { color: COLORS.white, fontSize: TYPOGRAPHY.cardTitle, fontWeight: '800' },
+  previewCaption: { marginTop: 2, color: '#AEB8C5', fontSize: TYPOGRAPHY.micro },
+  previewCloseButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: RADII.pill, backgroundColor: 'rgba(255, 255, 255, 0.10)' },
+  previewImageStage: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 14, paddingVertical: 18 },
+  previewImage: { width: '100%', height: '100%' },
+  previewFooter: { flexDirection: 'row', alignItems: 'flex-start', gap: 8, paddingHorizontal: 20, paddingTop: 12, paddingBottom: 22 },
+  previewFooterText: { flex: 1, color: '#D4DAE1', fontSize: TYPOGRAPHY.caption, lineHeight: 18 },
 });

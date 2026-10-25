@@ -1,21 +1,12 @@
-import {
-  Ionicons,
-} from '@expo/vector-icons';
 
-import {
-  router,
-} from 'expo-router';
-
-import {
-  useMemo,
-  useState,
-} from 'react';
+import { Ionicons } from '@expo/vector-icons';
+import { router } from 'expo-router';
+import { useMemo, useState } from 'react';
 
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -26,321 +17,169 @@ import {
   View,
 } from 'react-native';
 
-import {
-  COLORS,
-} from '@/src/constants/colors';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
-import {
-  LAYOUT,
-  RADII,
-  SHADOWS,
-  SPACING,
-  TYPOGRAPHY,
-} from '@/src/constants/design';
+import { LAYOUT } from '@/src/constants/design';
+import { useAuth } from '@/src/context/AuthContext';
+import { ApiError } from '@/src/services/api';
+import type { ShopType } from '@/src/types/auth';
 
-import {
-  useAuth,
-} from '@/src/context/AuthContext';
+/* ==========================================================
+   STYLEHUB SHOP OWNER REGISTRATION
+   Matches Customer Registration and Login screens
+   ========================================================== */
 
-import {
-  ApiError,
-} from '@/src/services/api';
+const THEME = {
+  navy: '#08131F',
+  navyDark: '#06101A',
+  navyLight: '#162635',
 
-import type {
-  ShopType,
-} from '@/src/types/auth';
+  orange: '#D99202',
+  orangeDark: '#C78200',
+  orangeSoft: '#F8E8CC',
 
+  white: '#FFFFFF',
+  offWhite: '#F7F8FA',
 
-/* ==========================================================================
-   SHOP OWNER REGISTRATION
-   ========================================================================== */
+  text: '#152432',
+  muted: '#6B7A89',
+  mutedLight: '#B7C2CE',
+
+  border: '#E7EBF0',
+  iconSoft: '#EEF3F8',
+
+  green: '#167C51',
+  greenSoft: '#E7F7EF',
+
+  danger: '#C43D43',
+  dangerSoft: '#FFF0F0',
+
+  warning: '#AD7516',
+  warningSoft: '#FFF5DF',
+};
+
+/* ==========================================================
+   MAIN SHOP OWNER REGISTRATION
+   ========================================================== */
 
 export default function ShopOwnerRegistrationForm() {
-  const {
-    registerShopOwner,
-    isSubmitting,
-  } =
-    useAuth();
+  const { registerShopOwner, isSubmitting } = useAuth();
+  const { width } = useWindowDimensions();
 
-  const {
-    width,
-    height,
-  } =
-    useWindowDimensions();
+  /* OWNER STATE */
 
-
-  /* ==========================================================================
-     OWNER STATE
-     ========================================================================== */
-
-  const [
-    firstName,
-    setFirstName,
-  ] =
+  const [firstName, setFirstName] = useState('');
+  const [middleName, setMiddleName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState('');
+  const [password, setPassword] = useState('');
+  const [passwordConfirmation, setPasswordConfirmation] =
     useState('');
 
-  const [
-    middleName,
-    setMiddleName,
-  ] =
+  /* SHOP STATE */
+
+  const [shopName, setShopName] = useState('');
+  const [shopType, setShopType] =
+    useState<ShopType>('barber_shop');
+  const [shopDescription, setShopDescription] =
     useState('');
-
-  const [
-    lastName,
-    setLastName,
-  ] =
+  const [shopPhoneNumber, setShopPhoneNumber] =
     useState('');
+  const [shopEmail, setShopEmail] = useState('');
+  const [shopAddress, setShopAddress] = useState('');
+  const [shopCity, setShopCity] = useState('');
+  const [shopProvince, setShopProvince] = useState('');
 
-  const [
-    email,
-    setEmail,
-  ] =
-    useState('');
+  /* UI STATE */
 
-  const [
-    phoneNumber,
-    setPhoneNumber,
-  ] =
-    useState('');
-
-  const [
-    password,
-    setPassword,
-  ] =
-    useState('');
-
-  const [
-    passwordConfirmation,
-    setPasswordConfirmation,
-  ] =
-    useState('');
-
-
-  /* ==========================================================================
-     SHOP STATE
-     ========================================================================== */
-
-  const [
-    shopName,
-    setShopName,
-  ] =
-    useState('');
-
-  const [
-    shopType,
-    setShopType,
-  ] =
-    useState<ShopType>(
-      'barber_shop',
-    );
-
-  const [
-    shopDescription,
-    setShopDescription,
-  ] =
-    useState('');
-
-  const [
-    shopPhoneNumber,
-    setShopPhoneNumber,
-  ] =
-    useState('');
-
-  const [
-    shopEmail,
-    setShopEmail,
-  ] =
-    useState('');
-
-  const [
-    shopAddress,
-    setShopAddress,
-  ] =
-    useState('');
-
-  const [
-    shopCity,
-    setShopCity,
-  ] =
-    useState('');
-
-  const [
-    shopProvince,
-    setShopProvince,
-  ] =
-    useState('');
-
-
-  /* ==========================================================================
-     UI STATE
-     ========================================================================== */
-
-  const [
-    passwordVisible,
-    setPasswordVisible,
-  ] =
+  const [passwordVisible, setPasswordVisible] =
     useState(false);
-
-  const [
-    confirmationVisible,
-    setConfirmationVisible,
-  ] =
+  const [confirmationVisible, setConfirmationVisible] =
     useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] =
-    useState('');
+  /* RESPONSIVE SETTINGS */
 
+  const isSmallPhone = width < 360;
+  const isTablet = width >= 720;
 
-  /* ==========================================================================
-     RESPONSIVE STATE
-     ========================================================================== */
+  const horizontalPadding = isTablet
+    ? 32
+    : isSmallPhone
+      ? 16
+      : 22;
 
-  const isSmallPhone =
-    width < 360;
+  /* PASSWORD CHECKS */
 
-  const isShortScreen =
-    height < 700;
+  const passwordChecks = useMemo(
+    () => ({
+      length:
+        password.length >= 12 &&
+        password.length <= 64,
 
-  const isTablet =
-    width >= 720;
+      mixedCase:
+        /[A-Z]/.test(password) &&
+        /[a-z]/.test(password),
 
+      number: /\d/.test(password),
 
-  const horizontalPadding =
-    isTablet
-      ? 32
-      : isSmallPhone
-        ? 16
-        : LAYOUT.screenPadding;
+      symbol: /[^A-Za-z0-9]/.test(password),
 
+      confirmation:
+        password.length > 0 &&
+        password === passwordConfirmation,
+    }),
+    [password, passwordConfirmation],
+  );
 
-  /* ==========================================================================
-     PASSWORD CHECKS
-     ========================================================================== */
-
-  const passwordChecks =
-    useMemo(
-      () => ({
-        length:
-          password.length >= 12
-          &&
-          password.length <= 64,
-
-        mixedCase:
-          /[A-Z]/.test(
-            password,
-          )
-          &&
-          /[a-z]/.test(
-            password,
-          ),
-
-        number:
-          /\d/.test(
-            password,
-          ),
-
-        symbol:
-          /[^A-Za-z0-9]/.test(
-            password,
-          ),
-
-        confirmation:
-          password.length > 0
-          &&
-          password ===
-            passwordConfirmation,
-      }),
+  const passwordStrength = useMemo(
+    () =>
       [
-        password,
-        passwordConfirmation,
-      ],
-    );
+        passwordChecks.length,
+        passwordChecks.mixedCase,
+        passwordChecks.number,
+        passwordChecks.symbol,
+      ].filter(Boolean).length,
+    [passwordChecks],
+  );
 
+  const passwordStrengthLabel = useMemo(() => {
+    if (password.length === 0) {
+      return 'Not entered';
+    }
 
-  const passwordStrength =
-    useMemo(
-      () =>
-        [
-          passwordChecks.length,
-          passwordChecks.mixedCase,
-          passwordChecks.number,
-          passwordChecks.symbol,
-        ].filter(Boolean).length,
-      [
-        passwordChecks,
-      ],
-    );
+    if (passwordStrength <= 1) {
+      return 'Needs improvement';
+    }
 
+    if (passwordStrength <= 3) {
+      return 'Almost ready';
+    }
 
-  const passwordStrengthLabel =
-    useMemo(
-      () => {
-        if (
-          password.length ===
-          0
-        ) {
-          return 'Not entered';
-        }
+    return 'Strong';
+  }, [password, passwordStrength]);
 
-        if (
-          passwordStrength <= 1
-        ) {
-          return 'Needs improvement';
-        }
-
-        if (
-          passwordStrength <= 3
-        ) {
-          return 'Almost ready';
-        }
-
-        return 'Strong';
-      },
-      [
-        password,
-        passwordStrength,
-      ],
-    );
-
-
-  /* ==========================================================================
-     CHANGE HELPERS
-     ========================================================================== */
+  /* FIELD UPDATE HELPERS */
 
   function clearError() {
-    if (
-      errorMessage
-    ) {
+    if (errorMessage) {
       setErrorMessage('');
     }
   }
 
-
   function updateField(
-    setter:
-      (
-        value: string,
-      ) => void,
-
-    value:
-      string,
+    setter: (value: string) => void,
+    value: string,
   ) {
     setter(value);
-
     clearError();
   }
 
-
-  /* ==========================================================================
-     SUBMIT REGISTRATION
-     ========================================================================== */
+  /* SUBMIT REGISTRATION */
 
   async function handleSubmit() {
     setErrorMessage('');
-
 
     const requiredValues = [
       firstName,
@@ -356,103 +195,57 @@ export default function ShopOwnerRegistrationForm() {
       shopProvince,
     ];
 
-
     if (
       requiredValues.some(
-        (value) =>
-          value.trim() === '',
+        (value) => value.trim() === '',
       )
     ) {
-      setErrorMessage(
-        'Complete all required fields.',
-      );
-
+      setErrorMessage('Complete all required fields.');
       return;
     }
 
-
-    if (
-      password.length > 64
-    ) {
+    if (password.length > 64) {
       setErrorMessage(
         'The password may not be greater than 64 characters.',
       );
-
       return;
     }
 
-
-    if (
-      password !==
-      passwordConfirmation
-    ) {
+    if (password !== passwordConfirmation) {
       setErrorMessage(
         'The password confirmation does not match.',
       );
-
       return;
     }
-
 
     try {
       await registerShopOwner({
         firstName,
-
         middleName,
-
         lastName,
-
         email,
-
         phoneNumber,
-
         password,
-
         passwordConfirmation,
 
         shop: {
-          name:
-            shopName,
-
-          type:
-            shopType,
-
-          description:
-            shopDescription,
-
-          phoneNumber:
-            shopPhoneNumber,
-
-          email:
-            shopEmail,
-
-          address:
-            shopAddress,
-
-          city:
-            shopCity,
-
-          province:
-            shopProvince,
+          name: shopName,
+          type: shopType,
+          description: shopDescription,
+          phoneNumber: shopPhoneNumber,
+          email: shopEmail,
+          address: shopAddress,
+          city: shopCity,
+          province: shopProvince,
         },
       });
 
-
-      router.replace(
-        '/(shop-owner)/shop-owner',
-      );
+      router.replace('/(shop-owner)/shop-owner');
     } catch (error) {
-      if (
-        error instanceof
-        ApiError
-      ) {
-        setErrorMessage(
-          error.message,
-        );
-
+      if (error instanceof ApiError) {
+        setErrorMessage(error.message);
         return;
       }
-
 
       setErrorMessage(
         'Unable to submit your shop registration.',
@@ -460,188 +253,114 @@ export default function ShopOwnerRegistrationForm() {
     }
   }
 
-
-  /* ==========================================================================
-     RENDER
-     ========================================================================== */
+  /* MAIN SCREEN */
 
   return (
     <SafeAreaView
-      style={
-        styles.safeArea
-      }
+      edges={['top', 'bottom']}
+      style={styles.safeArea}
     >
       <StatusBar
-        barStyle="dark-content"
-        backgroundColor={
-          COLORS.background
-        }
+        barStyle="light-content"
+        backgroundColor={THEME.navyDark}
+        translucent={false}
       />
 
-
       <KeyboardAvoidingView
-        style={
-          styles.flex
-        }
+        style={styles.flex}
         behavior={
-          Platform.OS ===
-          'ios'
-            ? 'padding'
-            : undefined
+          Platform.OS === 'ios' ? 'padding' : undefined
         }
       >
         <ScrollView
           keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={
-            false
-          }
-          bounces={
-            false
-          }
-          contentContainerStyle={
-            styles.scrollContent
-          }
+          showsVerticalScrollIndicator={false}
+          bounces={false}
+          contentContainerStyle={styles.scrollContent}
         >
           <View
             style={[
               styles.screen,
-
               {
-                paddingHorizontal:
-                  horizontalPadding,
+                paddingHorizontal: horizontalPadding,
+                paddingTop: 40,
               },
-
-              isShortScreen &&
-                styles.screenCompact,
             ]}
           >
-            {/* ==============================================================
-                TOP NAVIGATION
-                ============================================================== */}
+            {/* TOP NAVIGATION */}
 
-            <View
-              style={
-                styles.topBar
-              }
-            >
+            <View style={styles.topBar}>
               <TouchableOpacity
                 activeOpacity={0.7}
-                disabled={
-                  isSubmitting
-                }
+                disabled={isSubmitting}
                 accessibilityRole="button"
                 accessibilityLabel="Go back"
-                onPress={
-                  () =>
-                    router.back()
-                }
-                style={
-                  styles.backButton
-                }
+                onPress={() => router.back()}
+                style={styles.backButton}
               >
                 <Ionicons
                   name="arrow-back"
-                  size={20}
-                  color={
-                    COLORS.navy
-                  }
+                  size={21}
+                  color={THEME.white}
                 />
               </TouchableOpacity>
+
+              <View style={styles.topBarCaptionWrap}>
+                <View style={styles.topBarDot} />
+
+                <Text style={styles.topBarCaption}>
+                  STYLEHUB ACCOUNT
+                </Text>
+              </View>
             </View>
 
+            {/* HEADER */}
 
-            {/* ==============================================================
-                HEADER
-                ============================================================== */}
-
-            <View
-              style={[
-                styles.header,
-
-                isShortScreen &&
-                  styles.headerCompact,
-              ]}
-            >
-              <View
-                style={
-                  styles.ownerIcon
-                }
-              >
+            <View style={styles.header}>
+              <View style={styles.ownerIcon}>
                 <Ionicons
                   name="storefront-outline"
                   size={28}
-                  color={
-                    COLORS.orange
-                  }
+                  color={THEME.orange}
                 />
               </View>
 
+              <View style={styles.ownerBadge}>
+                <View style={styles.ownerBadgeDot} />
 
-              <View
-                style={
-                  styles.ownerBadge
-                }
-              >
-                <View
-                  style={
-                    styles.ownerBadgeDot
-                  }
-                />
-
-                <Text
-                  style={
-                    styles.ownerBadgeText
-                  }
-                >
+                <Text style={styles.ownerBadgeText}>
                   BUSINESS REGISTRATION
                 </Text>
               </View>
 
-
               <Text
                 style={[
                   styles.title,
-
-                  isSmallPhone &&
-                    styles.titleSmall,
+                  isSmallPhone && styles.titleSmall,
                 ]}
               >
                 Register your shop
               </Text>
 
-
-              <Text
-                style={
-                  styles.subtitle
-                }
-              >
-                Create your Shop Owner account and
-                submit your barber shop or beauty
-                parlor for StyleHub Administrator review.
+              <Text style={styles.subtitle}>
+                Create your Shop Owner account and submit
+                your barber shop or beauty parlor for
+                StyleHub Administrator review.
               </Text>
+
+              <View style={styles.headerAccentLine} />
             </View>
 
+            {/* REGISTRATION PROGRESS */}
 
-            {/* ==============================================================
-                PROGRESS
-                ============================================================== */}
-
-            <View
-              style={
-                styles.progressCard
-              }
-            >
+            <View style={styles.progressCard}>
               <ProgressItem
                 number="1"
                 label="Owner"
                 active
               />
 
-              <View
-                style={
-                  styles.progressLine
-                }
-              />
+              <View style={styles.progressLine} />
 
               <ProgressItem
                 number="2"
@@ -649,11 +368,7 @@ export default function ShopOwnerRegistrationForm() {
                 active
               />
 
-              <View
-                style={
-                  styles.progressLine
-                }
-              />
+              <View style={styles.progressLine} />
 
               <ProgressItem
                 number="3"
@@ -661,19 +376,12 @@ export default function ShopOwnerRegistrationForm() {
               />
             </View>
 
+            {/* MAIN REGISTRATION CARD */}
 
-            {/* ==============================================================
-                MAIN FORM CARD
-                ============================================================== */}
+            <View style={styles.registrationCard}>
+              <View style={styles.cardAccentLine} />
 
-            <View
-              style={
-                styles.registrationCard
-              }
-            >
-              {/* ============================================================
-                  OWNER INFORMATION
-                  ============================================================ */}
+              {/* OWNER INFORMATION */}
 
               <FormSectionHeader
                 icon="person-outline"
@@ -683,147 +391,93 @@ export default function ShopOwnerRegistrationForm() {
                 tone="blue"
               />
 
-
               <View
                 style={[
                   styles.nameGrid,
-
-                  isTablet &&
-                    styles.tabletGridThree,
+                  isTablet && styles.tabletGridThree,
                 ]}
               >
                 <View
                   style={
-                    isTablet
-                      ? styles.tabletField
-                      : undefined
+                    isTablet ? styles.tabletField : undefined
                   }
                 >
                   <RegistrationField
                     icon="person-outline"
                     label="First Name"
-                    value={
-                      firstName
-                    }
-                    onChangeText={
-                      (
-                        value,
-                      ) =>
-                        updateField(
-                          setFirstName,
-                          value,
-                        )
+                    value={firstName}
+                    onChangeText={(value) =>
+                      updateField(setFirstName, value)
                     }
                     placeholder="First name"
-                    editable={
-                      !isSubmitting
-                    }
+                    editable={!isSubmitting}
                     autoComplete="given-name"
                     textContentType="givenName"
                   />
                 </View>
 
-
                 <View
                   style={
-                    isTablet
-                      ? styles.tabletField
-                      : undefined
+                    isTablet ? styles.tabletField : undefined
                   }
                 >
                   <RegistrationField
                     icon="person-outline"
                     label="Middle Name"
                     optional
-                    value={
-                      middleName
-                    }
-                    onChangeText={
-                      (
-                        value,
-                      ) =>
-                        updateField(
-                          setMiddleName,
-                          value,
-                        )
+                    value={middleName}
+                    onChangeText={(value) =>
+                      updateField(setMiddleName, value)
                     }
                     placeholder="Middle name"
-                    editable={
-                      !isSubmitting
-                    }
+                    editable={!isSubmitting}
                     autoComplete="additional-name"
                     textContentType="middleName"
                   />
                 </View>
 
-
                 <View
                   style={
-                    isTablet
-                      ? styles.tabletField
-                      : undefined
+                    isTablet ? styles.tabletField : undefined
                   }
                 >
                   <RegistrationField
                     icon="person-outline"
                     label="Last Name"
-                    value={
-                      lastName
-                    }
-                    onChangeText={
-                      (
-                        value,
-                      ) =>
-                        updateField(
-                          setLastName,
-                          value,
-                        )
+                    value={lastName}
+                    onChangeText={(value) =>
+                      updateField(setLastName, value)
                     }
                     placeholder="Last name"
-                    editable={
-                      !isSubmitting
-                    }
+                    editable={!isSubmitting}
                     autoComplete="family-name"
                     textContentType="familyName"
                   />
                 </View>
               </View>
 
+              {/* OWNER CONTACT INFORMATION */}
 
               <View
                 style={[
                   styles.fieldGrid,
-
-                  isTablet &&
-                    styles.tabletGridTwo,
+                  isTablet && styles.tabletGridTwo,
                 ]}
               >
                 <View
                   style={
-                    isTablet
-                      ? styles.tabletField
-                      : undefined
+                    isTablet ? styles.tabletField : undefined
                   }
                 >
                   <RegistrationField
                     icon="mail-outline"
                     label="Email Address"
-                    value={
-                      email
-                    }
-                    onChangeText={
-                      (
-                        value,
-                      ) =>
-                        updateField(
-                          setEmail,
-                          value,
-                        )
+                    value={email}
+                    onChangeText={(value) =>
+                      updateField(setEmail, value)
                     }
                     placeholder="owner@example.com"
-                    editable={
-                      !isSubmitting
-                    }
+                    editable={!isSubmitting}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoComplete="email"
@@ -831,33 +485,20 @@ export default function ShopOwnerRegistrationForm() {
                   />
                 </View>
 
-
                 <View
                   style={
-                    isTablet
-                      ? styles.tabletField
-                      : undefined
+                    isTablet ? styles.tabletField : undefined
                   }
                 >
                   <RegistrationField
                     icon="phone-portrait-outline"
                     label="Mobile Number"
-                    value={
-                      phoneNumber
-                    }
-                    onChangeText={
-                      (
-                        value,
-                      ) =>
-                        updateField(
-                          setPhoneNumber,
-                          value,
-                        )
+                    value={phoneNumber}
+                    onChangeText={(value) =>
+                      updateField(setPhoneNumber, value)
                     }
                     placeholder="09XXXXXXXXX"
-                    editable={
-                      !isSubmitting
-                    }
+                    editable={!isSubmitting}
                     keyboardType="phone-pad"
                     autoCapitalize="none"
                     autoComplete="tel"
@@ -867,13 +508,9 @@ export default function ShopOwnerRegistrationForm() {
                 </View>
               </View>
 
-
-              {/* ============================================================
-                  SECURITY
-                  ============================================================ */}
+              {/* ACCOUNT SECURITY */}
 
               <SectionDivider />
-
 
               <FormSectionHeader
                 icon="shield-checkmark-outline"
@@ -883,253 +520,164 @@ export default function ShopOwnerRegistrationForm() {
                 tone="navy"
               />
 
-
               <View
                 style={[
                   styles.fieldGrid,
-
-                  isTablet &&
-                    styles.tabletGridTwo,
+                  isTablet && styles.tabletGridTwo,
                 ]}
               >
                 <View
                   style={
-                    isTablet
-                      ? styles.tabletField
-                      : undefined
+                    isTablet ? styles.tabletField : undefined
                   }
                 >
                   <PasswordField
                     label="Password"
-                    value={
-                      password
+                    value={password}
+                    onChangeText={(value) =>
+                      updateField(setPassword, value)
                     }
-                    onChangeText={
-                      (
-                        value,
-                      ) =>
-                        updateField(
-                          setPassword,
-                          value,
-                        )
+                    visible={passwordVisible}
+                    onToggle={() =>
+                      setPasswordVisible(
+                        (current) => !current,
+                      )
                     }
-                    visible={
-                      passwordVisible
-                    }
-                    onToggle={
-                      () =>
-                        setPasswordVisible(
-                          (
-                            current,
-                          ) =>
-                            !current,
-                        )
-                    }
-                    editable={
-                      !isSubmitting
-                    }
+                    editable={!isSubmitting}
                     placeholder="Create password"
                   />
                 </View>
 
-
                 <View
                   style={
-                    isTablet
-                      ? styles.tabletField
-                      : undefined
+                    isTablet ? styles.tabletField : undefined
                   }
                 >
                   <PasswordField
                     label="Confirm Password"
-                    value={
-                      passwordConfirmation
-                    }
-                    onChangeText={
-                      (
+                    value={passwordConfirmation}
+                    onChangeText={(value) =>
+                      updateField(
+                        setPasswordConfirmation,
                         value,
-                      ) =>
-                        updateField(
-                          setPasswordConfirmation,
-                          value,
-                        )
+                      )
                     }
-                    visible={
-                      confirmationVisible
+                    visible={confirmationVisible}
+                    onToggle={() =>
+                      setConfirmationVisible(
+                        (current) => !current,
+                      )
                     }
-                    onToggle={
-                      () =>
-                        setConfirmationVisible(
-                          (
-                            current,
-                          ) =>
-                            !current,
-                        )
-                    }
-                    editable={
-                      !isSubmitting
-                    }
+                    editable={!isSubmitting}
                     placeholder="Re-enter password"
                   />
                 </View>
               </View>
 
+              {/* PASSWORD STRENGTH */}
 
-              <View
-                style={
-                  styles.passwordGuide
-                }
-              >
-                <View
-                  style={
-                    styles.passwordGuideHeader
-                  }
-                >
+              <View style={styles.passwordGuide}>
+                <View style={styles.passwordGuideHeader}>
                   <View>
-                    <Text
-                      style={
-                        styles.passwordGuideEyebrow
-                      }
-                    >
+                    <Text style={styles.passwordGuideEyebrow}>
                       PASSWORD STRENGTH
                     </Text>
 
-                    <Text
-                      style={
-                        styles.passwordStrengthLabel
-                      }
-                    >
+                    <Text style={styles.passwordStrengthLabel}>
                       {passwordStrengthLabel}
                     </Text>
                   </View>
 
-
-                  <Text
-                    style={
-                      styles.passwordScore
-                    }
-                  >
+                  <Text style={styles.passwordScore}>
                     {passwordStrength}/4
                   </Text>
                 </View>
 
-
-                <View
-                  style={
-                    styles.strengthTrack
-                  }
-                >
+                <View style={styles.strengthTrack}>
                   <View
                     style={[
                       styles.strengthFill,
-
                       {
-                        width:
-                          `${
-                            (
-                              passwordStrength
-                              / 4
-                            )
-                            * 100
-                          }%`,
+                        width: `${
+                          (passwordStrength / 4) * 100
+                        }%`,
+                        backgroundColor:
+                          passwordStrength === 4
+                            ? THEME.green
+                            : THEME.orange,
                       },
                     ]}
                   />
                 </View>
 
-
-                <View
-                  style={
-                    styles.requirementsGrid
-                  }
-                >
+                <View style={styles.requirementsGrid}>
                   <PasswordRequirement
-                    complete={
-                      passwordChecks.length
-                    }
+                    complete={passwordChecks.length}
                     text="12–64 characters"
                   />
 
                   <PasswordRequirement
-                    complete={
-                      passwordChecks.mixedCase
-                    }
+                    complete={passwordChecks.mixedCase}
                     text="Uppercase + lowercase"
                   />
 
                   <PasswordRequirement
-                    complete={
-                      passwordChecks.number
-                    }
+                    complete={passwordChecks.number}
                     text="At least one number"
                   />
 
                   <PasswordRequirement
-                    complete={
-                      passwordChecks.symbol
-                    }
+                    complete={passwordChecks.symbol}
                     text="At least one symbol"
                   />
                 </View>
               </View>
 
+              {/* PASSWORD CONFIRMATION */}
 
-              {
-                passwordConfirmation.length > 0
-                  ? (
-                    <View
-                      style={[
-                        styles.passwordMatch,
+              {passwordConfirmation.length > 0 ? (
+                <View
+                  style={[
+                    styles.passwordMatch,
+                    passwordChecks.confirmation
+                      ? styles.passwordMatchSuccess
+                      : styles.passwordMatchWarning,
+                  ]}
+                >
+                  <Ionicons
+                    name={
+                      passwordChecks.confirmation
+                        ? 'checkmark-circle-outline'
+                        : 'alert-circle-outline'
+                    }
+                    size={15}
+                    color={
+                      passwordChecks.confirmation
+                        ? THEME.green
+                        : THEME.warning
+                    }
+                  />
 
-                        passwordChecks.confirmation
-                          ? styles.passwordMatchSuccess
-                          : styles.passwordMatchWarning,
-                      ]}
-                    >
-                      <Ionicons
-                        name={
-                          passwordChecks.confirmation
-                            ? 'checkmark-circle-outline'
-                            : 'alert-circle-outline'
-                        }
-                        size={15}
-                        color={
-                          passwordChecks.confirmation
-                            ? COLORS.green
-                            : COLORS.warning
-                        }
-                      />
+                  <Text
+                    style={[
+                      styles.passwordMatchText,
+                      {
+                        color: passwordChecks.confirmation
+                          ? THEME.green
+                          : THEME.warning,
+                      },
+                    ]}
+                  >
+                    {passwordChecks.confirmation
+                      ? 'Passwords match'
+                      : 'Passwords do not match yet'}
+                  </Text>
+                </View>
+              ) : null}
 
-                      <Text
-                        style={[
-                          styles.passwordMatchText,
-
-                          {
-                            color:
-                              passwordChecks.confirmation
-                                ? COLORS.green
-                                : COLORS.warning,
-                          },
-                        ]}
-                      >
-                        {
-                          passwordChecks.confirmation
-                            ? 'Passwords match'
-                            : 'Passwords do not match yet'
-                        }
-                      </Text>
-                    </View>
-                  )
-                  : null
-              }
-
-
-              {/* ============================================================
-                  SHOP INFORMATION
-                  ============================================================ */}
+              {/* SHOP INFORMATION */}
 
               <SectionDivider />
-
 
               <FormSectionHeader
                 icon="storefront-outline"
@@ -1139,51 +687,27 @@ export default function ShopOwnerRegistrationForm() {
                 tone="orange"
               />
 
-
               <RegistrationField
                 icon="storefront-outline"
                 label="Shop Name"
-                value={
-                  shopName
-                }
-                onChangeText={
-                  (
-                    value,
-                  ) =>
-                    updateField(
-                      setShopName,
-                      value,
-                    )
+                value={shopName}
+                onChangeText={(value) =>
+                  updateField(setShopName, value)
                 }
                 placeholder="Business name"
-                editable={
-                  !isSubmitting
-                }
+                editable={!isSubmitting}
               />
 
+              {/* SHOP TYPE */}
 
-              {/* ============================================================
-                  SHOP TYPE
-                  ============================================================ */}
-
-              <View
-                style={
-                  styles.field
-                }
-              >
-                <Text
-                  style={
-                    styles.label
-                  }
-                >
+              <View style={styles.field}>
+                <Text style={styles.label}>
                   Shop Type
                 </Text>
-
 
                 <View
                   style={[
                     styles.shopTypeGrid,
-
                     isSmallPhone &&
                       styles.shopTypeGridSmall,
                   ]}
@@ -1192,81 +716,47 @@ export default function ShopOwnerRegistrationForm() {
                     icon="cut-outline"
                     title="Barber Shop"
                     description="Haircuts and men's grooming"
-                    selected={
-                      shopType ===
-                      'barber_shop'
-                    }
-                    disabled={
-                      isSubmitting
-                    }
-                    onPress={
-                      () => {
-                        setShopType(
-                          'barber_shop',
-                        );
-
-                        clearError();
-                      }
-                    }
+                    selected={shopType === 'barber_shop'}
+                    disabled={isSubmitting}
+                    onPress={() => {
+                      setShopType('barber_shop');
+                      clearError();
+                    }}
                   />
-
 
                   <ShopTypeCard
                     icon="sparkles-outline"
                     title="Beauty Parlor"
                     description="Beauty and salon services"
-                    selected={
-                      shopType ===
-                      'beauty_parlor'
-                    }
-                    disabled={
-                      isSubmitting
-                    }
-                    onPress={
-                      () => {
-                        setShopType(
-                          'beauty_parlor',
-                        );
-
-                        clearError();
-                      }
-                    }
+                    selected={shopType === 'beauty_parlor'}
+                    disabled={isSubmitting}
+                    onPress={() => {
+                      setShopType('beauty_parlor');
+                      clearError();
+                    }}
                   />
                 </View>
               </View>
 
+              {/* SHOP DESCRIPTION */}
 
               <RegistrationField
                 icon="document-text-outline"
                 label="Description"
                 optional
-                value={
-                  shopDescription
-                }
-                onChangeText={
-                  (
-                    value,
-                  ) =>
-                    updateField(
-                      setShopDescription,
-                      value,
-                    )
+                value={shopDescription}
+                onChangeText={(value) =>
+                  updateField(setShopDescription, value)
                 }
                 placeholder="Tell customers about your shop, specialties, or services"
-                editable={
-                  !isSubmitting
-                }
+                editable={!isSubmitting}
                 multiline
                 helperText="You can update your shop profile again after registration."
               />
 
-
-              {/* ============================================================
-                  SHOP CONTACT
-                  ============================================================ */}
+              {/* SHOP CONTACT */}
 
               <SectionDivider subtle />
-
 
               <FormSectionHeader
                 icon="call-outline"
@@ -1277,41 +767,26 @@ export default function ShopOwnerRegistrationForm() {
                 compact
               />
 
-
               <View
                 style={[
                   styles.fieldGrid,
-
-                  isTablet &&
-                    styles.tabletGridTwo,
+                  isTablet && styles.tabletGridTwo,
                 ]}
               >
                 <View
                   style={
-                    isTablet
-                      ? styles.tabletField
-                      : undefined
+                    isTablet ? styles.tabletField : undefined
                   }
                 >
                   <RegistrationField
                     icon="call-outline"
                     label="Shop Phone Number"
-                    value={
-                      shopPhoneNumber
-                    }
-                    onChangeText={
-                      (
-                        value,
-                      ) =>
-                        updateField(
-                          setShopPhoneNumber,
-                          value,
-                        )
+                    value={shopPhoneNumber}
+                    onChangeText={(value) =>
+                      updateField(setShopPhoneNumber, value)
                     }
                     placeholder="09XXXXXXXXX"
-                    editable={
-                      !isSubmitting
-                    }
+                    editable={!isSubmitting}
                     keyboardType="phone-pad"
                     autoCapitalize="none"
                     autoComplete="tel"
@@ -1319,34 +794,21 @@ export default function ShopOwnerRegistrationForm() {
                   />
                 </View>
 
-
                 <View
                   style={
-                    isTablet
-                      ? styles.tabletField
-                      : undefined
+                    isTablet ? styles.tabletField : undefined
                   }
                 >
                   <RegistrationField
                     icon="mail-outline"
                     label="Shop Email"
                     optional
-                    value={
-                      shopEmail
-                    }
-                    onChangeText={
-                      (
-                        value,
-                      ) =>
-                        updateField(
-                          setShopEmail,
-                          value,
-                        )
+                    value={shopEmail}
+                    onChangeText={(value) =>
+                      updateField(setShopEmail, value)
                     }
                     placeholder="shop@example.com"
-                    editable={
-                      !isSubmitting
-                    }
+                    editable={!isSubmitting}
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoComplete="email"
@@ -1355,13 +817,9 @@ export default function ShopOwnerRegistrationForm() {
                 </View>
               </View>
 
-
-              {/* ============================================================
-                  LOCATION
-                  ============================================================ */}
+              {/* SHOP LOCATION */}
 
               <SectionDivider subtle />
-
 
               <FormSectionHeader
                 icon="location-outline"
@@ -1372,443 +830,236 @@ export default function ShopOwnerRegistrationForm() {
                 compact
               />
 
-
               <RegistrationField
                 icon="navigate-outline"
                 label="Address"
-                value={
-                  shopAddress
-                }
-                onChangeText={
-                  (
-                    value,
-                  ) =>
-                    updateField(
-                      setShopAddress,
-                      value,
-                    )
+                value={shopAddress}
+                onChangeText={(value) =>
+                  updateField(setShopAddress, value)
                 }
                 placeholder="Street / Barangay"
-                editable={
-                  !isSubmitting
-                }
+                editable={!isSubmitting}
                 autoComplete="street-address"
               />
-
 
               <View
                 style={[
                   styles.fieldGrid,
-
-                  isTablet &&
-                    styles.tabletGridTwo,
+                  isTablet && styles.tabletGridTwo,
                 ]}
               >
                 <View
                   style={
-                    isTablet
-                      ? styles.tabletField
-                      : undefined
+                    isTablet ? styles.tabletField : undefined
                   }
                 >
                   <RegistrationField
                     icon="business-outline"
                     label="City / Municipality"
-                    value={
-                      shopCity
-                    }
-                    onChangeText={
-                      (
-                        value,
-                      ) =>
-                        updateField(
-                          setShopCity,
-                          value,
-                        )
+                    value={shopCity}
+                    onChangeText={(value) =>
+                      updateField(setShopCity, value)
                     }
                     placeholder="City or municipality"
-                    editable={
-                      !isSubmitting
-                    }
+                    editable={!isSubmitting}
                   />
                 </View>
 
-
                 <View
                   style={
-                    isTablet
-                      ? styles.tabletField
-                      : undefined
+                    isTablet ? styles.tabletField : undefined
                   }
                 >
                   <RegistrationField
                     icon="map-outline"
                     label="Province"
-                    value={
-                      shopProvince
-                    }
-                    onChangeText={
-                      (
-                        value,
-                      ) =>
-                        updateField(
-                          setShopProvince,
-                          value,
-                        )
+                    value={shopProvince}
+                    onChangeText={(value) =>
+                      updateField(setShopProvince, value)
                     }
                     placeholder="Province"
-                    editable={
-                      !isSubmitting
-                    }
+                    editable={!isSubmitting}
                   />
                 </View>
               </View>
 
+              {/* ADMINISTRATOR APPROVAL */}
 
-              {/* ============================================================
-                  APPROVAL NOTICE
-                  ============================================================ */}
-
-              <View
-                style={
-                  styles.approvalNotice
-                }
-              >
-                <View
-                  style={
-                    styles.approvalIcon
-                  }
-                >
+              <View style={styles.approvalNotice}>
+                <View style={styles.approvalIcon}>
                   <Ionicons
                     name="time-outline"
                     size={18}
-                    color={
-                      COLORS.warning
-                    }
+                    color={THEME.warning}
                   />
                 </View>
 
-
-                <View
-                  style={
-                    styles.approvalCopy
-                  }
-                >
-                  <View
-                    style={
-                      styles.approvalTitleRow
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.approvalTitle
-                      }
-                    >
+                <View style={styles.approvalCopy}>
+                  <View style={styles.approvalTitleRow}>
+                    <Text style={styles.approvalTitle}>
                       Administrator approval required
                     </Text>
 
-                    <View
-                      style={
-                        styles.pendingBadge
-                      }
-                    >
-                      <Text
-                        style={
-                          styles.pendingBadgeText
-                        }
-                      >
+                    <View style={styles.pendingBadge}>
+                      <Text style={styles.pendingBadgeText}>
                         PENDING
                       </Text>
                     </View>
                   </View>
 
-
-                  <Text
-                    style={
-                      styles.approvalText
-                    }
-                  >
+                  <Text style={styles.approvalText}>
                     Your shop will be submitted as pending.
-                    Shop management features become available
-                    after a StyleHub Administrator approves it.
+                    Shop management features become
+                    available after a StyleHub
+                    Administrator approves it.
                   </Text>
                 </View>
               </View>
 
+              {/* ERROR */}
 
-              {/* ============================================================
-                  ERROR
-                  ============================================================ */}
+              {errorMessage ? (
+                <View style={styles.errorBox}>
+                  <View style={styles.errorIcon}>
+                    <Ionicons
+                      name="alert-circle-outline"
+                      size={18}
+                      color={THEME.danger}
+                    />
+                  </View>
 
-              {
-                errorMessage
-                  ? (
-                    <View
-                      style={
-                        styles.errorBox
-                      }
-                    >
-                      <View
-                        style={
-                          styles.errorIcon
-                        }
-                      >
-                        <Ionicons
-                          name="alert-circle-outline"
-                          size={17}
-                          color={
-                            COLORS.danger
-                          }
-                        />
-                      </View>
+                  <View style={styles.errorCopy}>
+                    <Text style={styles.errorTitle}>
+                      Unable to submit registration
+                    </Text>
 
+                    <Text style={styles.errorText}>
+                      {errorMessage}
+                    </Text>
+                  </View>
+                </View>
+              ) : null}
 
-                      <View
-                        style={
-                          styles.errorCopy
-                        }
-                      >
-                        <Text
-                          style={
-                            styles.errorTitle
-                          }
-                        >
-                          Unable to submit registration
-                        </Text>
-
-                        <Text
-                          style={
-                            styles.errorText
-                          }
-                        >
-                          {errorMessage}
-                        </Text>
-                      </View>
-                    </View>
-                  )
-                  : null
-              }
-
-
-              {/* ============================================================
-                  SUBMIT
-                  ============================================================ */}
+              {/* SUBMIT BUTTON */}
 
               <TouchableOpacity
                 activeOpacity={0.86}
-                disabled={
-                  isSubmitting
-                }
+                disabled={isSubmitting}
                 accessibilityRole="button"
                 accessibilityLabel="Submit Shop Owner Registration"
-                onPress={
-                  handleSubmit
-                }
+                onPress={handleSubmit}
                 style={[
                   styles.submitButton,
-
-                  isSubmitting &&
-                    styles.disabledButton,
+                  isSubmitting && styles.disabledButton,
                 ]}
               >
-                {
-                  isSubmitting
-                    ? (
-                      <>
-                        <ActivityIndicator
-                          size="small"
-                          color={
-                            COLORS.white
-                          }
-                        />
+                {isSubmitting ? (
+                  <>
+                    <ActivityIndicator
+                      size="small"
+                      color={THEME.navyDark}
+                    />
 
-                        <Text
-                          style={
-                            styles.submitText
-                          }
-                        >
-                          Submitting registration...
-                        </Text>
-                      </>
-                    )
-                    : (
-                      <>
-                        <Text
-                          style={
-                            styles.submitText
-                          }
-                        >
-                          Submit Registration
-                        </Text>
+                    <Text style={styles.submitText}>
+                      Submitting registration...
+                    </Text>
+                  </>
+                ) : (
+                  <>
+                    <Text style={styles.submitText}>
+                      Submit Registration
+                    </Text>
 
-                        <View
-                          style={
-                            styles.submitIcon
-                          }
-                        >
-                          <Ionicons
-                            name="arrow-forward"
-                            size={17}
-                            color={
-                              COLORS.white
-                            }
-                          />
-                        </View>
-                      </>
-                    )
-                }
+                    <View style={styles.submitIcon}>
+                      <Ionicons
+                        name="arrow-forward"
+                        size={17}
+                        color={THEME.white}
+                      />
+                    </View>
+                  </>
+                )}
               </TouchableOpacity>
 
+              {/* SECURITY NOTE */}
 
-              {/* ============================================================
-                  SECURITY NOTE
-                  ============================================================ */}
-
-              <View
-                style={
-                  styles.securityNote
-                }
-              >
+              <View style={styles.securityNote}>
                 <Ionicons
                   name="shield-checkmark-outline"
                   size={15}
-                  color={
-                    COLORS.green
-                  }
+                  color={THEME.green}
                 />
 
-                <Text
-                  style={
-                    styles.securityNoteText
-                  }
-                >
+                <Text style={styles.securityNoteText}>
                   Your account and shop information are
-                  sent securely to StyleHub for registration.
+                  sent securely to StyleHub for
+                  registration.
                 </Text>
               </View>
             </View>
 
+            {/* EXISTING SHOP OWNER ACCOUNT */}
 
-            {/* ==============================================================
-                EXISTING ACCOUNT
-                ============================================================== */}
-
-            <View
-              style={
-                styles.loginCard
-              }
-            >
-              <View
-                style={
-                  styles.loginCardIcon
-                }
-              >
+            <View style={styles.loginCard}>
+              <View style={styles.loginCardIcon}>
                 <Ionicons
                   name="log-in-outline"
-                  size={18}
-                  color={
-                    COLORS.navy
-                  }
+                  size={20}
+                  color={THEME.orangeDark}
                 />
               </View>
 
-
-              <View
-                style={
-                  styles.loginCardCopy
-                }
-              >
-                <Text
-                  style={
-                    styles.loginCardTitle
-                  }
-                >
+              <View style={styles.loginCardCopy}>
+                <Text style={styles.loginCardTitle}>
                   Already registered?
                 </Text>
 
-                <Text
-                  style={
-                    styles.loginCardDescription
-                  }
-                >
-                  Sign in using your existing
-                  StyleHub Shop Owner account.
+                <Text style={styles.loginCardDescription}>
+                  Sign in using your existing StyleHub
+                  Shop Owner account.
                 </Text>
               </View>
 
-
               <TouchableOpacity
                 activeOpacity={0.75}
-                disabled={
-                  isSubmitting
-                }
+                disabled={isSubmitting}
                 accessibilityRole="button"
                 accessibilityLabel="Go to Shop Owner Login"
-                onPress={
-                  () =>
-                    router.replace(
-                      '/(auth)/shop-owner-login',
-                    )
+                onPress={() =>
+                  router.replace(
+                    '/(auth)/shop-owner-login',
+                  )
                 }
-                style={
-                  styles.loginLinkButton
-                }
+                style={styles.loginLinkButton}
               >
-                <Text
-                  style={
-                    styles.loginLinkText
-                  }
-                >
+                <Text style={styles.loginLinkText}>
                   Sign In
                 </Text>
 
                 <Ionicons
                   name="chevron-forward"
                   size={16}
-                  color={
-                    COLORS.navy
-                  }
+                  color={THEME.orangeDark}
                 />
               </TouchableOpacity>
             </View>
 
+            {/* FOOTER */}
 
-            {/* ==============================================================
-                FOOTER
-                ============================================================== */}
-
-            <View
-              style={
-                styles.footer
-              }
-            >
+            <View style={styles.footer}>
               <Ionicons
                 name="shield-checkmark-outline"
                 size={13}
-                color={
-                  COLORS.textLight
-                }
+                color={THEME.mutedLight}
               />
 
-              <Text
-                style={
-                  styles.footerText
-                }
-              >
+              <Text style={styles.footerText}>
                 Secure StyleHub registration
               </Text>
 
-              <View
-                style={
-                  styles.footerDot
-                }
-              />
+              <View style={styles.footerDot} />
 
-              <Text
-                style={
-                  styles.footerText
-                }
-              >
+              <Text style={styles.footerText}>
                 Shop Owner
               </Text>
             </View>
@@ -1819,34 +1070,18 @@ export default function ShopOwnerRegistrationForm() {
   );
 }
 
-
-/* ==========================================================================
+/* ==========================================================
    FORM SECTION HEADER
-   ========================================================================== */
+   ========================================================== */
 
 interface FormSectionHeaderProps {
-  icon:
-    keyof typeof Ionicons.glyphMap;
-
-  eyebrow:
-    string;
-
-  title:
-    string;
-
-  description:
-    string;
-
-  tone:
-    'blue'
-    | 'orange'
-    | 'green'
-    | 'navy';
-
-  compact?:
-    boolean;
+  icon: keyof typeof Ionicons.glyphMap;
+  eyebrow: string;
+  title: string;
+  description: string;
+  tone: 'blue' | 'orange' | 'green' | 'navy';
+  compact?: boolean;
 }
-
 
 function FormSectionHeader({
   icon,
@@ -1856,78 +1091,42 @@ function FormSectionHeader({
   tone,
   compact = false,
 }: FormSectionHeaderProps) {
-  const toneStyle =
-    tone === 'blue'
-      ? styles.sectionIconBlue
-      : tone === 'orange'
-        ? styles.sectionIconOrange
-        : tone === 'green'
-          ? styles.sectionIconGreen
-          : styles.sectionIconNavy;
-
-
-  const iconColor =
-    tone === 'blue'
-      ? COLORS.blue
-      : tone === 'orange'
-        ? COLORS.orange
-        : tone === 'green'
-          ? COLORS.green
-          : COLORS.navy;
-
-
   return (
     <View
       style={[
         styles.sectionHeader,
-
-        compact &&
-          styles.sectionHeaderCompact,
+        compact && styles.sectionHeaderCompact,
       ]}
     >
       <View
         style={[
           styles.sectionIcon,
-
-          toneStyle,
+          tone === 'orange'
+            ? styles.sectionIconOrange
+            : styles.sectionIconNavy,
         ]}
       >
         <Ionicons
           name={icon}
-          size={17}
+          size={18}
           color={
-            iconColor
+            tone === 'orange'
+              ? THEME.orangeDark
+              : THEME.navy
           }
         />
       </View>
 
-
-      <View
-        style={
-          styles.sectionHeaderCopy
-        }
-      >
-        <Text
-          style={
-            styles.sectionEyebrow
-          }
-        >
+      <View style={styles.sectionHeaderCopy}>
+        <Text style={styles.sectionEyebrow}>
           {eyebrow}
         </Text>
 
-        <Text
-          style={
-            styles.sectionTitle
-          }
-        >
+        <Text style={styles.sectionTitle}>
           {title}
         </Text>
 
-        <Text
-          style={
-            styles.sectionDescription
-          }
-        >
+        <Text style={styles.sectionDescription}>
           {description}
         </Text>
       </View>
@@ -1935,34 +1134,18 @@ function FormSectionHeader({
   );
 }
 
-
-/* ==========================================================================
-   FORM FIELD
-   ========================================================================== */
+/* ==========================================================
+   REGISTRATION FIELD
+   ========================================================== */
 
 interface RegistrationFieldProps {
-  icon:
-    keyof typeof Ionicons.glyphMap;
-
-  label:
-    string;
-
-  optional?:
-    boolean;
-
-  value:
-    string;
-
-  onChangeText:
-    (
-      value: string,
-    ) => void;
-
-  placeholder:
-    string;
-
-  editable:
-    boolean;
+  icon: keyof typeof Ionicons.glyphMap;
+  label: string;
+  optional?: boolean;
+  value: string;
+  onChangeText: (value: string) => void;
+  placeholder: string;
+  editable: boolean;
 
   keyboardType?:
     | 'default'
@@ -1990,13 +1173,9 @@ interface RegistrationFieldProps {
     | 'middleName'
     | 'familyName';
 
-  helperText?:
-    string;
-
-  multiline?:
-    boolean;
+  helperText?: string;
+  multiline?: boolean;
 }
-
 
 function RegistrationField({
   icon,
@@ -2014,188 +1193,94 @@ function RegistrationField({
   multiline = false,
 }: RegistrationFieldProps) {
   return (
-    <View
-      style={
-        styles.field
-      }
-    >
-      <View
-        style={
-          styles.fieldLabelRow
-        }
-      >
-        <Text
-          style={
-            styles.label
-          }
-        >
+    <View style={styles.field}>
+      <View style={styles.fieldLabelRow}>
+        <Text style={styles.label}>
           {label}
         </Text>
 
-
-        {
-          optional
-            ? (
-              <View
-                style={
-                  styles.optionalBadge
-                }
-              >
-                <Text
-                  style={
-                    styles.optionalText
-                  }
-                >
-                  OPTIONAL
-                </Text>
-              </View>
-            )
-            : null
-        }
+        {optional ? (
+          <View style={styles.optionalBadge}>
+            <Text style={styles.optionalText}>
+              OPTIONAL
+            </Text>
+          </View>
+        ) : null}
       </View>
-
 
       <View
         style={[
           styles.inputContainer,
-
-          multiline &&
-            styles.inputContainerMultiline,
+          multiline && styles.inputContainerMultiline,
         ]}
       >
         <View
           style={[
             styles.inputIcon,
-
-            multiline &&
-              styles.inputIconMultiline,
+            multiline && styles.inputIconMultiline,
           ]}
         >
           <Ionicons
             name={icon}
             size={17}
-            color={
-              COLORS.textMuted
-            }
+            color={THEME.muted}
           />
         </View>
 
-
         <TextInput
-          value={
-            value
-          }
-          onChangeText={
-            onChangeText
-          }
-          editable={
-            editable
-          }
-          placeholder={
-            placeholder
-          }
-          placeholderTextColor={
-            COLORS.textLight
-          }
-          keyboardType={
-            keyboardType
-          }
-          autoCapitalize={
-            autoCapitalize
-          }
-          autoCorrect={
-            false
-          }
-          autoComplete={
-            autoComplete
-          }
-          textContentType={
-            textContentType
-          }
-          multiline={
-            multiline
-          }
-          numberOfLines={
-            multiline
-              ? 4
-              : 1
-          }
+          value={value}
+          onChangeText={onChangeText}
+          editable={editable}
+          placeholder={placeholder}
+          placeholderTextColor={THEME.muted}
+          keyboardType={keyboardType}
+          autoCapitalize={autoCapitalize}
+          autoCorrect={false}
+          autoComplete={autoComplete}
+          textContentType={textContentType}
+          multiline={multiline}
+          numberOfLines={multiline ? 4 : 1}
           textAlignVertical={
-            multiline
-              ? 'top'
-              : 'center'
+            multiline ? 'top' : 'center'
           }
+          selectionColor={THEME.orange}
           style={[
             styles.input,
-
-            multiline &&
-              styles.multilineInput,
+            multiline && styles.multilineInput,
           ]}
         />
       </View>
 
+      {helperText ? (
+        <View style={styles.helperRow}>
+          <Ionicons
+            name="information-circle-outline"
+            size={13}
+            color={THEME.orangeDark}
+          />
 
-      {
-        helperText
-          ? (
-            <View
-              style={
-                styles.helperRow
-              }
-            >
-              <Ionicons
-                name="information-circle-outline"
-                size={12}
-                color={
-                  COLORS.textLight
-                }
-              />
-
-              <Text
-                style={
-                  styles.helperText
-                }
-              >
-                {helperText}
-              </Text>
-            </View>
-          )
-          : null
-      }
+          <Text style={styles.helperText}>
+            {helperText}
+          </Text>
+        </View>
+      ) : null}
     </View>
   );
 }
 
-
-/* ==========================================================================
+/* ==========================================================
    PASSWORD FIELD
-   ========================================================================== */
+   ========================================================== */
 
 interface PasswordFieldProps {
-  label:
-    string;
-
-  value:
-    string;
-
-  onChangeText:
-    (
-      value: string,
-    ) => void;
-
-  visible:
-    boolean;
-
-  onToggle:
-    () => void;
-
-  editable:
-    boolean;
-
-  placeholder:
-    string;
+  label: string;
+  value: string;
+  onChangeText: (value: string) => void;
+  visible: boolean;
+  onToggle: () => void;
+  editable: boolean;
+  placeholder: string;
 }
-
 
 function PasswordField({
   label,
@@ -2207,95 +1292,54 @@ function PasswordField({
   placeholder,
 }: PasswordFieldProps) {
   return (
-    <View
-      style={
-        styles.field
-      }
-    >
-      <Text
-        style={
-          styles.label
-        }
-      >
-        {label}
-      </Text>
+    <View style={styles.field}>
+      <View style={styles.fieldLabelRow}>
+        <Text style={styles.label}>
+          {label}
+        </Text>
+      </View>
 
-
-      <View
-        style={
-          styles.inputContainer
-        }
-      >
-        <View
-          style={
-            styles.inputIcon
-          }
-        >
+      <View style={styles.inputContainer}>
+        <View style={styles.inputIcon}>
           <Ionicons
             name="lock-closed-outline"
             size={17}
-            color={
-              COLORS.textMuted
-            }
+            color={THEME.muted}
           />
         </View>
 
-
         <TextInput
-          value={
-            value
-          }
-          onChangeText={
-            onChangeText
-          }
-          editable={
-            editable
-          }
-          placeholder={
-            placeholder
-          }
-          placeholderTextColor={
-            COLORS.textLight
-          }
-          secureTextEntry={
-            !visible
-          }
+          value={value}
+          onChangeText={onChangeText}
+          editable={editable}
+          placeholder={placeholder}
+          placeholderTextColor={THEME.muted}
+          secureTextEntry={!visible}
           autoCapitalize="none"
-          autoCorrect={
-            false
-          }
+          autoCorrect={false}
           autoComplete="new-password"
           textContentType="newPassword"
           maxLength={64}
-          multiline={
-            false
-          }
+          multiline={false}
           numberOfLines={1}
+          selectionColor={THEME.orange}
           style={[
             styles.input,
-
             styles.passwordInput,
           ]}
         />
 
-
         <TouchableOpacity
           activeOpacity={0.65}
-          disabled={
-            !editable
-          }
+          disabled={!editable}
           accessibilityRole="button"
           accessibilityLabel={
             visible
               ? `Hide ${label}`
               : `Show ${label}`
           }
-          onPress={
-            onToggle
-          }
-          style={
-            styles.visibilityButton
-          }
+          onPress={onToggle}
+          style={styles.visibilityButton}
         >
           <Ionicons
             name={
@@ -2304,9 +1348,7 @@ function PasswordField({
                 : 'eye-outline'
             }
             size={19}
-            color={
-              COLORS.textMuted
-            }
+            color={THEME.muted}
           />
         </TouchableOpacity>
       </View>
@@ -2314,60 +1356,40 @@ function PasswordField({
   );
 }
 
-
-/* ==========================================================================
+/* ==========================================================
    PASSWORD REQUIREMENT
-   ========================================================================== */
+   ========================================================== */
 
 interface PasswordRequirementProps {
-  complete:
-    boolean;
-
-  text:
-    string;
+  complete: boolean;
+  text: string;
 }
-
 
 function PasswordRequirement({
   complete,
   text,
 }: PasswordRequirementProps) {
   return (
-    <View
-      style={
-        styles.requirementRow
-      }
-    >
+    <View style={styles.requirementRow}>
       <View
         style={[
           styles.requirementIcon,
-
-          complete &&
-            styles.requirementIconComplete,
+          complete && styles.requirementIconComplete,
         ]}
       >
-        {
-          complete
-            ? (
-              <Ionicons
-                name="checkmark"
-                size={11}
-                color={
-                  COLORS.green
-                }
-              />
-            )
-            : null
-        }
+        {complete ? (
+          <Ionicons
+            name="checkmark"
+            size={12}
+            color={THEME.green}
+          />
+        ) : null}
       </View>
-
 
       <Text
         style={[
           styles.requirementText,
-
-          complete &&
-            styles.requirementTextComplete,
+          complete && styles.requirementTextComplete,
         ]}
       >
         {text}
@@ -2376,31 +1398,18 @@ function PasswordRequirement({
   );
 }
 
-
-/* ==========================================================================
+/* ==========================================================
    SHOP TYPE CARD
-   ========================================================================== */
+   ========================================================== */
 
 interface ShopTypeCardProps {
-  icon:
-    keyof typeof Ionicons.glyphMap;
-
-  title:
-    string;
-
-  description:
-    string;
-
-  selected:
-    boolean;
-
-  disabled:
-    boolean;
-
-  onPress:
-    () => void;
+  icon: keyof typeof Ionicons.glyphMap;
+  title: string;
+  description: string;
+  selected: boolean;
+  disabled: boolean;
+  onPress: () => void;
 }
-
 
 function ShopTypeCard({
   icon,
@@ -2413,33 +1422,20 @@ function ShopTypeCard({
   return (
     <TouchableOpacity
       activeOpacity={0.82}
-      disabled={
-        disabled
-      }
+      disabled={disabled}
       accessibilityRole="radio"
-      accessibilityState={{
-        selected,
-        disabled,
-      }}
-      onPress={
-        onPress
-      }
+      accessibilityState={{ selected, disabled }}
+      onPress={onPress}
       style={[
         styles.shopTypeCard,
-
-        selected &&
-          styles.shopTypeCardSelected,
-
-        disabled &&
-          styles.shopTypeCardDisabled,
+        selected && styles.shopTypeCardSelected,
+        disabled && styles.shopTypeCardDisabled,
       ]}
     >
       <View
         style={[
           styles.shopTypeIcon,
-
-          selected &&
-            styles.shopTypeIconSelected,
+          selected && styles.shopTypeIconSelected,
         ]}
       >
         <Ionicons
@@ -2447,38 +1443,26 @@ function ShopTypeCard({
           size={20}
           color={
             selected
-              ? COLORS.orange
-              : COLORS.textMuted
+              ? THEME.orangeDark
+              : THEME.navy
           }
         />
       </View>
 
-
-      <View
-        style={
-          styles.shopTypeCopy
-        }
-      >
+      <View style={styles.shopTypeCopy}>
         <Text
           style={[
             styles.shopTypeTitle,
-
-            selected &&
-              styles.shopTypeTitleSelected,
+            selected && styles.shopTypeTitleSelected,
           ]}
         >
           {title}
         </Text>
 
-        <Text
-          style={
-            styles.shopTypeDescription
-          }
-        >
+        <Text style={styles.shopTypeDescription}>
           {description}
         </Text>
       </View>
-
 
       <Ionicons
         name={
@@ -2489,30 +1473,23 @@ function ShopTypeCard({
         size={19}
         color={
           selected
-            ? COLORS.orange
-            : COLORS.textLight
+            ? THEME.orangeDark
+            : THEME.mutedLight
         }
       />
     </TouchableOpacity>
   );
 }
 
-
-/* ==========================================================================
+/* ==========================================================
    PROGRESS ITEM
-   ========================================================================== */
+   ========================================================== */
 
 interface ProgressItemProps {
-  number:
-    string;
-
-  label:
-    string;
-
-  active?:
-    boolean;
+  number: string;
+  label: string;
+  active?: boolean;
 }
-
 
 function ProgressItem({
   number,
@@ -2520,25 +1497,17 @@ function ProgressItem({
   active = false,
 }: ProgressItemProps) {
   return (
-    <View
-      style={
-        styles.progressItem
-      }
-    >
+    <View style={styles.progressItem}>
       <View
         style={[
           styles.progressNumber,
-
-          active &&
-            styles.progressNumberActive,
+          active && styles.progressNumberActive,
         ]}
       >
         <Text
           style={[
             styles.progressNumberText,
-
-            active &&
-              styles.progressNumberTextActive,
+            active && styles.progressNumberTextActive,
           ]}
         >
           {number}
@@ -2548,9 +1517,7 @@ function ProgressItem({
       <Text
         style={[
           styles.progressLabel,
-
-          active &&
-            styles.progressLabelActive,
+          active && styles.progressLabelActive,
         ]}
       >
         {label}
@@ -2559,10 +1526,9 @@ function ProgressItem({
   );
 }
 
-
-/* ==========================================================================
-   DIVIDER
-   ========================================================================== */
+/* ==========================================================
+   SECTION DIVIDER
+   ========================================================== */
 
 function SectionDivider({
   subtle = false,
@@ -2573,1554 +1539,915 @@ function SectionDivider({
     <View
       style={[
         styles.sectionDivider,
-
-        subtle &&
-          styles.sectionDividerSubtle,
+        subtle && styles.sectionDividerSubtle,
       ]}
     />
   );
 }
 
-
-/* ==========================================================================
+/* ==========================================================
    STYLES
-   ========================================================================== */
-
-const styles =
-  StyleSheet.create({
-    /* ======================================================================
-       ROOT
-       ====================================================================== */
-
-    safeArea: {
-      flex: 1,
-
-      backgroundColor:
-        COLORS.background,
-    },
-
-
-    flex: {
-      flex: 1,
-    },
-
-
-    scrollContent: {
-      flexGrow: 1,
-
-      backgroundColor:
-        COLORS.background,
-    },
-
-
-    screen: {
-      width: '100%',
-
-      maxWidth:
-        LAYOUT.contentMaxWidth,
-
-      flexGrow: 1,
-
-      alignSelf: 'center',
-
-      paddingTop:
-        SPACING.sm,
-
-      paddingBottom:
-        SPACING.xxl,
-    },
-
-
-    screenCompact: {
-      paddingTop:
-        SPACING.xs,
-    },
-
-
-    /* ======================================================================
-       TOP NAVIGATION
-       ====================================================================== */
-
-    topBar: {
-      minHeight: 52,
-
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      justifyContent:
-        'flex-start',
-    },
-
-
-    backButton: {
-      width:
-        LAYOUT.iconButtonSize,
-
-      height:
-        LAYOUT.iconButtonSize,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      borderWidth: 1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    /* ======================================================================
-       HEADER
-       ====================================================================== */
-
-    header: {
-      alignItems: 'center',
-
-      paddingTop:
-        SPACING.lg,
-
-      paddingBottom:
-        SPACING.xl,
-    },
-
-
-    headerCompact: {
-      paddingTop:
-        SPACING.sm,
-
-      paddingBottom:
-        SPACING.lg,
-    },
-
-
-    ownerIcon: {
-      width: 64,
-
-      height: 64,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      marginBottom:
-        SPACING.md,
-
-      borderRadius:
-        RADII.xl,
-
-      backgroundColor:
-        COLORS.orangeSoft,
-    },
-
-
-    ownerBadge: {
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      gap: 6,
-
-      paddingHorizontal: 9,
-
-      paddingVertical: 5,
-
-      marginBottom:
-        SPACING.sm,
-
-      borderRadius:
-        RADII.pill,
-
-      backgroundColor:
-        COLORS.orangeSoft,
-    },
-
-
-    ownerBadgeDot: {
-      width: 5,
-
-      height: 5,
-
-      borderRadius: 3,
-
-      backgroundColor:
-        COLORS.orange,
-    },
-
-
-    ownerBadgeText: {
-      color:
-        COLORS.orange,
-
-      fontSize: 8,
-
-      fontWeight: '800',
-
-      letterSpacing: 1,
-    },
-
-
-    title: {
-      color:
-        COLORS.text,
-
-      fontSize:
-        TYPOGRAPHY.display,
-
-      lineHeight: 36,
-
-      fontWeight: '800',
-
-      letterSpacing: -0.8,
-
-      textAlign: 'center',
-    },
-
-
-    titleSmall: {
-      fontSize: 26,
-
-      lineHeight: 32,
-    },
-
-
-    subtitle: {
-      maxWidth: 520,
-
-      marginTop:
-        SPACING.xs,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize:
-        TYPOGRAPHY.secondary,
-
-      lineHeight: 20,
-
-      textAlign: 'center',
-    },
-
-
-    /* ======================================================================
-       PROGRESS
-       ====================================================================== */
-
-    progressCard: {
-      width: '100%',
-
-      minHeight: 74,
-
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      paddingHorizontal:
-        SPACING.lg,
-
-      marginBottom:
-        SPACING.md,
-
-      borderWidth: 1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.lg,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    progressItem: {
-      alignItems: 'center',
-
-      gap: 4,
-    },
-
-
-    progressNumber: {
-      width: 27,
-
-      height: 27,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      borderWidth: 1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.pill,
-
-      backgroundColor:
-        COLORS.surfaceSoft,
-    },
-
-
-    progressNumberActive: {
-      borderColor:
-        COLORS.orange,
-
-      backgroundColor:
-        COLORS.orangeSoft,
-    },
-
-
-    progressNumberText: {
-      color:
-        COLORS.textLight,
-
-      fontSize: 9,
-
-      fontWeight: '800',
-    },
-
-
-    progressNumberTextActive: {
-      color:
-        COLORS.orange,
-    },
-
-
-    progressLabel: {
-      color:
-        COLORS.textLight,
-
-      fontSize: 8,
-
-      fontWeight: '600',
-    },
-
-
-    progressLabelActive: {
-      color:
-        COLORS.textMuted,
-    },
-
-
-    progressLine: {
-      width: 54,
-
-      maxWidth: '15%',
-
-      height: 1,
-
-      marginHorizontal:
-        SPACING.sm,
-
-      backgroundColor:
-        COLORS.border,
-    },
-
-
-    /* ======================================================================
-       FORM CARD
-       ====================================================================== */
-
-    registrationCard: {
-      width: '100%',
-
-      padding:
-        SPACING.lg,
-
-      borderWidth: 1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.xl,
-
-      backgroundColor:
-        COLORS.surface,
-
-      ...SHADOWS.card,
-    },
-
-
-    /* ======================================================================
-       SECTION HEADER
-       ====================================================================== */
-
-    sectionHeader: {
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      gap:
-        SPACING.sm,
-
-      marginBottom:
-        SPACING.lg,
-    },
-
-
-    sectionHeaderCompact: {
-      marginBottom:
-        SPACING.md,
-    },
-
-
-    sectionIcon: {
-      width: 40,
-
-      height: 40,
-
-      flexShrink: 0,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      borderRadius:
-        RADII.md,
-    },
-
-
-    sectionIconBlue: {
-      backgroundColor:
-        COLORS.blueSoft,
-    },
-
-
-    sectionIconOrange: {
-      backgroundColor:
-        COLORS.orangeSoft,
-    },
-
-
-    sectionIconGreen: {
-      backgroundColor:
-        COLORS.greenSoft,
-    },
-
-
-    sectionIconNavy: {
-      backgroundColor:
-        COLORS.accentSoft,
-    },
-
-
-    sectionHeaderCopy: {
-      minWidth: 0,
-
-      flex: 1,
-    },
-
-
-    sectionEyebrow: {
-      color:
-        COLORS.textLight,
-
-      fontSize: 7,
-
-      fontWeight: '800',
-
-      letterSpacing: 1,
-    },
-
-
-    sectionTitle: {
-      marginTop: 2,
-
-      color:
-        COLORS.text,
-
-      fontSize: 14,
-
-      fontWeight: '800',
-
-      letterSpacing: -0.15,
-    },
-
-
-    sectionDescription: {
-      marginTop: 2,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize: 10,
-
-      lineHeight: 15,
-    },
-
-
-    sectionDivider: {
-      height: 1,
-
-      marginTop:
-        SPACING.xs,
-
-      marginBottom:
-        SPACING.xl,
-
-      backgroundColor:
-        COLORS.border,
-    },
-
-
-    sectionDividerSubtle: {
-      marginTop:
-        SPACING.sm,
-
-      marginBottom:
-        SPACING.lg,
-    },
-
-
-    /* ======================================================================
-       RESPONSIVE GRIDS
-       ====================================================================== */
-
-    nameGrid: {
-      width: '100%',
-    },
-
-
-    fieldGrid: {
-      width: '100%',
-    },
-
-
-    tabletGridThree: {
-      flexDirection: 'row',
-
-      alignItems: 'flex-start',
-
-      gap:
-        SPACING.sm,
-    },
-
-
-    tabletGridTwo: {
-      flexDirection: 'row',
-
-      alignItems: 'flex-start',
-
-      gap:
-        SPACING.sm,
-    },
-
-
-    tabletField: {
-      minWidth: 0,
-
-      flex: 1,
-    },
-
-
-    /* ======================================================================
-       FIELDS
-       ====================================================================== */
-
-    field: {
-      width: '100%',
-
-      marginBottom:
-        SPACING.md,
-    },
-
-
-    fieldLabelRow: {
-      minHeight: 23,
-
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      justifyContent:
-        'space-between',
-
-      marginBottom: 7,
-    },
-
-
-    label: {
-      color:
-        COLORS.navy,
-
-      fontSize: 11,
-
-      fontWeight: '700',
-    },
-
-
-    optionalBadge: {
-      paddingHorizontal: 6,
-
-      paddingVertical: 3,
-
-      borderRadius:
-        RADII.pill,
-
-      backgroundColor:
-        COLORS.surfaceSoft,
-    },
-
-
-    optionalText: {
-      color:
-        COLORS.textLight,
-
-      fontSize: 7,
-
-      fontWeight: '700',
-
-      letterSpacing: 0.5,
-    },
-
-
-    inputContainer: {
-      minHeight: 54,
-
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      paddingHorizontal:
-        SPACING.sm,
-
-      borderWidth: 1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.surfaceSoft,
-    },
-
-
-    inputContainerMultiline: {
-      minHeight: 118,
-
-      alignItems: 'flex-start',
-    },
-
-
-    inputIcon: {
-      width: 31,
-
-      height: 31,
-
-      flexShrink: 0,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      borderRadius:
-        RADII.sm,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    inputIconMultiline: {
-      marginTop: 10,
-    },
-
-
-    input: {
-      minWidth: 0,
-
-      minHeight: 52,
-
-      flex: 1,
-
-      paddingHorizontal:
-        SPACING.sm,
-
-      paddingVertical: 0,
-
-      color:
-        COLORS.text,
-
-      fontSize: 13,
-    },
-
-
-    multilineInput: {
-      minHeight: 110,
-
-      paddingTop: 13,
-
-      paddingBottom: 13,
-
-      lineHeight: 19,
-    },
-
-
-    passwordInput: {
-      paddingRight:
-        SPACING.xs,
-    },
-
-
-    visibilityButton: {
-      width: 38,
-
-      height: 42,
-
-      flexShrink: 0,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      borderRadius:
-        RADII.sm,
-    },
-
-
-    helperRow: {
-      flexDirection: 'row',
-
-      alignItems: 'flex-start',
-
-      gap: 5,
-
-      marginTop: 6,
-
-      paddingHorizontal: 2,
-    },
-
-
-    helperText: {
-      minWidth: 0,
-
-      flex: 1,
-
-      color:
-        COLORS.textLight,
-
-      fontSize: 9,
-
-      lineHeight: 14,
-    },
-
-
-    /* ======================================================================
-       PASSWORD GUIDE
-       ====================================================================== */
-
-    passwordGuide: {
-      marginTop: -2,
-
-      marginBottom:
-        SPACING.md,
-
-      padding:
-        SPACING.md,
-
-      borderWidth: 1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.surfaceSoft,
-    },
-
-
-    passwordGuideHeader: {
-      flexDirection: 'row',
-
-      alignItems: 'flex-start',
-
-      justifyContent:
-        'space-between',
-
-      gap:
-        SPACING.sm,
-    },
-
-
-    passwordGuideEyebrow: {
-      color:
-        COLORS.textLight,
-
-      fontSize: 7,
-
-      fontWeight: '800',
-
-      letterSpacing: 0.9,
-    },
-
-
-    passwordStrengthLabel: {
-      marginTop: 2,
-
-      color:
-        COLORS.text,
-
-      fontSize: 11,
-
-      fontWeight: '700',
-    },
-
-
-    passwordScore: {
-      paddingHorizontal: 7,
-
-      paddingVertical: 4,
-
-      borderWidth: 1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.pill,
-
-      backgroundColor:
-        COLORS.surface,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize: 8,
-
-      fontWeight: '700',
-    },
-
-
-    strengthTrack: {
-      width: '100%',
-
-      height: 5,
-
-      overflow: 'hidden',
-
-      marginTop:
-        SPACING.sm,
-
-      borderRadius:
-        RADII.pill,
-
-      backgroundColor:
-        COLORS.border,
-    },
-
-
-    strengthFill: {
-      height: '100%',
-
-      borderRadius:
-        RADII.pill,
-
-      backgroundColor:
-        COLORS.green,
-    },
-
-
-    requirementsGrid: {
-      marginTop:
-        SPACING.md,
-
-      gap: 8,
-    },
-
-
-    requirementRow: {
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      gap: 7,
-    },
-
-
-    requirementIcon: {
-      width: 17,
-
-      height: 17,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      borderWidth: 1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.pill,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    requirementIconComplete: {
-      borderColor:
-        '#CBE5D8',
-
-      backgroundColor:
-        COLORS.greenSoft,
-    },
-
-
-    requirementText: {
-      color:
-        COLORS.textMuted,
-
-      fontSize: 9,
-
-      lineHeight: 14,
-    },
-
-
-    requirementTextComplete: {
-      color:
-        COLORS.green,
-
-      fontWeight: '600',
-    },
-
-
-    passwordMatch: {
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      gap: 6,
-
-      marginTop: -5,
-
-      marginBottom:
-        SPACING.md,
-
-      paddingHorizontal:
-        SPACING.sm,
-
-      paddingVertical: 8,
-
-      borderWidth: 1,
-
-      borderRadius:
-        RADII.sm,
-    },
-
-
-    passwordMatchSuccess: {
-      borderColor:
-        '#CBE5D8',
-
-      backgroundColor:
-        COLORS.greenSoft,
-    },
-
-
-    passwordMatchWarning: {
-      borderColor:
-        '#F0DCAE',
-
-      backgroundColor:
-        COLORS.warningSoft,
-    },
-
-
-    passwordMatchText: {
-      fontSize: 9,
-
-      fontWeight: '600',
-    },
-
-
-    /* ======================================================================
-       SHOP TYPE
-       ====================================================================== */
-
-    shopTypeGrid: {
-      flexDirection: 'row',
-
-      gap:
-        SPACING.sm,
-
-      marginTop: 7,
-    },
-
-
-    shopTypeGridSmall: {
-      flexDirection: 'column',
-    },
-
-
-    shopTypeCard: {
-      minWidth: 0,
-
-      minHeight: 94,
-
-      flex: 1,
-
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      gap:
-        SPACING.sm,
-
-      padding:
-        SPACING.sm,
-
-      borderWidth: 1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.surfaceSoft,
-    },
-
-
-    shopTypeCardSelected: {
-      borderColor:
-        '#F0D1B2',
-
-      backgroundColor:
-        COLORS.orangeSoft,
-    },
-
-
-    shopTypeCardDisabled: {
-      opacity: 0.55,
-    },
-
-
-    shopTypeIcon: {
-      width: 38,
-
-      height: 38,
-
-      flexShrink: 0,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    shopTypeIconSelected: {
-      backgroundColor:
-        COLORS.white,
-    },
-
-
-    shopTypeCopy: {
-      minWidth: 0,
-
-      flex: 1,
-    },
-
-
-    shopTypeTitle: {
-      color:
-        COLORS.text,
-
-      fontSize: 11,
-
-      fontWeight: '700',
-    },
-
-
-    shopTypeTitleSelected: {
-      color:
-        COLORS.orange,
-    },
-
-
-    shopTypeDescription: {
-      marginTop: 2,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize: 9,
-
-      lineHeight: 14,
-    },
-
-
-    /* ======================================================================
-       APPROVAL
-       ====================================================================== */
-
-    approvalNotice: {
-      flexDirection: 'row',
-
-      alignItems: 'flex-start',
-
-      gap:
-        SPACING.sm,
-
-      marginTop:
-        SPACING.xs,
-
-      marginBottom:
-        SPACING.lg,
-
-      padding:
-        SPACING.md,
-
-      borderWidth: 1,
-
-      borderColor:
-        '#F0DCAE',
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.warningSoft,
-    },
-
-
-    approvalIcon: {
-      width: 38,
-
-      height: 38,
-
-      flexShrink: 0,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.white,
-    },
-
-
-    approvalCopy: {
-      minWidth: 0,
-
-      flex: 1,
-    },
-
-
-    approvalTitleRow: {
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      flexWrap: 'wrap',
-
-      gap: 7,
-    },
-
-
-    approvalTitle: {
-      color:
-        COLORS.warning,
-
-      fontSize: 11,
-
-      fontWeight: '800',
-    },
-
-
-    pendingBadge: {
-      paddingHorizontal: 6,
-
-      paddingVertical: 3,
-
-      borderRadius:
-        RADII.pill,
-
-      backgroundColor:
-        COLORS.white,
-    },
-
-
-    pendingBadgeText: {
-      color:
-        COLORS.warning,
-
-      fontSize: 7,
-
-      fontWeight: '800',
-
-      letterSpacing: 0.5,
-    },
-
-
-    approvalText: {
-      marginTop: 3,
-
-      color:
-        '#8A6B2C',
-
-      fontSize: 9,
-
-      lineHeight: 15,
-    },
-
-
-    /* ======================================================================
-       ERROR
-       ====================================================================== */
-
-    errorBox: {
-      flexDirection: 'row',
-
-      alignItems: 'flex-start',
-
-      gap:
-        SPACING.sm,
-
-      marginBottom:
-        SPACING.md,
-
-      padding:
-        SPACING.sm,
-
-      borderWidth: 1,
-
-      borderColor:
-        '#F0CCCC',
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.dangerSoft,
-    },
-
-
-    errorIcon: {
-      width: 30,
-
-      height: 30,
-
-      flexShrink: 0,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      borderRadius:
-        RADII.sm,
-
-      backgroundColor:
-        COLORS.white,
-    },
-
-
-    errorCopy: {
-      minWidth: 0,
-
-      flex: 1,
-    },
-
-
-    errorTitle: {
-      color:
-        COLORS.danger,
-
-      fontSize: 11,
-
-      fontWeight: '700',
-    },
-
-
-    errorText: {
-      marginTop: 2,
-
-      color:
-        COLORS.danger,
-
-      fontSize: 10,
-
-      lineHeight: 16,
-    },
-
-
-    /* ======================================================================
-       SUBMIT
-       ====================================================================== */
-
-    submitButton: {
-      minHeight:
-        LAYOUT.buttonHeight,
-
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      gap:
-        SPACING.xs,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.navy,
-
-      ...SHADOWS.card,
-    },
-
-
-    disabledButton: {
-      opacity: 0.58,
-    },
-
-
-    submitText: {
-      color:
-        COLORS.white,
-
-      fontSize: 13,
-
-      fontWeight: '700',
-    },
-
-
-    submitIcon: {
-      width: 26,
-
-      height: 26,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      borderRadius:
-        RADII.pill,
-
-      backgroundColor:
-        'rgba(255,255,255,0.08)',
-    },
-
-
-    /* ======================================================================
-       SECURITY
-       ====================================================================== */
-
-    securityNote: {
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      gap: 6,
-
-      marginTop:
-        SPACING.md,
-    },
-
-
-    securityNoteText: {
-      minWidth: 0,
-
-      color:
-        COLORS.textLight,
-
-      fontSize: 9,
-
-      lineHeight: 14,
-
-      textAlign: 'center',
-    },
-
-
-    /* ======================================================================
-       LOGIN CARD
-       ====================================================================== */
-
-    loginCard: {
-      width: '100%',
-
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      gap:
-        SPACING.sm,
-
-      marginTop:
-        SPACING.md,
-
-      padding:
-        SPACING.md,
-
-      borderWidth: 1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.lg,
-
-      backgroundColor:
-        COLORS.surface,
-    },
-
-
-    loginCardIcon: {
-      width: 40,
-
-      height: 40,
-
-      flexShrink: 0,
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.orangeSoft,
-    },
-
-
-    loginCardCopy: {
-      minWidth: 0,
-
-      flex: 1,
-    },
-
-
-    loginCardTitle: {
-      color:
-        COLORS.text,
-
-      fontSize: 11,
-
-      fontWeight: '700',
-    },
-
-
-    loginCardDescription: {
-      marginTop: 2,
-
-      color:
-        COLORS.textMuted,
-
-      fontSize: 9,
-
-      lineHeight: 14,
-    },
-
-
-    loginLinkButton: {
-      minHeight:
-        LAYOUT.compactButtonHeight,
-
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      gap: 4,
-
-      flexShrink: 0,
-
-      paddingHorizontal:
-        SPACING.sm,
-
-      borderWidth: 1,
-
-      borderColor:
-        COLORS.border,
-
-      borderRadius:
-        RADII.md,
-
-      backgroundColor:
-        COLORS.surfaceSoft,
-    },
-
-
-    loginLinkText: {
-      color:
-        COLORS.navy,
-
-      fontSize: 10,
-
-      fontWeight: '700',
-    },
-
-
-    /* ======================================================================
-       FOOTER
-       ====================================================================== */
-
-    footer: {
-      flexDirection: 'row',
-
-      alignItems: 'center',
-
-      justifyContent: 'center',
-
-      flexWrap: 'wrap',
-
-      gap: 7,
-
-      marginTop:
-        SPACING.xl,
-    },
-
-
-    footerText: {
-      color:
-        COLORS.textLight,
-
-      fontSize: 9,
-
-      fontWeight: '600',
-    },
-
-
-    footerDot: {
-      width: 3,
-
-      height: 3,
-
-      borderRadius: 2,
-
-      backgroundColor:
-        COLORS.textLight,
-    },
-  });
+   ========================================================== */
+
+const styles = StyleSheet.create({
+  /* ROOT */
+
+  safeArea: {
+    flex: 1,
+    backgroundColor: THEME.navyDark,
+  },
+
+  flex: {
+    flex: 1,
+  },
+
+  scrollContent: {
+    flexGrow: 1,
+    backgroundColor: THEME.navy,
+  },
+
+  screen: {
+    width: '100%',
+    maxWidth: LAYOUT.contentMaxWidth,
+    flexGrow: 1,
+    alignSelf: 'center',
+    paddingBottom: 40,
+  },
+
+  /* TOP NAVIGATION */
+
+  topBar: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+
+  backButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.18)',
+    borderRadius: 13,
+    backgroundColor: 'rgba(255,255,255,0.08)',
+  },
+
+  topBarCaptionWrap: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+
+  topBarDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: THEME.orange,
+  },
+
+  topBarCaption: {
+    color: THEME.mutedLight,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.5,
+  },
+
+  /* HEADER */
+
+  header: {
+    alignItems: 'center',
+    paddingTop: 24,
+    paddingBottom: 28,
+  },
+
+  ownerIcon: {
+    width: 64,
+    height: 64,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(217,146,2,0.28)',
+    borderRadius: 20,
+    backgroundColor: 'rgba(217,146,2,0.10)',
+  },
+
+  ownerBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: 'rgba(217,146,2,0.30)',
+    borderRadius: 999,
+    backgroundColor: 'rgba(217,146,2,0.10)',
+  },
+
+  ownerBadgeDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 3,
+    backgroundColor: THEME.orange,
+  },
+
+  ownerBadgeText: {
+    color: THEME.orange,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.4,
+  },
+
+  title: {
+    color: THEME.white,
+    fontSize: 30,
+    lineHeight: 38,
+    fontWeight: '800',
+    letterSpacing: -0.8,
+    textAlign: 'center',
+  },
+
+  titleSmall: {
+    fontSize: 26,
+    lineHeight: 33,
+  },
+
+  subtitle: {
+    maxWidth: 520,
+    marginTop: 9,
+    color: THEME.mutedLight,
+    fontSize: 13,
+    lineHeight: 20,
+    textAlign: 'center',
+  },
+
+  headerAccentLine: {
+    width: 36,
+    height: 3,
+    marginTop: 19,
+    borderRadius: 999,
+    backgroundColor: THEME.orange,
+  },
+
+  /* REGISTRATION PROGRESS */
+
+  progressCard: {
+    width: '100%',
+    minHeight: 80,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+    marginBottom: 14,
+    borderRadius: 17,
+    backgroundColor: THEME.white,
+  },
+
+  progressItem: {
+    alignItems: 'center',
+    gap: 5,
+  },
+
+  progressNumber: {
+    width: 29,
+    height: 29,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 999,
+    backgroundColor: THEME.offWhite,
+  },
+
+  progressNumberActive: {
+    borderColor: '#E9BD73',
+    backgroundColor: THEME.orangeSoft,
+  },
+
+  progressNumberText: {
+    color: THEME.muted,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+
+  progressNumberTextActive: {
+    color: THEME.orangeDark,
+  },
+
+  progressLabel: {
+    color: THEME.muted,
+    fontSize: 9,
+    fontWeight: '600',
+  },
+
+  progressLabelActive: {
+    color: THEME.text,
+    fontWeight: '800',
+  },
+
+  progressLine: {
+    width: 54,
+    maxWidth: '15%',
+    height: 1,
+    marginHorizontal: 8,
+    backgroundColor: THEME.border,
+  },
+
+  /* REGISTRATION CARD */
+
+  registrationCard: {
+    width: '100%',
+    overflow: 'hidden',
+    padding: 18,
+    borderRadius: 17,
+    backgroundColor: THEME.white,
+
+    ...Platform.select({
+      ios: {
+        shadowColor: '#000000',
+        shadowOffset: {
+          width: 0,
+          height: 7,
+        },
+        shadowOpacity: 0.14,
+        shadowRadius: 17,
+      },
+      android: {
+        elevation: 5,
+      },
+      default: {},
+    }),
+  },
+
+  cardAccentLine: {
+    position: 'absolute',
+    top: 18,
+    bottom: 18,
+    left: 0,
+    width: 4,
+    borderTopRightRadius: 6,
+    borderBottomRightRadius: 6,
+    backgroundColor: THEME.orange,
+  },
+
+  /* FORM SECTION HEADER */
+
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 18,
+  },
+
+  sectionHeaderCompact: {
+    marginBottom: 15,
+  },
+
+  sectionIcon: {
+    width: 40,
+    height: 40,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+  },
+
+  sectionIconOrange: {
+    backgroundColor: THEME.orangeSoft,
+  },
+
+  sectionIconNavy: {
+    backgroundColor: THEME.iconSoft,
+  },
+
+  sectionHeaderCopy: {
+    minWidth: 0,
+    flex: 1,
+  },
+
+  sectionEyebrow: {
+    color: THEME.orangeDark,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+  },
+
+  sectionTitle: {
+    marginTop: 3,
+    color: THEME.text,
+    fontSize: 14,
+    fontWeight: '800',
+    letterSpacing: -0.15,
+  },
+
+  sectionDescription: {
+    marginTop: 3,
+    color: THEME.muted,
+    fontSize: 10,
+    lineHeight: 15,
+  },
+
+  sectionDivider: {
+    height: 1,
+    marginTop: 5,
+    marginBottom: 22,
+    backgroundColor: THEME.border,
+  },
+
+  sectionDividerSubtle: {
+    marginTop: 8,
+    marginBottom: 18,
+  },
+
+  /* RESPONSIVE GRIDS */
+
+  nameGrid: {
+    width: '100%',
+  },
+
+  fieldGrid: {
+    width: '100%',
+  },
+
+  tabletGridThree: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+
+  tabletGridTwo: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+  },
+
+  tabletField: {
+    minWidth: 0,
+    flex: 1,
+  },
+
+  /* INPUT FIELDS */
+
+  field: {
+    width: '100%',
+    marginBottom: 16,
+  },
+
+  fieldLabelRow: {
+    minHeight: 23,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 7,
+  },
+
+  label: {
+    color: THEME.text,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  optionalBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: THEME.offWhite,
+  },
+
+  optionalText: {
+    color: THEME.muted,
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
+
+  inputContainer: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 8,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 12,
+    backgroundColor: THEME.offWhite,
+  },
+
+  inputContainerMultiline: {
+    minHeight: 118,
+    alignItems: 'flex-start',
+  },
+
+  inputIcon: {
+    width: 33,
+    height: 33,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9,
+    backgroundColor: THEME.white,
+  },
+
+  inputIconMultiline: {
+    marginTop: 10,
+  },
+
+  input: {
+    minWidth: 0,
+    minHeight: 52,
+    flex: 1,
+    paddingHorizontal: 10,
+    paddingVertical: 0,
+    color: THEME.text,
+    fontSize: 13,
+  },
+
+  multilineInput: {
+    minHeight: 110,
+    paddingTop: 13,
+    paddingBottom: 13,
+    lineHeight: 19,
+  },
+
+  passwordInput: {
+    paddingRight: 4,
+  },
+
+  visibilityButton: {
+    width: 38,
+    height: 42,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9,
+  },
+
+  helperRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 6,
+    marginTop: 7,
+    paddingHorizontal: 2,
+  },
+
+  helperText: {
+    minWidth: 0,
+    flex: 1,
+    color: THEME.muted,
+    fontSize: 10,
+    lineHeight: 15,
+  },
+
+  /* PASSWORD STRENGTH */
+
+  passwordGuide: {
+    marginTop: -2,
+    marginBottom: 18,
+    padding: 15,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 12,
+    backgroundColor: THEME.offWhite,
+  },
+
+  passwordGuideHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+
+  passwordGuideEyebrow: {
+    color: THEME.muted,
+    fontSize: 9,
+    fontWeight: '800',
+    letterSpacing: 1.1,
+  },
+
+  passwordStrengthLabel: {
+    marginTop: 4,
+    color: THEME.text,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  passwordScore: {
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 999,
+    backgroundColor: THEME.white,
+    color: THEME.text,
+    fontSize: 10,
+    fontWeight: '800',
+  },
+
+  strengthTrack: {
+    width: '100%',
+    height: 6,
+    overflow: 'hidden',
+    marginTop: 13,
+    borderRadius: 999,
+    backgroundColor: THEME.border,
+  },
+
+  strengthFill: {
+    height: '100%',
+    borderRadius: 999,
+  },
+
+  requirementsGrid: {
+    marginTop: 14,
+    gap: 9,
+  },
+
+  requirementRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+
+  requirementIcon: {
+    width: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 999,
+    backgroundColor: THEME.white,
+  },
+
+  requirementIconComplete: {
+    borderColor: '#CBE5D8',
+    backgroundColor: THEME.greenSoft,
+  },
+
+  requirementText: {
+    color: THEME.muted,
+    fontSize: 10,
+    lineHeight: 15,
+  },
+
+  requirementTextComplete: {
+    color: THEME.green,
+    fontWeight: '700',
+  },
+
+  passwordMatch: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+    marginTop: -5,
+    marginBottom: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: 1,
+    borderRadius: 9,
+  },
+
+  passwordMatchSuccess: {
+    borderColor: '#CBE5D8',
+    backgroundColor: THEME.greenSoft,
+  },
+
+  passwordMatchWarning: {
+    borderColor: '#F0DCAE',
+    backgroundColor: THEME.warningSoft,
+  },
+
+  passwordMatchText: {
+    fontSize: 10,
+    fontWeight: '700',
+  },
+
+  /* SHOP TYPE */
+
+  shopTypeGrid: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 7,
+  },
+
+  shopTypeGridSmall: {
+    flexDirection: 'column',
+  },
+
+  shopTypeCard: {
+    minWidth: 0,
+    minHeight: 96,
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    padding: 10,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 12,
+    backgroundColor: THEME.offWhite,
+  },
+
+  shopTypeCardSelected: {
+    borderColor: '#E9BD73',
+    backgroundColor: THEME.orangeSoft,
+  },
+
+  shopTypeCardDisabled: {
+    opacity: 0.55,
+  },
+
+  shopTypeIcon: {
+    width: 38,
+    height: 38,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 11,
+    backgroundColor: THEME.white,
+  },
+
+  shopTypeIconSelected: {
+    backgroundColor: THEME.white,
+  },
+
+  shopTypeCopy: {
+    minWidth: 0,
+    flex: 1,
+  },
+
+  shopTypeTitle: {
+    color: THEME.text,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  shopTypeTitleSelected: {
+    color: THEME.orangeDark,
+  },
+
+  shopTypeDescription: {
+    marginTop: 3,
+    color: THEME.muted,
+    fontSize: 9,
+    lineHeight: 14,
+  },
+
+  /* ADMINISTRATOR APPROVAL */
+
+  approvalNotice: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginTop: 6,
+    marginBottom: 18,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#F0DCAE',
+    borderRadius: 12,
+    backgroundColor: THEME.warningSoft,
+  },
+
+  approvalIcon: {
+    width: 38,
+    height: 38,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: THEME.white,
+  },
+
+  approvalCopy: {
+    minWidth: 0,
+    flex: 1,
+  },
+
+  approvalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    gap: 7,
+  },
+
+  approvalTitle: {
+    color: THEME.warning,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  pendingBadge: {
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderRadius: 999,
+    backgroundColor: THEME.white,
+  },
+
+  pendingBadgeText: {
+    color: THEME.warning,
+    fontSize: 8,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+
+  approvalText: {
+    marginTop: 5,
+    color: '#8A6B2C',
+    fontSize: 10,
+    lineHeight: 16,
+  },
+
+  /* ERROR */
+
+  errorBox: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginBottom: 16,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#F0CCCC',
+    borderRadius: 12,
+    backgroundColor: THEME.dangerSoft,
+  },
+
+  errorIcon: {
+    width: 30,
+    height: 30,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 9,
+    backgroundColor: THEME.white,
+  },
+
+  errorCopy: {
+    minWidth: 0,
+    flex: 1,
+  },
+
+  errorTitle: {
+    color: THEME.danger,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  errorText: {
+    marginTop: 3,
+    color: THEME.danger,
+    fontSize: 11,
+    lineHeight: 17,
+  },
+
+  /* SUBMIT */
+
+  submitButton: {
+    minHeight: LAYOUT.buttonHeight,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 9,
+    borderRadius: 12,
+    backgroundColor: THEME.orange,
+
+    ...Platform.select({
+      ios: {
+        shadowColor: '#D99202',
+        shadowOffset: {
+          width: 0,
+          height: 5,
+        },
+        shadowOpacity: 0.18,
+        shadowRadius: 9,
+      },
+      android: {
+        elevation: 3,
+      },
+      default: {},
+    }),
+  },
+
+  disabledButton: {
+    opacity: 0.58,
+  },
+
+  submitText: {
+    color: THEME.navyDark,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+
+  submitIcon: {
+    width: 27,
+    height: 27,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 999,
+    backgroundColor: THEME.navyDark,
+  },
+
+  /* SECURITY NOTE */
+
+  securityNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+    marginTop: 18,
+  },
+
+  securityNoteText: {
+    minWidth: 0,
+    flex: 1,
+    color: THEME.muted,
+    fontSize: 10,
+    lineHeight: 15,
+  },
+
+  /* EXISTING ACCOUNT */
+
+  loginCard: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 14,
+    padding: 15,
+    borderRadius: 17,
+    backgroundColor: THEME.white,
+  },
+
+  loginCardIcon: {
+    width: 41,
+    height: 41,
+    flexShrink: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: THEME.orangeSoft,
+  },
+
+  loginCardCopy: {
+    minWidth: 0,
+    flex: 1,
+  },
+
+  loginCardTitle: {
+    color: THEME.text,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+
+  loginCardDescription: {
+    marginTop: 3,
+    color: THEME.muted,
+    fontSize: 10,
+    lineHeight: 15,
+  },
+
+  loginLinkButton: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    flexShrink: 0,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: THEME.border,
+    borderRadius: 10,
+    backgroundColor: THEME.offWhite,
+  },
+
+  loginLinkText: {
+    color: THEME.text,
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
+  /* FOOTER */
+
+  footer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 7,
+    marginTop: 25,
+  },
+
+  footerText: {
+    color: THEME.mutedLight,
+    fontSize: 10,
+    fontWeight: '600',
+  },
+
+  footerDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 2,
+    backgroundColor: THEME.orange,
+  },
+});

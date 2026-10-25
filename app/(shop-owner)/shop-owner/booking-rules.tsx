@@ -1,17 +1,13 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import type { ComponentProps } from 'react';
-import {
-  useCallback,
-  useMemo,
-  useState,
-} from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -20,6 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '@/src/constants/colors';
 import {
@@ -43,58 +40,25 @@ import type {
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
 const SLOT_INTERVALS: ShopOwnerSlotIntervalMinutes[] = [
-  5,
-  10,
-  15,
-  20,
-  30,
-  60,
+  5, 10, 15, 20, 30, 60,
 ];
 
 const LEAD_TIME_PRESETS = [
-  {
-    value: 0,
-    label: 'No extra lead',
-  },
-  {
-    value: 60,
-    label: '1 hour',
-  },
-  {
-    value: 120,
-    label: '2 hours',
-  },
-  {
-    value: 1440,
-    label: '24 hours',
-  },
+  { value: 0, label: 'No extra lead' },
+  { value: 60, label: '1 hour' },
+  { value: 120, label: '2 hours' },
+  { value: 1440, label: '24 hours' },
 ] as const;
 
 const BOOKING_WINDOW_PRESETS = [
-  7,
-  14,
-  30,
-  60,
-  90,
+  7, 14, 30, 60, 90,
 ] as const;
 
 const CUTOFF_PRESETS = [
-  {
-    value: 0,
-    label: 'Until start',
-  },
-  {
-    value: 60,
-    label: '1 hour',
-  },
-  {
-    value: 360,
-    label: '6 hours',
-  },
-  {
-    value: 1440,
-    label: '1 day',
-  },
+  { value: 0, label: 'Until start' },
+  { value: 60, label: '1 hour' },
+  { value: 360, label: '6 hours' },
+  { value: 1440, label: '1 day' },
 ] as const;
 
 interface RuleFormState {
@@ -109,34 +73,21 @@ function formFromRules(
   rules: ShopOwnerBookingRules,
 ): RuleFormState {
   return {
-    slotIntervalMinutes:
-      rules.slot_interval_minutes,
-
-    minimumLeadTimeMinutes:
-      String(
-        rules.minimum_lead_time_minutes,
-      ),
-
-    bookingWindowDays:
-      String(
-        rules.booking_window_days,
-      ),
-
-    cancellationCutoffMinutes:
-      String(
-        rules.cancellation_cutoff_minutes,
-      ),
-
-    rescheduleCutoffMinutes:
-      String(
-        rules.reschedule_cutoff_minutes,
-      ),
+    slotIntervalMinutes: rules.slot_interval_minutes,
+    minimumLeadTimeMinutes: String(
+      rules.minimum_lead_time_minutes,
+    ),
+    bookingWindowDays: String(rules.booking_window_days),
+    cancellationCutoffMinutes: String(
+      rules.cancellation_cutoff_minutes,
+    ),
+    rescheduleCutoffMinutes: String(
+      rules.reschedule_cutoff_minutes,
+    ),
   };
 }
 
-function formFingerprint(
-  form: RuleFormState,
-): string {
+function formFingerprint(form: RuleFormState): string {
   return [
     form.slotIntervalMinutes,
     form.minimumLeadTimeMinutes.trim(),
@@ -155,23 +106,16 @@ function parseRequiredInteger(
   const cleanValue = value.trim();
 
   if (!/^\d+$/.test(cleanValue)) {
-    throw new Error(
-      `${label} must be a whole number.`,
-    );
+    throw new Error(`${label} must be a whole number.`);
   }
 
   const parsed = Number(cleanValue);
 
   if (!Number.isSafeInteger(parsed)) {
-    throw new Error(
-      `${label} must be a valid whole number.`,
-    );
+    throw new Error(`${label} must be a valid whole number.`);
   }
 
-  if (
-    parsed < minimum
-    || parsed > maximum
-  ) {
+  if (parsed < minimum || parsed > maximum) {
     throw new Error(
       `${label} must be between ${minimum} and ${maximum}.`,
     );
@@ -186,56 +130,39 @@ function humanizeMinutes(
 ): string {
   const parsed = Number(value);
 
-  if (
-    !Number.isFinite(parsed)
-    || parsed < 0
-  ) {
+  if (!Number.isFinite(parsed) || parsed < 0) {
     return 'Enter a valid number of minutes';
   }
 
-  if (parsed === 0) {
-    return zeroText;
-  }
+  if (parsed === 0) return zeroText;
 
   if (parsed % 1440 === 0) {
     const days = parsed / 1440;
-
     return `${days} day${days === 1 ? '' : 's'}`;
   }
 
   if (parsed % 60 === 0) {
     const hours = parsed / 60;
-
     return `${hours} hour${hours === 1 ? '' : 's'}`;
   }
 
   return `${parsed} minutes`;
 }
 
-function cutoffHelper(
-  minutes: string,
-): string {
+function cutoffHelper(minutes: string): string {
   const parsed = Number(minutes);
 
-  if (
-    !Number.isFinite(parsed)
-    || parsed <= 0
-  ) {
+  if (!Number.isFinite(parsed) || parsed <= 0) {
     return '0 means the customer may act until the appointment starts.';
   }
 
   return `${humanizeMinutes(parsed)} before the appointment.`;
 }
 
-function bookingWindowHelper(
-  days: string,
-): string {
+function bookingWindowHelper(days: string): string {
   const parsed = Number(days);
 
-  if (
-    !Number.isFinite(parsed)
-    || parsed < 1
-  ) {
+  if (!Number.isFinite(parsed) || parsed < 1) {
     return 'Choose how far ahead customers can reserve.';
   }
 
@@ -245,22 +172,18 @@ function bookingWindowHelper(
 
   if (parsed % 7 === 0) {
     const weeks = parsed / 7;
-
-    return `Customers can book about ${weeks} week${weeks === 1 ? '' : 's'} ahead.`;
+    return `Customers can book about ${weeks} week${
+      weeks === 1 ? '' : 's'
+    } ahead.`;
   }
 
   return `Customers can book up to ${parsed} calendar days ahead.`;
 }
 
-function leadTimeHelper(
-  minutes: string,
-): string {
+function leadTimeHelper(minutes: string): string {
   const parsed = Number(minutes);
 
-  if (
-    !Number.isFinite(parsed)
-    || parsed < 0
-  ) {
+  if (!Number.isFinite(parsed) || parsed < 0) {
     return 'Enter the minimum notice required before a new booking.';
   }
 
@@ -268,57 +191,29 @@ function leadTimeHelper(
     return 'Customers may choose the next valid future slot.';
   }
 
-  return `Customers must book at least ${humanizeMinutes(parsed)} in advance.`;
+  return `Customers must book at least ${humanizeMinutes(
+    parsed,
+  )} in advance.`;
 }
 
 export default function ShopOwnerBookingRulesScreen() {
-  const {
-    token,
-  } = useAuth();
+  const { token } = useAuth();
 
-  const [
-    rules,
-    setRules,
-  ] = useState<ShopOwnerBookingRules | null>(
-    null,
-  );
+  const [rules, setRules] =
+    useState<ShopOwnerBookingRules | null>(null);
 
-  const [
-    form,
-    setForm,
-  ] = useState<RuleFormState | null>(
-    null,
-  );
+  const [form, setForm] =
+    useState<RuleFormState | null>(null);
 
-  const [
-    isLoading,
-    setIsLoading,
-  ] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const [
-    isRefreshing,
-    setIsRefreshing,
-  ] = useState(false);
-
-  const [
-    isSaving,
-    setIsSaving,
-  ] = useState(false);
-
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] = useState('');
-
-  const [
-    successMessage,
-    setSuccessMessage,
-  ] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   const loadRules = useCallback(
-    async (
-      refreshing = false,
-    ): Promise<void> => {
+    async (refreshing = false): Promise<void> => {
       if (!token) {
         setRules(null);
         setForm(null);
@@ -337,21 +232,11 @@ export default function ShopOwnerBookingRulesScreen() {
       setSuccessMessage('');
 
       try {
-        const response =
-          await getShopOwnerBookingRules(
-            token,
-          );
-
-        const loadedRules =
-          response.data.rules;
+        const response = await getShopOwnerBookingRules(token);
+        const loadedRules = response.data.rules;
 
         setRules(loadedRules);
-
-        setForm(
-          formFromRules(
-            loadedRules,
-          ),
-        );
+        setForm(formFromRules(loadedRules));
       } catch (error) {
         setErrorMessage(
           error instanceof ApiError
@@ -367,41 +252,31 @@ export default function ShopOwnerBookingRulesScreen() {
   );
 
   useFocusEffect(
-    useCallback(
-      () => {
-        void loadRules();
-      },
-      [loadRules],
-    ),
+    useCallback(() => {
+      void loadRules();
+    }, [loadRules]),
   );
 
   const savedForm = useMemo(
-    () =>
-      rules
-        ? formFromRules(rules)
-        : null,
+    () => (rules ? formFromRules(rules) : null),
     [rules],
   );
 
   const isDirty = useMemo(
     () =>
       Boolean(
-        form
-        && savedForm
-        && formFingerprint(form)
-          !== formFingerprint(savedForm),
+        form &&
+        savedForm &&
+        formFingerprint(form) !== formFingerprint(savedForm),
       ),
     [form, savedForm],
   );
 
   const canSave = Boolean(
-    form
-    && rules
-    && !isSaving
-    && (
-      isDirty
-      || !rules.is_customized
-    ),
+    form &&
+    rules &&
+    !isSaving &&
+    (isDirty || !rules.is_customized),
   );
 
   function clearMessages(): void {
@@ -409,123 +284,85 @@ export default function ShopOwnerBookingRulesScreen() {
     setSuccessMessage('');
   }
 
-  function updateField<
-    Key extends keyof RuleFormState
-  >(
+  function updateField<Key extends keyof RuleFormState>(
     key: Key,
     value: RuleFormState[Key],
   ): void {
-    setForm(
-      (current) => {
-        if (!current) {
-          return current;
-        }
+    setForm((current) => {
+      if (!current) return current;
 
-        return {
-          ...current,
-          [key]: value,
-        };
-      },
-    );
+      return {
+        ...current,
+        [key]: value,
+      };
+    });
 
     clearMessages();
   }
 
   function restoreSavedRules(): void {
-    if (
-      !rules
-      || isSaving
-    ) {
-      return;
-    }
+    if (!rules || isSaving) return;
 
-    setForm(
-      formFromRules(
-        rules,
-      ),
-    );
-
+    setForm(formFromRules(rules));
     clearMessages();
   }
 
   async function saveRules(): Promise<void> {
-    if (
-      !token
-      || !form
-      || isSaving
-    ) {
-      return;
-    }
+    if (!token || !form || isSaving) return;
 
     setErrorMessage('');
     setSuccessMessage('');
 
     try {
-      const minimumLeadTimeMinutes =
-        parseRequiredInteger(
-          form.minimumLeadTimeMinutes,
-          'Minimum lead time',
-          0,
-          1440,
-        );
+      const minimumLeadTimeMinutes = parseRequiredInteger(
+        form.minimumLeadTimeMinutes,
+        'Minimum lead time',
+        0,
+        1440,
+      );
 
-      const bookingWindowDays =
-        parseRequiredInteger(
-          form.bookingWindowDays,
-          'Booking window',
-          1,
-          365,
-        );
+      const bookingWindowDays = parseRequiredInteger(
+        form.bookingWindowDays,
+        'Booking window',
+        1,
+        365,
+      );
 
-      const cancellationCutoffMinutes =
-        parseRequiredInteger(
-          form.cancellationCutoffMinutes,
-          'Cancellation cutoff',
-          0,
-          10080,
-        );
+      const cancellationCutoffMinutes = parseRequiredInteger(
+        form.cancellationCutoffMinutes,
+        'Cancellation cutoff',
+        0,
+        10080,
+      );
 
-      const rescheduleCutoffMinutes =
-        parseRequiredInteger(
-          form.rescheduleCutoffMinutes,
-          'Reschedule cutoff',
-          0,
-          10080,
-        );
+      const rescheduleCutoffMinutes = parseRequiredInteger(
+        form.rescheduleCutoffMinutes,
+        'Reschedule cutoff',
+        0,
+        10080,
+      );
 
       setIsSaving(true);
 
-      const response =
-        await updateShopOwnerBookingRules(
-          token,
-          {
-            slotIntervalMinutes:
-              form.slotIntervalMinutes,
-
-            minimumLeadTimeMinutes,
-
-            bookingWindowDays,
-
-            cancellationCutoffMinutes,
-
-            rescheduleCutoffMinutes,
-          },
-        );
-
-      const savedRules =
-        response.data.rules;
-
-      setRules(savedRules);
-
-      setForm(
-        formFromRules(
-          savedRules,
-        ),
+      const response = await updateShopOwnerBookingRules(
+        token,
+        {
+          slotIntervalMinutes: form.slotIntervalMinutes,
+          minimumLeadTimeMinutes,
+          bookingWindowDays,
+          cancellationCutoffMinutes,
+          rescheduleCutoffMinutes,
+        },
       );
 
+      const savedRules = response.data.rules;
+
+      setRules(savedRules);
+      setForm(formFromRules(savedRules));
+
       setSuccessMessage(
-        response.message
-        ?? 'Your booking rules are now active for customer availability and booking actions.',
+        response.message ??
+        'Your booking rules are now active for customer availability and booking actions.',
       );
     } catch (error) {
       setErrorMessage(
@@ -542,20 +379,18 @@ export default function ShopOwnerBookingRulesScreen() {
 
   return (
     <SafeAreaView
+      edges={['top', 'bottom']}
       style={styles.safeArea}
     >
       <StatusBar
         barStyle="dark-content"
         backgroundColor={COLORS.background}
+        translucent={false}
       />
 
       <KeyboardAvoidingView
         style={styles.flex}
-        behavior={
-          Platform.OS === 'ios'
-            ? 'padding'
-            : undefined
-        }
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <ScrollView
           showsVerticalScrollIndicator={false}
@@ -570,6 +405,8 @@ export default function ShopOwnerBookingRulesScreen() {
           }
           contentContainerStyle={styles.container}
         >
+          {/* TOP NAVIGATION */}
+
           <View style={styles.topBar}>
             <TouchableOpacity
               activeOpacity={0.7}
@@ -614,6 +451,8 @@ export default function ShopOwnerBookingRulesScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* PAGE HEADER */}
+
           <View style={styles.header}>
             <Text style={styles.eyebrow}>
               BOOKING CONTROLS
@@ -624,9 +463,13 @@ export default function ShopOwnerBookingRulesScreen() {
             </Text>
 
             <Text style={styles.subtitle}>
-              These settings shape customer availability and appointment actions while your Laravel backend continues to enforce every rule.
+              These settings shape customer availability and
+              appointment actions while your Laravel backend
+              continues to enforce every rule.
             </Text>
           </View>
+
+          {/* FEEDBACK */}
 
           {errorMessage ? (
             <MessageBox
@@ -644,6 +487,8 @@ export default function ShopOwnerBookingRulesScreen() {
             />
           ) : null}
 
+          {/* LOADING */}
+
           {isLoading && !form ? (
             <View style={styles.loadingCard}>
               <View style={styles.loadingIcon}>
@@ -658,13 +503,16 @@ export default function ShopOwnerBookingRulesScreen() {
               </Text>
 
               <Text style={styles.loadingText}>
-                Getting your appointment grid, booking window, and customer-change cutoffs.
+                Getting your appointment grid, booking
+                window, and customer-change cutoffs.
               </Text>
             </View>
           ) : null}
 
           {form && rules ? (
             <>
+              {/* OVERVIEW CARD */}
+
               <View style={styles.overviewCard}>
                 <View style={styles.overviewTopRow}>
                   <View style={styles.overviewIcon}>
@@ -683,10 +531,9 @@ export default function ShopOwnerBookingRulesScreen() {
                     style={[
                       styles.modeBadge,
                       {
-                        backgroundColor:
-                          rules.is_customized
-                            ? COLORS.greenSoft
-                            : COLORS.blueSoft,
+                        backgroundColor: rules.is_customized
+                          ? COLORS.greenSoft
+                          : COLORS.blueSoft,
                       },
                     ]}
                   >
@@ -708,10 +555,9 @@ export default function ShopOwnerBookingRulesScreen() {
                       style={[
                         styles.modeBadgeText,
                         {
-                          color:
-                            rules.is_customized
-                              ? COLORS.green
-                              : COLORS.blue,
+                          color: rules.is_customized
+                            ? COLORS.green
+                            : COLORS.blue,
                         },
                       ]}
                     >
@@ -759,6 +605,8 @@ export default function ShopOwnerBookingRulesScreen() {
                 </View>
               </View>
 
+              {/* UNSAVED CHANGES */}
+
               {isDirty ? (
                 <View style={styles.unsavedCard}>
                   <View style={styles.unsavedIcon}>
@@ -775,7 +623,8 @@ export default function ShopOwnerBookingRulesScreen() {
                     </Text>
 
                     <Text style={styles.unsavedText}>
-                      Customer booking behavior will not change until you save these rules.
+                      Customer booking behavior will not change
+                      until you save these rules.
                     </Text>
                   </View>
 
@@ -792,6 +641,8 @@ export default function ShopOwnerBookingRulesScreen() {
                 </View>
               ) : null}
 
+              {/* APPOINTMENT AVAILABILITY */}
+
               <SectionHeading
                 title="Appointment availability"
                 subtitle="Control the time grid customers see and how far in advance they can reserve."
@@ -805,54 +656,56 @@ export default function ShopOwnerBookingRulesScreen() {
                 />
 
                 <View style={styles.slotGrid}>
-                  {SLOT_INTERVALS.map(
-                    (interval) => {
-                      const selected =
-                        form.slotIntervalMinutes === interval;
+                  {SLOT_INTERVALS.map((interval) => {
+                    const selected =
+                      form.slotIntervalMinutes === interval;
 
-                      return (
-                        <TouchableOpacity
-                          key={interval}
-                          activeOpacity={0.8}
-                          disabled={isSaving}
-                          accessibilityRole="button"
-                          accessibilityState={{
-                            selected,
-                            disabled: isSaving,
-                          }}
-                          onPress={() =>
-                            updateField(
-                              'slotIntervalMinutes',
-                              interval,
-                            )
-                          }
+                    return (
+                      <TouchableOpacity
+                        key={interval}
+                        activeOpacity={0.8}
+                        disabled={isSaving}
+                        accessibilityRole="button"
+                        accessibilityState={{
+                          selected,
+                          disabled: isSaving,
+                        }}
+                        onPress={() =>
+                          updateField(
+                            'slotIntervalMinutes',
+                            interval,
+                          )
+                        }
+                        style={[
+                          styles.slotButton,
+                          selected &&
+                            styles.slotButtonSelected,
+                          isSaving &&
+                            styles.disabledButton,
+                        ]}
+                      >
+                        <Text
                           style={[
-                            styles.slotButton,
-                            selected && styles.slotButtonSelected,
-                            isSaving && styles.disabledButton,
+                            styles.slotButtonValue,
+                            selected &&
+                              styles.slotButtonValueSelected,
                           ]}
                         >
-                          <Text
-                            style={[
-                              styles.slotButtonValue,
-                              selected && styles.slotButtonValueSelected,
-                            ]}
-                          >
-                            {interval}
-                          </Text>
+                          {interval}
+                        </Text>
 
-                          <Text
-                            style={[
-                              styles.slotButtonUnit,
-                              selected && styles.slotButtonUnitSelected,
-                            ]}
-                          >
-                            min
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    },
-                  )}
+                        <Text
+                          style={[
+                            styles.slotButtonUnit,
+                            selected &&
+                              styles.slotButtonUnitSelected,
+                          ]}
+                        >
+                          min
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
 
                 <View style={styles.ruleExplanation}>
@@ -863,11 +716,17 @@ export default function ShopOwnerBookingRulesScreen() {
                   />
 
                   <Text style={styles.ruleExplanationText}>
-                    A {form.slotIntervalMinutes}-minute interval means possible appointment start times are generated every {form.slotIntervalMinutes} minutes, while service duration and conflicts are still checked separately.
+                    A {form.slotIntervalMinutes}-minute interval
+                    means possible appointment start times are
+                    generated every {form.slotIntervalMinutes}{' '}
+                    minutes, while service duration and conflicts
+                    are still checked separately.
                   </Text>
                 </View>
 
                 <View style={styles.sectionDivider} />
+
+                {/* MINIMUM LEAD TIME */}
 
                 <SettingHeader
                   icon="hourglass-outline"
@@ -905,6 +764,8 @@ export default function ShopOwnerBookingRulesScreen() {
 
                 <View style={styles.sectionDivider} />
 
+                {/* BOOKING WINDOW */}
+
                 <SettingHeader
                   icon="calendar-number-outline"
                   title="Booking window"
@@ -920,50 +781,51 @@ export default function ShopOwnerBookingRulesScreen() {
                   range="Allowed range: 1–365 days."
                   disabled={isSaving}
                   onChangeText={(value) =>
-                    updateField(
-                      'bookingWindowDays',
-                      value,
-                    )
+                    updateField('bookingWindowDays', value)
                   }
                 />
 
                 <View style={styles.simplePresetRow}>
-                  {BOOKING_WINDOW_PRESETS.map(
-                    (days) => {
-                      const selected =
-                        form.bookingWindowDays.trim() === String(days);
+                  {BOOKING_WINDOW_PRESETS.map((days) => {
+                    const selected =
+                      form.bookingWindowDays.trim() ===
+                      String(days);
 
-                      return (
-                        <TouchableOpacity
-                          key={days}
-                          activeOpacity={0.78}
-                          disabled={isSaving}
-                          onPress={() =>
-                            updateField(
-                              'bookingWindowDays',
-                              String(days),
-                            )
-                          }
+                    return (
+                      <TouchableOpacity
+                        key={days}
+                        activeOpacity={0.78}
+                        disabled={isSaving}
+                        onPress={() =>
+                          updateField(
+                            'bookingWindowDays',
+                            String(days),
+                          )
+                        }
+                        style={[
+                          styles.simplePresetButton,
+                          selected &&
+                            styles.simplePresetButtonSelected,
+                          isSaving &&
+                            styles.disabledButton,
+                        ]}
+                      >
+                        <Text
                           style={[
-                            styles.simplePresetButton,
-                            selected && styles.simplePresetButtonSelected,
-                            isSaving && styles.disabledButton,
+                            styles.simplePresetText,
+                            selected &&
+                              styles.simplePresetTextSelected,
                           ]}
                         >
-                          <Text
-                            style={[
-                              styles.simplePresetText,
-                              selected && styles.simplePresetTextSelected,
-                            ]}
-                          >
-                            {days}d
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    },
-                  )}
+                          {days}d
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </View>
+
+              {/* CUSTOMER CHANGES */}
 
               <SectionHeading
                 title="Customer changes"
@@ -971,6 +833,8 @@ export default function ShopOwnerBookingRulesScreen() {
               />
 
               <View style={styles.sectionCard}>
+                {/* CANCELLATION CUTOFF */}
+
                 <SettingHeader
                   icon="close-circle-outline"
                   title="Cancellation cutoff"
@@ -1007,6 +871,8 @@ export default function ShopOwnerBookingRulesScreen() {
 
                 <View style={styles.sectionDivider} />
 
+                {/* RESCHEDULE CUTOFF */}
+
                 <SettingHeader
                   icon="swap-horizontal-outline"
                   title="Reschedule cutoff"
@@ -1041,6 +907,8 @@ export default function ShopOwnerBookingRulesScreen() {
                   }
                 />
               </View>
+
+              {/* POLICY PREVIEW */}
 
               <SectionHeading
                 title="Policy preview"
@@ -1095,6 +963,8 @@ export default function ShopOwnerBookingRulesScreen() {
                 />
               </View>
 
+              {/* SECURITY NOTICE */}
+
               <View style={styles.securityCard}>
                 <View style={styles.securityIcon}>
                   <Ionicons
@@ -1110,10 +980,15 @@ export default function ShopOwnerBookingRulesScreen() {
                   </Text>
 
                   <Text style={styles.securityText}>
-                    StyleHub rechecks the slot grid, lead time, booking window, and customer-change cutoffs on the Laravel server. Editing the mobile app cannot bypass these booking rules.
+                    StyleHub rechecks the slot grid, lead time,
+                    booking window, and customer-change cutoffs
+                    on the Laravel server. Editing the mobile app
+                    cannot bypass these booking rules.
                   </Text>
                 </View>
               </View>
+
+              {/* SAVE CARD */}
 
               <View style={styles.saveCard}>
                 <View style={styles.saveHeader}>
@@ -1190,6 +1065,8 @@ export default function ShopOwnerBookingRulesScreen() {
     </SafeAreaView>
   );
 }
+
+/* REUSABLE COMPONENTS */
 
 function SectionHeading({
   title,
@@ -1295,12 +1172,7 @@ function NumericRuleField({
           placeholderTextColor={COLORS.textLight}
           selectionColor={COLORS.navy}
           onChangeText={(nextValue) =>
-            onChangeText(
-              nextValue.replace(
-                /[^0-9]/g,
-                '',
-              ),
-            )
+            onChangeText(nextValue.replace(/[^0-9]/g, ''))
           }
           style={styles.numericInput}
         />
@@ -1347,35 +1219,33 @@ function PresetRow({
 }) {
   return (
     <View style={styles.presetRow}>
-      {values.map(
-        (preset) => {
-          const selected =
-            currentValue.trim() === String(preset.value);
+      {values.map((preset) => {
+        const selected =
+          currentValue.trim() === String(preset.value);
 
-          return (
-            <TouchableOpacity
-              key={`${preset.value}-${preset.label}`}
-              activeOpacity={0.78}
-              disabled={disabled}
-              onPress={() => onSelect(preset.value)}
+        return (
+          <TouchableOpacity
+            key={`${preset.value}-${preset.label}`}
+            activeOpacity={0.78}
+            disabled={disabled}
+            onPress={() => onSelect(preset.value)}
+            style={[
+              styles.presetButton,
+              selected && styles.presetButtonSelected,
+              disabled && styles.disabledButton,
+            ]}
+          >
+            <Text
               style={[
-                styles.presetButton,
-                selected && styles.presetButtonSelected,
-                disabled && styles.disabledButton,
+                styles.presetButtonText,
+                selected && styles.presetButtonTextSelected,
               ]}
             >
-              <Text
-                style={[
-                  styles.presetButtonText,
-                  selected && styles.presetButtonTextSelected,
-                ]}
-              >
-                {preset.label}
-              </Text>
-            </TouchableOpacity>
-          );
-        },
-      )}
+              {preset.label}
+            </Text>
+          </TouchableOpacity>
+        );
+      })}
     </View>
   );
 }
@@ -1428,10 +1298,9 @@ function MessageBox({
       style={[
         styles.messageBox,
         {
-          backgroundColor:
-            success
-              ? COLORS.successSoft
-              : COLORS.dangerSoft,
+          backgroundColor: success
+            ? COLORS.successSoft
+            : COLORS.dangerSoft,
         },
       ]}
     >
@@ -1444,9 +1313,7 @@ function MessageBox({
           }
           size={20}
           color={
-            success
-              ? COLORS.success
-              : COLORS.danger
+            success ? COLORS.success : COLORS.danger
           }
         />
       </View>
@@ -1456,10 +1323,9 @@ function MessageBox({
           style={[
             styles.messageTitle,
             {
-              color:
-                success
-                  ? COLORS.success
-                  : COLORS.danger,
+              color: success
+                ? COLORS.success
+                : COLORS.danger,
             },
           ]}
         >
@@ -1474,6 +1340,8 @@ function MessageBox({
   );
 }
 
+/* STYLES */
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -1484,12 +1352,13 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
+  // Same 40px top spacing as other Shop Owner screens.
   container: {
     width: '100%',
     maxWidth: LAYOUT.contentMaxWidth,
     alignSelf: 'center',
     paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingTop: 40,
     paddingBottom: 48,
   },
 

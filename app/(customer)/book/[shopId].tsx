@@ -1,3 +1,4 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import {
   type Href,
@@ -17,7 +18,6 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -26,6 +26,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import CustomerBookingDatePicker from '@/src/components/CustomerBookingDatePicker';
 import CustomerTimeSlotPicker from '@/src/components/CustomerTimeSlotPicker';
@@ -53,704 +54,427 @@ import type {
   CustomerShopDetail,
 } from '@/src/types/customer';
 
+type IconName = ComponentProps<typeof Ionicons>['name'];
+
 const AVAILABILITY_PREVIEW_DAYS = 30;
 const MAX_NOTES_LENGTH = 1000;
+
+/* HELPERS */
 
 function getRouteValue(
   value: string | string[] | undefined,
 ): string | undefined {
-  return Array.isArray(value)
-    ? value[0]
-    : value;
+  return Array.isArray(value) ? value[0] : value;
 }
 
-function formatPrice(
-  value: string | number,
-): string {
+function formatPrice(value: string | number): string {
   const numericValue = Number(value);
 
   return Number.isNaN(numericValue)
     ? String(value)
-    : `₱${numericValue.toLocaleString(
-        'en-PH',
-        {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        },
-      )}`;
+    : `₱${numericValue.toLocaleString('en-PH', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
 }
 
-function formatTime(
-  value: string | null,
-): string {
-  if (!value) {
-    return '—';
-  }
+function formatTime(value: string | null): string {
+  if (!value) return '—';
 
-  const match =
-    value.match(
-      /^(\d{1,2}):(\d{2})/,
-    );
+  const match = value.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return value;
 
-  if (!match) {
-    return value;
-  }
-
-  const hour24 =
-    Number(match[1]);
-
-  const minute =
-    match[2];
+  const hour24 = Number(match[1]);
+  const minute = match[2];
 
   if (
-    Number.isNaN(hour24)
-    ||
-    hour24 < 0
-    ||
+    Number.isNaN(hour24) ||
+    hour24 < 0 ||
     hour24 > 23
   ) {
     return value;
   }
 
-  const suffix =
-    hour24 >= 12
-      ? 'PM'
-      : 'AM';
-
-  const hour12 =
-    hour24 % 12 || 12;
+  const suffix = hour24 >= 12 ? 'PM' : 'AM';
+  const hour12 = hour24 % 12 || 12;
 
   return `${hour12}:${minute} ${suffix}`;
 }
 
+/* MAIN BOOKING SCREEN */
+
 export default function CustomerBookingScreen() {
-  const params =
-    useLocalSearchParams<{
-      shopId?: string | string[];
-      serviceId?: string | string[];
-    }>();
+  const params = useLocalSearchParams<{
+    shopId?: string | string[];
+    serviceId?: string | string[];
+  }>();
 
-  const navigation =
-    useNavigation();
+  const navigation = useNavigation();
+  const { token } = useAuth();
 
-  const { token } =
-    useAuth();
+  const shopId = Number(getRouteValue(params.shopId));
+  const initialServiceId = Number(
+    getRouteValue(params.serviceId),
+  );
 
-  const shopId =
-    Number(
-      getRouteValue(
-        params.shopId,
-      ),
-    );
+  const [shop, setShop] =
+    useState<CustomerShopDetail | null>(null);
 
-  const initialServiceId =
-    Number(
-      getRouteValue(
-        params.serviceId,
-      ),
-    );
-
-  const [
-    shop,
-    setShop,
-  ] =
-    useState<CustomerShopDetail | null>(
-      null,
-    );
-
-  const [
-    selectedServiceId,
-    setSelectedServiceId,
-  ] =
+  const [selectedServiceId, setSelectedServiceId] =
     useState<number | null>(
-      Number.isInteger(
-        initialServiceId,
-      )
-      &&
+      Number.isInteger(initialServiceId) &&
       initialServiceId > 0
         ? initialServiceId
         : null,
     );
 
-  const [
-    availableDates,
-    setAvailableDates,
-  ] =
-    useState<CustomerAvailableDate[]>(
-      [],
-    );
+  const [availableDates, setAvailableDates] =
+    useState<CustomerAvailableDate[]>([]);
 
-  const [
-    selectedDate,
-    setSelectedDate,
-  ] =
-    useState<string | null>(
-      null,
-    );
+  const [selectedDate, setSelectedDate] =
+    useState<string | null>(null);
 
-  const [
-    availableSlots,
-    setAvailableSlots,
-  ] =
-    useState<CustomerAvailableSlot[]>(
-      [],
-    );
+  const [availableSlots, setAvailableSlots] =
+    useState<CustomerAvailableSlot[]>([]);
 
-  const [
-    selectedStartsAt,
-    setSelectedStartsAt,
-  ] =
-    useState<string | null>(
-      null,
-    );
+  const [selectedStartsAt, setSelectedStartsAt] =
+    useState<string | null>(null);
 
-  const [
-    notes,
-    setNotes,
-  ] =
-    useState('');
+  const [notes, setNotes] = useState('');
 
-  const [
-    isLoadingShop,
-    setIsLoadingShop,
-  ] =
+  const [isLoadingShop, setIsLoadingShop] =
     useState(true);
 
-  const [
-    isLoadingDates,
-    setIsLoadingDates,
-  ] =
+  const [isLoadingDates, setIsLoadingDates] =
     useState(false);
 
-  const [
-    isLoadingSlots,
-    setIsLoadingSlots,
-  ] =
+  const [isLoadingSlots, setIsLoadingSlots] =
     useState(false);
 
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] =
+  const [errorMessage, setErrorMessage] =
     useState('');
 
-  const dateRequestSequence =
-    useRef(0);
+  const dateRequestSequence = useRef(0);
+  const slotRequestSequence = useRef(0);
+  const hasBlurredForReviewRef = useRef(false);
 
-  const slotRequestSequence =
-    useRef(0);
+  const latestSelectionRef = useRef<{
+    serviceId: number | null;
+    date: string | null;
+  }>({
+    serviceId: selectedServiceId,
+    date: selectedDate,
+  });
 
-  const hasBlurredForReviewRef =
-    useRef(false);
+  /* SELECTED SERVICE */
 
-  const latestSelectionRef =
-    useRef<{
-      serviceId: number | null;
-      date: string | null;
-    }>({
-      serviceId:
-        selectedServiceId,
-
-      date:
-        selectedDate,
-    });
-
-  const selectedService =
-    useMemo<CustomerService | undefined>(
-      () =>
-        shop
-          ?.services
-          ?.find(
-            (service) =>
-              service.id
-              ===
-              selectedServiceId,
-          ),
-
-      [
-        shop,
-        selectedServiceId,
-      ],
-    );
-
-  const selectedDateDetails =
-    useMemo(
-      () =>
-        availableDates.find(
-          (date) =>
-            date.date
-            ===
-            selectedDate,
-        ),
-
-      [
-        availableDates,
-        selectedDate,
-      ],
-    );
-
-  const selectedSlot =
-    useMemo(
-      () =>
-        availableSlots.find(
-          (slot) =>
-            slot.starts_at
-            ===
-            selectedStartsAt,
-        ),
-
-      [
-        availableSlots,
-        selectedStartsAt,
-      ],
-    );
-
-  useEffect(
-    () => {
-      latestSelectionRef.current = {
-        serviceId:
-          selectedServiceId,
-
-        date:
-          selectedDate,
-      };
-    },
-
-    [
-      selectedDate,
-      selectedServiceId,
-    ],
+  const selectedService = useMemo<
+    CustomerService | undefined
+  >(
+    () =>
+      shop?.services?.find(
+        (service) => service.id === selectedServiceId,
+      ),
+    [shop, selectedServiceId],
   );
 
-  const loadShop =
-    useCallback(
-      async () => {
-        if (
-          !token
-          ||
-          !Number.isInteger(
-            shopId,
-          )
-          ||
-          shopId < 1
-        ) {
-          setIsLoadingShop(
-            false,
-          );
+  /* SELECTED DATE */
 
-          setErrorMessage(
-            'The selected shop is invalid.',
-          );
-
-          return;
-        }
-
-        setIsLoadingShop(true);
-        setErrorMessage('');
-
-        try {
-          const response =
-            await getCustomerShop(
-              token,
-              shopId,
-            );
-
-          const loadedShop =
-            response
-              .data
-              .shop;
-
-          setShop(
-            loadedShop,
-          );
-
-          setSelectedServiceId(
-            (
-              currentServiceId,
-            ) => {
-              if (
-                currentServiceId
-                !==
-                null
-                &&
-                loadedShop
-                  .services
-                  ?.some(
-                    (
-                      service,
-                    ) =>
-                      service.id
-                      ===
-                      currentServiceId,
-                  )
-              ) {
-                return currentServiceId;
-              }
-
-              return null;
-            },
-          );
-        } catch (error) {
-          setErrorMessage(
-            error instanceof
-              ApiError
-              ? error.message
-              : 'Unable to load booking information.',
-          );
-        } finally {
-          setIsLoadingShop(
-            false,
-          );
-        }
-      },
-
-      [
-        token,
-        shopId,
-      ],
-    );
-
-  const loadAvailableDates =
-    useCallback(
-      async (
-        serviceId: number,
-      ) => {
-        if (
-          !token
-          ||
-          !shop
-        ) {
-          return;
-        }
-
-        const requestId =
-          ++dateRequestSequence.current;
-
-        setIsLoadingDates(
-          true,
-        );
-
-        setErrorMessage('');
-
-        try {
-          const response =
-            await getCustomerAvailableDates(
-              token,
-              shop.id,
-              serviceId,
-              AVAILABILITY_PREVIEW_DAYS,
-            );
-
-          if (
-            requestId
-            !==
-            dateRequestSequence.current
-          ) {
-            return;
-          }
-
-          setAvailableDates(
-            response
-              .data
-              .dates,
-          );
-        } catch (error) {
-          if (
-            requestId
-            !==
-            dateRequestSequence.current
-          ) {
-            return;
-          }
-
-          setAvailableDates([]);
-
-          setErrorMessage(
-            error instanceof
-              ApiError
-              ? error.message
-              : 'Unable to load available booking dates.',
-          );
-        } finally {
-          if (
-            requestId
-            ===
-            dateRequestSequence.current
-          ) {
-            setIsLoadingDates(
-              false,
-            );
-          }
-        }
-      },
-
-      [
-        token,
-        shop,
-      ],
-    );
-
-  const loadAvailableSlots =
-    useCallback(
-      async (
-        serviceId: number,
-        date: string,
-        preserveSelectedTime = false,
-      ) => {
-        if (
-          !token
-          ||
-          !shop
-        ) {
-          return;
-        }
-
-        const requestId =
-          ++slotRequestSequence.current;
-
-        setIsLoadingSlots(
-          true,
-        );
-
-        setAvailableSlots([]);
-        setErrorMessage('');
-
-        if (
-          !preserveSelectedTime
-        ) {
-          setSelectedStartsAt(
-            null,
-          );
-        }
-
-        try {
-          const response =
-            await getCustomerAvailableSlots(
-              token,
-              shop.id,
-              serviceId,
-              date,
-            );
-
-          if (
-            requestId
-            !==
-            slotRequestSequence.current
-          ) {
-            return;
-          }
-
-          const slots =
-            response
-              .data
-              .slots;
-
-          setAvailableSlots(
-            slots,
-          );
-
-          if (
-            preserveSelectedTime
-          ) {
-            setSelectedStartsAt(
-              (
-                currentStartsAt,
-              ) => {
-                if (
-                  !currentStartsAt
-                ) {
-                  return null;
-                }
-
-                return slots.some(
-                  (slot) =>
-                    slot.starts_at
-                    ===
-                    currentStartsAt,
-                )
-                  ? currentStartsAt
-                  : null;
-              },
-            );
-          }
-        } catch (error) {
-          if (
-            requestId
-            !==
-            slotRequestSequence.current
-          ) {
-            return;
-          }
-
-          setAvailableSlots([]);
-          setSelectedStartsAt(
-            null,
-          );
-
-          setErrorMessage(
-            error instanceof
-              ApiError
-              ? error.message
-              : 'Unable to load available appointment times.',
-          );
-        } finally {
-          if (
-            requestId
-            ===
-            slotRequestSequence.current
-          ) {
-            setIsLoadingSlots(
-              false,
-            );
-          }
-        }
-      },
-
-      [
-        token,
-        shop,
-      ],
-    );
-
-  useEffect(
-    () => {
-      void loadShop();
-    },
-
-    [
-      loadShop,
-    ],
+  const selectedDateDetails = useMemo(
+    () =>
+      availableDates.find(
+        (date) => date.date === selectedDate,
+      ),
+    [availableDates, selectedDate],
   );
 
-  useEffect(
-    () => {
-      dateRequestSequence.current +=
-        1;
+  /* SELECTED TIME SLOT */
 
-      slotRequestSequence.current +=
-        1;
-
-      setAvailableDates([]);
-      setSelectedDate(null);
-      setAvailableSlots([]);
-      setSelectedStartsAt(null);
-
-      if (
-        selectedService
-      ) {
-        void loadAvailableDates(
-          selectedService.id,
-        );
-      }
-    },
-
-    [
-      selectedService,
-      loadAvailableDates,
-    ],
+  const selectedSlot = useMemo(
+    () =>
+      availableSlots.find(
+        (slot) => slot.starts_at === selectedStartsAt,
+      ),
+    [availableSlots, selectedStartsAt],
   );
 
-  useEffect(
-    () => {
-      const unsubscribeBlur =
-        navigation.addListener(
-          'blur',
+  /* KEEP THE LATEST SELECTION FOR RETURN NAVIGATION */
 
-          () => {
-            hasBlurredForReviewRef.current =
-              true;
-          },
-        );
+  useEffect(() => {
+    latestSelectionRef.current = {
+      serviceId: selectedServiceId,
+      date: selectedDate,
+    };
+  }, [selectedDate, selectedServiceId]);
 
-      const unsubscribeFocus =
-        navigation.addListener(
-          'focus',
+  /* LOAD SHOP */
 
-          () => {
-            if (
-              !hasBlurredForReviewRef.current
-            ) {
-              return;
-            }
+  const loadShop = useCallback(async () => {
+    if (
+      !token ||
+      !Number.isInteger(shopId) ||
+      shopId < 1
+    ) {
+      setIsLoadingShop(false);
+      setErrorMessage('The selected shop is invalid.');
+      return;
+    }
 
-            hasBlurredForReviewRef.current =
-              false;
-
-            const currentSelection =
-              latestSelectionRef.current;
-
-            if (
-              currentSelection.serviceId
-              &&
-              currentSelection.date
-            ) {
-              void loadAvailableSlots(
-                currentSelection.serviceId,
-                currentSelection.date,
-                true,
-              );
-            }
-          },
-        );
-
-      return () => {
-        unsubscribeBlur();
-        unsubscribeFocus();
-      };
-    },
-
-    [
-      navigation,
-      loadAvailableSlots,
-    ],
-  );
-
-  useEffect(
-    () => {
-      return () => {
-        dateRequestSequence.current +=
-          1;
-
-        slotRequestSequence.current +=
-          1;
-      };
-    },
-
-    [],
-  );
-
-  function handleServiceSelect(
-    serviceId: number,
-  ): void {
+    setIsLoadingShop(true);
     setErrorMessage('');
 
-    setSelectedServiceId(
-      serviceId,
+    try {
+      const response = await getCustomerShop(
+        token,
+        shopId,
+      );
+
+      const loadedShop = response.data.shop;
+      setShop(loadedShop);
+
+      setSelectedServiceId((currentServiceId) => {
+        if (
+          currentServiceId !== null &&
+          loadedShop.services?.some(
+            (service) => service.id === currentServiceId,
+          )
+        ) {
+          return currentServiceId;
+        }
+
+        return null;
+      });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof ApiError
+          ? error.message
+          : 'Unable to load booking information.',
+      );
+    } finally {
+      setIsLoadingShop(false);
+    }
+  }, [token, shopId]);
+
+  /* LOAD AVAILABLE DATES FROM LARAVEL */
+
+  const loadAvailableDates = useCallback(
+    async (serviceId: number) => {
+      if (!token || !shop) return;
+
+      const requestId = ++dateRequestSequence.current;
+
+      setIsLoadingDates(true);
+      setErrorMessage('');
+
+      try {
+        const response =
+          await getCustomerAvailableDates(
+            token,
+            shop.id,
+            serviceId,
+            AVAILABILITY_PREVIEW_DAYS,
+          );
+
+        if (
+          requestId !== dateRequestSequence.current
+        ) {
+          return;
+        }
+
+        setAvailableDates(response.data.dates);
+      } catch (error) {
+        if (
+          requestId !== dateRequestSequence.current
+        ) {
+          return;
+        }
+
+        setAvailableDates([]);
+
+        setErrorMessage(
+          error instanceof ApiError
+            ? error.message
+            : 'Unable to load available booking dates.',
+        );
+      } finally {
+        if (
+          requestId === dateRequestSequence.current
+        ) {
+          setIsLoadingDates(false);
+        }
+      }
+    },
+    [token, shop],
+  );
+
+  /* LOAD AVAILABLE TIME SLOTS FROM LARAVEL */
+
+  const loadAvailableSlots = useCallback(
+    async (
+      serviceId: number,
+      date: string,
+      preserveSelectedTime = false,
+    ) => {
+      if (!token || !shop) return;
+
+      const requestId = ++slotRequestSequence.current;
+
+      setIsLoadingSlots(true);
+      setAvailableSlots([]);
+      setErrorMessage('');
+
+      if (!preserveSelectedTime) {
+        setSelectedStartsAt(null);
+      }
+
+      try {
+        const response =
+          await getCustomerAvailableSlots(
+            token,
+            shop.id,
+            serviceId,
+            date,
+          );
+
+        if (
+          requestId !== slotRequestSequence.current
+        ) {
+          return;
+        }
+
+        const slots = response.data.slots;
+        setAvailableSlots(slots);
+
+        if (preserveSelectedTime) {
+          setSelectedStartsAt((currentStartsAt) => {
+            if (!currentStartsAt) return null;
+
+            return slots.some(
+              (slot) =>
+                slot.starts_at === currentStartsAt,
+            )
+              ? currentStartsAt
+              : null;
+          });
+        }
+      } catch (error) {
+        if (
+          requestId !== slotRequestSequence.current
+        ) {
+          return;
+        }
+
+        setAvailableSlots([]);
+        setSelectedStartsAt(null);
+
+        setErrorMessage(
+          error instanceof ApiError
+            ? error.message
+            : 'Unable to load available appointment times.',
+        );
+      } finally {
+        if (
+          requestId === slotRequestSequence.current
+        ) {
+          setIsLoadingSlots(false);
+        }
+      }
+    },
+    [token, shop],
+  );
+
+  /* INITIAL SHOP LOAD */
+
+  useEffect(() => {
+    void loadShop();
+  }, [loadShop]);
+
+  /* RESET DATE AND TIME WHEN SERVICE CHANGES */
+
+  useEffect(() => {
+    dateRequestSequence.current += 1;
+    slotRequestSequence.current += 1;
+
+    setAvailableDates([]);
+    setSelectedDate(null);
+    setAvailableSlots([]);
+    setSelectedStartsAt(null);
+
+    if (selectedService) {
+      void loadAvailableDates(selectedService.id);
+    }
+  }, [selectedService, loadAvailableDates]);
+
+  /* RECHECK SLOTS AFTER RETURNING FROM REVIEW */
+
+  useEffect(() => {
+    const unsubscribeBlur = navigation.addListener(
+      'blur',
+      () => {
+        hasBlurredForReviewRef.current = true;
+      },
     );
+
+    const unsubscribeFocus = navigation.addListener(
+      'focus',
+      () => {
+        if (!hasBlurredForReviewRef.current) {
+          return;
+        }
+
+        hasBlurredForReviewRef.current = false;
+
+        const currentSelection =
+          latestSelectionRef.current;
+
+        if (
+          currentSelection.serviceId &&
+          currentSelection.date
+        ) {
+          void loadAvailableSlots(
+            currentSelection.serviceId,
+            currentSelection.date,
+            true,
+          );
+        }
+      },
+    );
+
+    return () => {
+      unsubscribeBlur();
+      unsubscribeFocus();
+    };
+  }, [navigation, loadAvailableSlots]);
+
+  /* INVALIDATE PENDING REQUESTS ON UNMOUNT */
+
+  useEffect(() => {
+    return () => {
+      dateRequestSequence.current += 1;
+      slotRequestSequence.current += 1;
+    };
+  }, []);
+
+  /* SERVICE SELECTION */
+
+  function handleServiceSelect(serviceId: number): void {
+    setErrorMessage('');
+    setSelectedServiceId(serviceId);
   }
+
+  /* DATE SELECTION */
 
   function handleDateSelect(
     date: CustomerAvailableDate,
   ): void {
-    if (
-      !selectedService
-      ||
-      !date.is_available
-    ) {
+    if (!selectedService || !date.is_available) {
       return;
     }
 
     setErrorMessage('');
-
-    setSelectedDate(
-      date.date,
-    );
-
+    setSelectedDate(date.date);
     setAvailableSlots([]);
-
-    setSelectedStartsAt(
-      null,
-    );
+    setSelectedStartsAt(null);
 
     void loadAvailableSlots(
       selectedService.id,
@@ -758,207 +482,140 @@ export default function CustomerBookingScreen() {
     );
   }
 
+  /* TIME SLOT SELECTION */
+
   function handleSlotSelect(
     slot: CustomerAvailableSlot,
   ): void {
     setErrorMessage('');
-
-    setSelectedStartsAt(
-      slot.starts_at,
-    );
+    setSelectedStartsAt(slot.starts_at);
   }
+
+  /* CONTINUE TO BOOKING REVIEW */
 
   function handleContinueToReview(): void {
     setErrorMessage('');
 
-    if (
-      !token
-      ||
-      !shop
-    ) {
+    if (!token || !shop) {
       setErrorMessage(
         'Booking information is unavailable.',
       );
-
       return;
     }
 
-    if (
-      !shop
-        .availability
-        .accepts_appointments
-    ) {
+    if (!shop.availability.accepts_appointments) {
       setErrorMessage(
         'This shop is not currently accepting appointment bookings.',
       );
-
       return;
     }
 
-    if (
-      !selectedService
-    ) {
+    if (!selectedService) {
       setErrorMessage(
         'Please select a service first.',
       );
-
       return;
     }
 
-    if (
-      !selectedDate
-    ) {
+    if (!selectedDate) {
       setErrorMessage(
         'Please select an available appointment date.',
       );
-
       return;
     }
 
-    if (
-      !selectedSlot
-    ) {
+    if (!selectedSlot) {
       setErrorMessage(
         'Please select an available appointment time.',
       );
-
       return;
     }
 
-    const cleanNotes =
-      notes.trim();
+    const cleanNotes = notes.trim();
 
-    if (
-      cleanNotes.length
-      >
-      MAX_NOTES_LENGTH
-    ) {
+    if (cleanNotes.length > MAX_NOTES_LENGTH) {
       setErrorMessage(
         `Booking notes may not exceed ${MAX_NOTES_LENGTH} characters.`,
       );
-
       return;
     }
 
     router.push({
-      pathname:
-        '/(customer)/book/review',
-
+      pathname: '/(customer)/book/review',
       params: {
-        shopId:
-          String(
-            shop.id,
-          ),
-
-        serviceId:
-          String(
-            selectedService.id,
-          ),
-
-        appointmentDate:
-          selectedDate,
-
-        startsAt:
-          selectedSlot.starts_at,
-
-        notes:
-          cleanNotes,
+        shopId: String(shop.id),
+        serviceId: String(selectedService.id),
+        appointmentDate: selectedDate,
+        startsAt: selectedSlot.starts_at,
+        notes: cleanNotes,
       },
     } as unknown as Href);
   }
 
   const continueDisabled =
-    isLoadingDates
-    ||
-    isLoadingSlots
-    ||
-    !shop
-      ?.availability
-      .accepts_appointments
-    ||
-    !selectedService
-    ||
-    !selectedDate
-    ||
+    isLoadingDates ||
+    isLoadingSlots ||
+    !shop?.availability.accepts_appointments ||
+    !selectedService ||
+    !selectedDate ||
     !selectedSlot;
 
-  if (
-    isLoadingShop
-  ) {
+  /* LOADING SCREEN */
+
+  if (isLoadingShop) {
     return (
       <SafeAreaView
+        edges={['top', 'bottom']}
         style={styles.safeArea}
       >
         <StatusBar
           barStyle="dark-content"
-          backgroundColor={
-            COLORS.background
-          }
+          backgroundColor={COLORS.background}
+          translucent={false}
         />
 
-        <View
-          style={
-            styles.loadingContainer
-          }
-        >
-          <View
-            style={
-              styles.loadingIcon
-            }
-          >
+        <View style={styles.loadingContainer}>
+          <View style={styles.loadingIcon}>
             <ActivityIndicator
               size="small"
               color={COLORS.navy}
             />
           </View>
 
-          <Text
-            style={
-              styles.loadingTitle
-            }
-          >
+          <Text style={styles.loadingTitle}>
             Preparing booking
           </Text>
 
-          <Text
-            style={
-              styles.loadingText
-            }
-          >
-            Loading the shop, active services, and current booking availability.
+          <Text style={styles.loadingText}>
+            Loading the shop, active services, and current
+            booking availability.
           </Text>
         </View>
       </SafeAreaView>
     );
   }
 
+  /* UNAVAILABLE SHOP SCREEN */
+
   if (!shop) {
     return (
       <SafeAreaView
+        edges={['top', 'bottom']}
         style={styles.safeArea}
       >
         <StatusBar
           barStyle="dark-content"
-          backgroundColor={
-            COLORS.background
-          }
+          backgroundColor={COLORS.background}
+          translucent={false}
         />
 
-        <View
-          style={
-            styles.unavailableContainer
-          }
-        >
+        <View style={styles.unavailableContainer}>
           <TouchableOpacity
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel="Go back"
-            onPress={() =>
-              router.back()
-            }
-            style={
-              styles.topIconButton
-            }
+            onPress={() => router.back()}
+            style={styles.topIconButton}
           >
             <Ionicons
               name="arrow-back"
@@ -967,16 +624,8 @@ export default function CustomerBookingScreen() {
             />
           </TouchableOpacity>
 
-          <View
-            style={
-              styles.unavailableContent
-            }
-          >
-            <View
-              style={
-                styles.unavailableIcon
-              }
-            >
+          <View style={styles.unavailableContent}>
+            <View style={styles.unavailableIcon}>
               <Ionicons
                 name="calendar-outline"
                 size={30}
@@ -984,21 +633,12 @@ export default function CustomerBookingScreen() {
               />
             </View>
 
-            <Text
-              style={
-                styles.unavailableTitle
-              }
-            >
+            <Text style={styles.unavailableTitle}>
               Booking unavailable
             </Text>
 
-            <Text
-              style={
-                styles.unavailableText
-              }
-            >
-              {errorMessage
-                ||
+            <Text style={styles.unavailableText}>
+              {errorMessage ||
                 'Unable to prepare this shop for booking.'}
             </Text>
           </View>
@@ -1007,84 +647,61 @@ export default function CustomerBookingScreen() {
     );
   }
 
+  /* MAIN BOOKING SCREEN */
+
   return (
     <SafeAreaView
+      edges={['top', 'bottom']}
       style={styles.safeArea}
     >
       <StatusBar
         barStyle="dark-content"
-        backgroundColor={
-          COLORS.background
-        }
+        backgroundColor={COLORS.background}
+        translucent={false}
       />
 
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={
-          Platform.OS ===
-          'ios'
-            ? 'padding'
-            : undefined
+          Platform.OS === 'ios' ? 'padding' : undefined
         }
       >
         <ScrollView
           keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={
-            false
-          }
-          contentContainerStyle={
-            styles.container
-          }
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.container}
         >
+          {/* TOP NAVIGATION */}
+
           <View style={styles.topBar}>
             <TouchableOpacity
               activeOpacity={0.7}
               accessibilityRole="button"
               accessibilityLabel="Go back"
-              onPress={() =>
-                router.back()
-              }
-              style={
-                styles.topIconButton
-              }
+              onPress={() => router.back()}
+              style={styles.topIconButton}
             >
               <Ionicons
                 name="arrow-back"
                 size={22}
-                color={
-                  COLORS.navy
-                }
+                color={COLORS.navy}
               />
             </TouchableOpacity>
 
-            <View
-              style={
-                styles.topBarTitleBlock
-              }
-            >
-              <Text
-                style={
-                  styles.topBarTitle
-                }
-              >
+            <View style={styles.topBarTitleBlock}>
+              <Text style={styles.topBarTitle}>
                 Book appointment
               </Text>
 
-              <Text
-                style={
-                  styles.topBarCaption
-                }
-              >
+              <Text style={styles.topBarCaption}>
                 {shop.name}
               </Text>
             </View>
 
-            <View
-              style={
-                styles.topIconButton
-              }
-            />
+            <View style={styles.topIconButton} />
           </View>
+
+          {/* PAGE HEADER */}
 
           <View style={styles.header}>
             <Text style={styles.eyebrow}>
@@ -1095,12 +712,10 @@ export default function CustomerBookingScreen() {
               Build your appointment one step at a time
             </Text>
 
-            <Text
-              style={
-                styles.subtitle
-              }
-            >
-              Choose a service, then a date and time returned by Laravel. Nothing is booked until you review and confirm on the next screen.
+            <Text style={styles.subtitle}>
+              Choose a service, then a date and time returned
+              by Laravel. Nothing is booked until you review
+              and confirm on the next screen.
             </Text>
           </View>
 
@@ -1111,41 +726,28 @@ export default function CustomerBookingScreen() {
             />
           ) : null}
 
+          {/* SHOP HERO */}
+
           <View style={styles.shopHero}>
-            <View
-              style={
-                styles.shopHeroTopRow
-              }
-            >
-              <View
-                style={
-                  styles.shopHeroIcon
-                }
-              >
+            <View style={styles.shopHeroTopRow}>
+              <View style={styles.shopHeroIcon}>
                 <Ionicons
                   name={
-                    shop.type
-                    ===
-                    'barber_shop'
+                    shop.type === 'barber_shop'
                       ? 'cut-outline'
                       : 'sparkles-outline'
                   }
                   size={24}
-                  color={
-                    COLORS.white
-                  }
+                  color={COLORS.white}
                 />
               </View>
 
               <View
                 style={[
                   styles.availabilityBadge,
-
                   {
                     backgroundColor:
-                      shop
-                        .availability
-                        .accepts_appointments
+                      shop.availability.accepts_appointments
                         ? COLORS.greenSoft
                         : COLORS.orangeSoft,
                   },
@@ -1153,17 +755,13 @@ export default function CustomerBookingScreen() {
               >
                 <Ionicons
                   name={
-                    shop
-                      .availability
-                      .accepts_appointments
+                    shop.availability.accepts_appointments
                       ? 'checkmark-circle-outline'
                       : 'time-outline'
                   }
                   size={14}
                   color={
-                    shop
-                      .availability
-                      .accepts_appointments
+                    shop.availability.accepts_appointments
                       ? COLORS.green
                       : COLORS.orange
                   }
@@ -1172,39 +770,24 @@ export default function CustomerBookingScreen() {
                 <Text
                   style={[
                     styles.availabilityBadgeText,
-
                     {
                       color:
-                        shop
-                          .availability
-                          .accepts_appointments
+                        shop.availability.accepts_appointments
                           ? COLORS.green
                           : COLORS.orange,
                     },
                   ]}
                 >
-                  {
-                    shop
-                      .availability
-                      .status_label
-                  }
+                  {shop.availability.status_label}
                 </Text>
               </View>
             </View>
 
-            <Text
-              style={
-                styles.shopHeroName
-              }
-            >
+            <Text style={styles.shopHeroName}>
               {shop.name}
             </Text>
 
-            <Text
-              style={
-                styles.shopHeroAddress
-              }
-            >
+            <Text style={styles.shopHeroAddress}>
               {[
                 shop.address,
                 shop.city,
@@ -1214,100 +797,60 @@ export default function CustomerBookingScreen() {
                 .join(', ')}
             </Text>
 
-            <View
-              style={
-                styles.progressRow
-              }
-            >
+            {/* BOOKING PROGRESS */}
+
+            <View style={styles.progressRow}>
               <ProgressItem
                 number="1"
                 label="Service"
-                complete={
-                  Boolean(
-                    selectedService,
-                  )
-                }
+                complete={Boolean(selectedService)}
               />
 
-              <View
-                style={
-                  styles.progressLine
-                }
-              />
+              <View style={styles.progressLine} />
 
               <ProgressItem
                 number="2"
                 label="Date"
-                complete={
-                  Boolean(
-                    selectedDate,
-                  )
-                }
+                complete={Boolean(selectedDate)}
               />
 
-              <View
-                style={
-                  styles.progressLine
-                }
-              />
+              <View style={styles.progressLine} />
 
               <ProgressItem
                 number="3"
                 label="Time"
-                complete={
-                  Boolean(
-                    selectedSlot,
-                  )
-                }
+                complete={Boolean(selectedSlot)}
               />
             </View>
           </View>
 
-          {!shop
-            .availability
-            .accepts_appointments ? (
-            <View
-              style={
-                styles.warningCard
-              }
-            >
-              <View
-                style={
-                  styles.warningIcon
-                }
-              >
+          {/* BOOKING AVAILABILITY WARNING */}
+
+          {!shop.availability.accepts_appointments ? (
+            <View style={styles.warningCard}>
+              <View style={styles.warningIcon}>
                 <Ionicons
                   name="information-circle-outline"
                   size={20}
-                  color={
-                    COLORS.warning
-                  }
+                  color={COLORS.warning}
                 />
               </View>
 
-              <View
-                style={
-                  styles.warningCopy
-                }
-              >
-                <Text
-                  style={
-                    styles.warningTitle
-                  }
-                >
+              <View style={styles.warningCopy}>
+                <Text style={styles.warningTitle}>
                   Booking is currently unavailable
                 </Text>
 
-                <Text
-                  style={
-                    styles.warningText
-                  }
-                >
-                  This shop is not accepting appointment bookings right now. The backend will also block any invalid booking attempt.
+                <Text style={styles.warningText}>
+                  This shop is not accepting appointment
+                  bookings right now. The backend will also
+                  block any invalid booking attempt.
                 </Text>
               </View>
             </View>
           ) : null}
+
+          {/* STEP 1: SELECT SERVICE */}
 
           <SectionHeading
             step="1"
@@ -1315,139 +858,88 @@ export default function CustomerBookingScreen() {
             subtitle="Choose one active service from this shop."
           />
 
-          {shop.services
-          &&
-          shop.services.length >
-            0 ? (
-            <View
-              style={
-                styles.serviceList
-              }
-            >
-              {shop.services.map(
-                (
-                  service,
-                ) => {
-                  const selected =
-                    selectedServiceId
-                    ===
-                    service.id;
+          {shop.services && shop.services.length > 0 ? (
+            <View style={styles.serviceList}>
+              {shop.services.map((service) => {
+                const selected =
+                  selectedServiceId === service.id;
 
-                  return (
-                    <TouchableOpacity
-                      key={
-                        service.id
-                      }
-                      activeOpacity={
-                        0.82
-                      }
-                      accessibilityRole="button"
-                      accessibilityState={{
-                        selected,
-                      }}
-                      onPress={() =>
-                        handleServiceSelect(
-                          service.id,
-                        )
-                      }
+                return (
+                  <TouchableOpacity
+                    key={service.id}
+                    activeOpacity={0.82}
+                    accessibilityRole="button"
+                    accessibilityState={{ selected }}
+                    onPress={() =>
+                      handleServiceSelect(service.id)
+                    }
+                    style={[
+                      styles.serviceOption,
+                      selected &&
+                        styles.serviceOptionSelected,
+                    ]}
+                  >
+                    <View
                       style={[
-                        styles.serviceOption,
-
-                        selected
-                        &&
-                          styles.serviceOptionSelected,
+                        styles.serviceIcon,
+                        selected &&
+                          styles.serviceIconSelected,
                       ]}
                     >
-                      <View
-                        style={[
-                          styles.serviceIcon,
-
+                      <Ionicons
+                        name="cut-outline"
+                        size={19}
+                        color={
                           selected
-                          &&
-                            styles.serviceIconSelected,
-                        ]}
-                      >
-                        <Ionicons
-                          name="cut-outline"
-                          size={19}
-                          color={
-                            selected
-                              ? COLORS.white
-                              : COLORS.navy
-                          }
-                        />
-                      </View>
-
-                      <View
-                        style={
-                          styles.serviceContent
+                            ? COLORS.white
+                            : COLORS.navy
                         }
+                      />
+                    </View>
+
+                    <View style={styles.serviceContent}>
+                      <Text
+                        numberOfLines={2}
+                        style={styles.serviceName}
                       >
-                        <Text
-                          numberOfLines={2}
-                          style={
-                            styles.serviceName
-                          }
-                        >
-                          {service.name}
-                        </Text>
+                        {service.name}
+                      </Text>
 
-                        <View
-                          style={
-                            styles.serviceMetaRow
-                          }
-                        >
-                          <Ionicons
-                            name="time-outline"
-                            size={13}
-                            color={
-                              COLORS.textMuted
-                            }
-                          />
-
-                          <Text
-                            style={
-                              styles.serviceMeta
-                            }
-                          >
-                            {service.duration_minutes} minutes
-                          </Text>
-                        </View>
-                      </View>
-
-                      <View
-                        style={
-                          styles.serviceRight
-                        }
-                      >
-                        <Text
-                          style={
-                            styles.servicePrice
-                          }
-                        >
-                          {formatPrice(
-                            service.price,
-                          )}
-                        </Text>
-
+                      <View style={styles.serviceMetaRow}>
                         <Ionicons
-                          name={
-                            selected
-                              ? 'checkmark-circle'
-                              : 'ellipse-outline'
-                          }
-                          size={20}
-                          color={
-                            selected
-                              ? COLORS.green
-                              : COLORS.textLight
-                          }
+                          name="time-outline"
+                          size={13}
+                          color={COLORS.textMuted}
                         />
+
+                        <Text style={styles.serviceMeta}>
+                          {service.duration_minutes} minutes
+                        </Text>
                       </View>
-                    </TouchableOpacity>
-                  );
-                },
-              )}
+                    </View>
+
+                    <View style={styles.serviceRight}>
+                      <Text style={styles.servicePrice}>
+                        {formatPrice(service.price)}
+                      </Text>
+
+                      <Ionicons
+                        name={
+                          selected
+                            ? 'checkmark-circle'
+                            : 'ellipse-outline'
+                        }
+                        size={20}
+                        color={
+                          selected
+                            ? COLORS.green
+                            : COLORS.textLight
+                        }
+                      />
+                    </View>
+                  </TouchableOpacity>
+                );
+              })}
             </View>
           ) : (
             <EmptyCard
@@ -1455,6 +947,8 @@ export default function CustomerBookingScreen() {
               message="This shop does not currently have an active service available for booking."
             />
           )}
+
+          {/* STEP 2: SELECT DATE */}
 
           <SectionHeading
             step="2"
@@ -1469,25 +963,17 @@ export default function CustomerBookingScreen() {
             />
           ) : (
             <CustomerBookingDatePicker
-              dates={
-                availableDates
-              }
-              selectedDate={
-                selectedDate
-              }
-              isLoading={
-                isLoadingDates
-              }
+              dates={availableDates}
+              selectedDate={selectedDate}
+              isLoading={isLoadingDates}
               disabled={
-                !shop
-                  .availability
-                  .accepts_appointments
+                !shop.availability.accepts_appointments
               }
-              onSelect={
-                handleDateSelect
-              }
+              onSelect={handleDateSelect}
             />
           )}
+
+          {/* STEP 3: SELECT TIME */}
 
           <SectionHeading
             step="3"
@@ -1496,42 +982,26 @@ export default function CustomerBookingScreen() {
           />
 
           {selectedDateDetails ? (
-            <View
-              style={
-                styles.scheduleHintCard
-              }
-            >
+            <View style={styles.scheduleHintCard}>
               <Ionicons
                 name="calendar-outline"
                 size={18}
                 color={COLORS.blue}
               />
 
-              <View
-                style={
-                  styles.scheduleHintCopy
-                }
-              >
-                <Text
-                  style={
-                    styles.scheduleHintTitle
-                  }
-                >
-                  {
-                    selectedDateDetails
-                      .day_label
-                  }
+              <View style={styles.scheduleHintCopy}>
+                <Text style={styles.scheduleHintTitle}>
+                  {selectedDateDetails.day_label}
                 </Text>
 
-                <Text
-                  style={
-                    styles.scheduleHintText
-                  }
-                >
-                  {selectedDateDetails.opens_at
-                  &&
+                <Text style={styles.scheduleHintText}>
+                  {selectedDateDetails.opens_at &&
                   selectedDateDetails.closes_at
-                    ? `Shop hours ${formatTime(selectedDateDetails.opens_at)} – ${formatTime(selectedDateDetails.closes_at)}`
+                    ? `Shop hours ${formatTime(
+                        selectedDateDetails.opens_at,
+                      )} – ${formatTime(
+                        selectedDateDetails.closes_at,
+                      )}`
                     : 'Shop hours are unavailable for this date.'}
                 </Text>
               </View>
@@ -1539,50 +1009,30 @@ export default function CustomerBookingScreen() {
           ) : null}
 
           <CustomerTimeSlotPicker
-            slots={
-              availableSlots
-            }
-            selectedStartsAt={
-              selectedStartsAt
-            }
-            isLoading={
-              isLoadingSlots
-            }
+            slots={availableSlots}
+            selectedStartsAt={selectedStartsAt}
+            isLoading={isLoadingSlots}
             disabled={
-              !shop
-                .availability
-                .accepts_appointments
+              !shop.availability.accepts_appointments
             }
             emptyMessage={
               selectedDate
                 ? 'No appointment times remain for this date. Please choose another available date.'
                 : 'Select an available date to see appointment times.'
             }
-            onSelect={
-              handleSlotSelect
-            }
+            onSelect={handleSlotSelect}
           />
+
+          {/* OPTIONAL BOOKING NOTE */}
 
           <SectionHeading
             title="Booking note"
             subtitle="Optional information you want the shop to see with this appointment request."
           />
 
-          <View
-            style={
-              styles.notesCard
-            }
-          >
-            <View
-              style={
-                styles.notesHeader
-              }
-            >
-              <View
-                style={
-                  styles.notesIcon
-                }
-              >
+          <View style={styles.notesCard}>
+            <View style={styles.notesHeader}>
+              <View style={styles.notesIcon}>
                 <Ionicons
                   name="document-text-outline"
                   size={18}
@@ -1590,24 +1040,12 @@ export default function CustomerBookingScreen() {
                 />
               </View>
 
-              <View
-                style={
-                  styles.notesHeaderCopy
-                }
-              >
-                <Text
-                  style={
-                    styles.notesTitle
-                  }
-                >
+              <View style={styles.notesHeaderCopy}>
+                <Text style={styles.notesTitle}>
                   Notes
                 </Text>
 
-                <Text
-                  style={
-                    styles.notesHelper
-                  }
-                >
+                <Text style={styles.notesHelper}>
                   Optional · Maximum {MAX_NOTES_LENGTH} characters
                 </Text>
               </View>
@@ -1615,56 +1053,37 @@ export default function CustomerBookingScreen() {
 
             <TextInput
               value={notes}
-              onChangeText={(
-                value,
-              ) => {
+              onChangeText={(value) => {
                 setNotes(value);
                 setErrorMessage('');
               }}
               placeholder="Add an optional booking note"
-              placeholderTextColor={
-                COLORS.textLight
-              }
+              placeholderTextColor={COLORS.textLight}
               multiline
-              maxLength={
-                MAX_NOTES_LENGTH
-              }
+              maxLength={MAX_NOTES_LENGTH}
               textAlignVertical="top"
-              selectionColor={
-                COLORS.navy
-              }
-              style={
-                styles.notesInput
-              }
+              selectionColor={COLORS.navy}
+              style={styles.notesInput}
             />
 
-            <Text
-              style={
-                styles.characterCount
-              }
-            >
+            <Text style={styles.characterCount}>
               {notes.length}/{MAX_NOTES_LENGTH}
             </Text>
           </View>
+
+          {/* CURRENT SELECTION */}
 
           <SectionHeading
             title="Current selection"
             subtitle="You will confirm these details on the next screen."
           />
 
-          <View
-            style={
-              styles.selectionCard
-            }
-          >
+          <View style={styles.selectionCard}>
             <SelectionRow
               icon="cut-outline"
               label="Service"
               value={
-                selectedService
-                  ?.name
-                ??
-                'Not selected'
+                selectedService?.name ?? 'Not selected'
               }
             />
 
@@ -1674,9 +1093,7 @@ export default function CustomerBookingScreen() {
               icon="calendar-outline"
               label="Date"
               value={
-                selectedDateDetails
-                  ?.day_label
-                ??
+                selectedDateDetails?.day_label ??
                 'Not selected'
               }
             />
@@ -1687,58 +1104,44 @@ export default function CustomerBookingScreen() {
               icon="time-outline"
               label="Time"
               value={
-                selectedSlot
-                  ?.label
-                ??
-                'Not selected'
+                selectedSlot?.label ?? 'Not selected'
               }
             />
           </View>
 
-          <View
-            style={
-              styles.reviewNotice
-            }
-          >
+          {/* REVIEW NOTICE */}
+
+          <View style={styles.reviewNotice}>
             <Ionicons
               name="shield-checkmark-outline"
               size={18}
               color={COLORS.green}
             />
 
-            <Text
-              style={
-                styles.reviewNoticeText
-              }
-            >
-              No appointment has been created yet. The next screen rechecks the exact slot before the final booking request is submitted.
+            <Text style={styles.reviewNoticeText}>
+              No appointment has been created yet. The
+              next screen rechecks the exact slot before
+              the final booking request is submitted.
             </Text>
           </View>
 
+          {/* CONTINUE BUTTON */}
+
           <TouchableOpacity
-            disabled={
-              continueDisabled
-            }
+            disabled={continueDisabled}
             activeOpacity={0.84}
             accessibilityRole="button"
             accessibilityLabel="Continue to review booking"
-            onPress={
-              handleContinueToReview
-            }
+            onPress={handleContinueToReview}
             style={[
               styles.continueButton,
-
-              continueDisabled
-              &&
-                styles.continueDisabled,
+              continueDisabled && styles.continueDisabled,
             ]}
           >
             <Text
               style={[
                 styles.continueText,
-
-                continueDisabled
-                &&
+                continueDisabled &&
                   styles.continueTextDisabled,
               ]}
             >
@@ -1761,6 +1164,8 @@ export default function CustomerBookingScreen() {
   );
 }
 
+/* SECTION HEADING */
+
 function SectionHeading({
   step,
   title,
@@ -1771,51 +1176,29 @@ function SectionHeading({
   subtitle: string;
 }) {
   return (
-    <View
-      style={
-        styles.sectionHeading
-      }
-    >
-      <View
-        style={
-          styles.sectionTitleRow
-        }
-      >
+    <View style={styles.sectionHeading}>
+      <View style={styles.sectionTitleRow}>
         {step ? (
-          <View
-            style={
-              styles.sectionStepBadge
-            }
-          >
-            <Text
-              style={
-                styles.sectionStepText
-              }
-            >
+          <View style={styles.sectionStepBadge}>
+            <Text style={styles.sectionStepText}>
               {step}
             </Text>
           </View>
         ) : null}
 
-        <Text
-          style={
-            styles.sectionTitle
-          }
-        >
+        <Text style={styles.sectionTitle}>
           {title}
         </Text>
       </View>
 
-      <Text
-        style={
-          styles.sectionSubtitle
-        }
-      >
+      <Text style={styles.sectionSubtitle}>
         {subtitle}
       </Text>
     </View>
   );
 }
+
+/* PROGRESS ITEM */
 
 function ProgressItem({
   number,
@@ -1827,18 +1210,11 @@ function ProgressItem({
   complete: boolean;
 }) {
   return (
-    <View
-      style={
-        styles.progressItem
-      }
-    >
+    <View style={styles.progressItem}>
       <View
         style={[
           styles.progressCircle,
-
-          complete
-          &&
-            styles.progressCircleComplete,
+          complete && styles.progressCircleComplete,
         ]}
       >
         {complete ? (
@@ -1848,51 +1224,33 @@ function ProgressItem({
             color={COLORS.white}
           />
         ) : (
-          <Text
-            style={
-              styles.progressNumber
-            }
-          >
+          <Text style={styles.progressNumber}>
             {number}
           </Text>
         )}
       </View>
 
-      <Text
-        style={
-          styles.progressLabel
-        }
-      >
+      <Text style={styles.progressLabel}>
         {label}
       </Text>
     </View>
   );
 }
 
+/* SELECTION ROW */
+
 function SelectionRow({
   icon,
   label,
   value,
 }: {
-  icon:
-    ComponentProps<
-      typeof Ionicons
-    >['name'];
-
+  icon: IconName;
   label: string;
   value: string;
 }) {
   return (
-    <View
-      style={
-        styles.selectionRow
-      }
-    >
-      <View
-        style={
-          styles.selectionIcon
-        }
-      >
+    <View style={styles.selectionRow}>
+      <View style={styles.selectionIcon}>
         <Ionicons
           name={icon}
           size={17}
@@ -1900,24 +1258,14 @@ function SelectionRow({
         />
       </View>
 
-      <View
-        style={
-          styles.selectionCopy
-        }
-      >
-        <Text
-          style={
-            styles.selectionLabel
-          }
-        >
+      <View style={styles.selectionCopy}>
+        <Text style={styles.selectionLabel}>
           {label}
         </Text>
 
         <Text
           numberOfLines={2}
-          style={
-            styles.selectionValue
-          }
+          style={styles.selectionValue}
         >
           {value}
         </Text>
@@ -1927,14 +1275,10 @@ function SelectionRow({
 }
 
 function SelectionDivider() {
-  return (
-    <View
-      style={
-        styles.selectionDivider
-      }
-    />
-  );
+  return <View style={styles.selectionDivider} />;
 }
+
+/* EMPTY CARD */
 
 function EmptyCard({
   title,
@@ -1944,31 +1288,23 @@ function EmptyCard({
   message: string;
 }) {
   return (
-    <View
-      style={styles.emptyCard}
-    >
-      <View
-        style={styles.emptyDot}
-      />
+    <View style={styles.emptyCard}>
+      <View style={styles.emptyDot} />
 
-      <View
-        style={styles.emptyCopy}
-      >
-        <Text
-          style={styles.emptyTitle}
-        >
+      <View style={styles.emptyCopy}>
+        <Text style={styles.emptyTitle}>
           {title}
         </Text>
 
-        <Text
-          style={styles.emptyText}
-        >
+        <Text style={styles.emptyText}>
           {message}
         </Text>
       </View>
     </View>
   );
 }
+
+/* ERROR MESSAGE */
 
 function MessageBox({
   title,
@@ -2000,6 +1336,8 @@ function MessageBox({
   );
 }
 
+/* STYLES */
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -2015,7 +1353,7 @@ const styles = StyleSheet.create({
     maxWidth: LAYOUT.contentMaxWidth,
     alignSelf: 'center',
     paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingTop: 40,
     paddingBottom: 48,
   },
 
@@ -2622,7 +1960,7 @@ const styles = StyleSheet.create({
   unavailableContainer: {
     flex: 1,
     paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingTop: 40,
   },
 
   unavailableContent: {

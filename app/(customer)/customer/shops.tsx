@@ -1,16 +1,11 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
-import type { ComponentProps } from 'react';
-import {
-  useCallback,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import type { ComponentProps, ReactNode } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -19,6 +14,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import ShopOwnerAvatar from '@/src/components/ShopOwnerAvatar';
 import { COLORS } from '@/src/constants/colors';
@@ -79,27 +75,14 @@ const AVAILABILITY_OPTIONS: {
   value: AvailabilityFilter;
   label: string;
 }[] = [
-  {
-    value: 'any',
-    label: 'Any',
-  },
-  {
-    value: 'open',
-    label: 'Open',
-  },
-  {
-    value: 'accepting_walk_ins',
-    label: 'Walk-ins',
-  },
-  {
-    value: 'fully_booked',
-    label: 'Fully Booked',
-  },
-  {
-    value: 'closed',
-    label: 'Closed',
-  },
+  { value: 'any', label: 'Any' },
+  { value: 'open', label: 'Open' },
+  { value: 'accepting_walk_ins', label: 'Walk-ins' },
+  { value: 'fully_booked', label: 'Fully Booked' },
+  { value: 'closed', label: 'Closed' },
 ];
+
+/* DEFAULT FILTERS */
 
 function createDefaultFilters(): DiscoveryFilters {
   return {
@@ -110,6 +93,8 @@ function createDefaultFilters(): DiscoveryFilters {
     province: '',
   };
 }
+
+/* AVAILABILITY DISPLAY */
 
 function getAvailabilityPresentation(
   status: ShopAvailabilityStatus,
@@ -150,33 +135,21 @@ function getAvailabilityPresentation(
   }
 }
 
-function filterCount(
-  filters: DiscoveryFilters,
-): number {
+/* FILTER COUNT */
+
+function filterCount(filters: DiscoveryFilters): number {
   let count = 0;
 
-  if (filters.search.trim()) {
-    count += 1;
-  }
-
-  if (filters.shopType !== 'all') {
-    count += 1;
-  }
-
-  if (filters.availability !== 'any') {
-    count += 1;
-  }
-
-  if (filters.city.trim()) {
-    count += 1;
-  }
-
-  if (filters.province.trim()) {
-    count += 1;
-  }
+  if (filters.search.trim()) count += 1;
+  if (filters.shopType !== 'all') count += 1;
+  if (filters.availability !== 'any') count += 1;
+  if (filters.city.trim()) count += 1;
+  if (filters.province.trim()) count += 1;
 
   return count;
 }
+
+/* MAIN DISCOVER SCREEN */
 
 export default function CustomerShopsScreen() {
   const { token } = useAuth();
@@ -193,13 +166,13 @@ export default function CustomerShopsScreen() {
 
   const [page, setPage] = useState(1);
   const [showFilters, setShowFilters] = useState(false);
-
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
-
   const [errorMessage, setErrorMessage] = useState('');
 
   const hasLoadedOnce = useRef(false);
+
+  /* FETCH SHOP RESULTS */
 
   const loadShops = useCallback(
     async (
@@ -221,46 +194,32 @@ export default function CustomerShopsScreen() {
       setErrorMessage('');
 
       try {
-        const response = await getCustomerShops(
-          token,
-          {
-            search:
-              appliedFilters.search.trim()
-              || undefined,
+        const response = await getCustomerShops(token, {
+          search:
+            appliedFilters.search.trim() || undefined,
 
-            type:
-              appliedFilters.shopType === 'all'
-                ? undefined
-                : appliedFilters.shopType,
+          type:
+            appliedFilters.shopType === 'all'
+              ? undefined
+              : appliedFilters.shopType,
 
-            city:
-              appliedFilters.city.trim()
-              || undefined,
+          city:
+            appliedFilters.city.trim() || undefined,
 
-            province:
-              appliedFilters.province.trim()
-              || undefined,
+          province:
+            appliedFilters.province.trim() || undefined,
 
-            availabilityStatus:
-              appliedFilters.availability === 'any'
-                ? undefined
-                : appliedFilters.availability,
+          availabilityStatus:
+            appliedFilters.availability === 'any'
+              ? undefined
+              : appliedFilters.availability,
 
-            page,
+          page,
+          perPage: PER_PAGE,
+        });
 
-            perPage:
-              PER_PAGE,
-          },
-        );
-
-        setShops(
-          response.data.shops,
-        );
-
-        setPagination(
-          response.data.pagination,
-        );
-
+        setShops(response.data.shops);
+        setPagination(response.data.pagination);
         hasLoadedOnce.current = true;
       } catch (error) {
         setErrorMessage(
@@ -273,174 +232,120 @@ export default function CustomerShopsScreen() {
         setIsRefreshing(false);
       }
     },
-    [
-      appliedFilters,
-      page,
-      token,
-    ],
+    [appliedFilters, page, token],
   );
 
   useFocusEffect(
     useCallback(() => {
-      void loadShops(
-        false,
-        hasLoadedOnce.current,
-      );
-
+      void loadShops(false, hasLoadedOnce.current);
       return undefined;
     }, [loadShops]),
   );
 
+  /* RESULT COUNTS */
+
   const activeFilterCount = useMemo(
-    () =>
-      filterCount(
-        appliedFilters,
-      ),
-    [
-      appliedFilters,
-    ],
+    () => filterCount(appliedFilters),
+    [appliedFilters],
   );
 
-  const resultRange = useMemo(
-    () => {
-      if (
-        !pagination
-        || pagination.total === 0
-      ) {
-        return null;
-      }
+  const resultRange = useMemo(() => {
+    if (!pagination || pagination.total === 0) {
+      return null;
+    }
 
-      const first =
-        (
-          pagination.current_page - 1
-        )
-        * pagination.per_page
-        + 1;
+    const first =
+      (pagination.current_page - 1) *
+        pagination.per_page +
+      1;
 
-      const last =
-        Math.min(
-          pagination.current_page
-          * pagination.per_page,
+    const last = Math.min(
+      pagination.current_page * pagination.per_page,
+      pagination.total,
+    );
 
-          pagination.total,
-        );
+    return { first, last };
+  }, [pagination]);
 
-      return {
-        first,
-        last,
-      };
-    },
-    [
-      pagination,
-    ],
-  );
+  /* UPDATE DRAFT FILTERS */
 
-  function updateDraftFilter<
-    K extends keyof DiscoveryFilters
-  >(
+  function updateDraftFilter<K extends keyof DiscoveryFilters>(
     key: K,
     value: DiscoveryFilters[K],
   ): void {
-    setDraftFilters(
-      (current) => ({
-        ...current,
-        [key]: value,
-      }),
-    );
+    setDraftFilters((current) => ({
+      ...current,
+      [key]: value,
+    }));
   }
+
+  /* APPLY FILTERS */
 
   function applyFilters(): void {
     setErrorMessage('');
-
     setPage(1);
-
     setIsLoading(true);
 
     setAppliedFilters({
-      search:
-        draftFilters.search.trim(),
-
-      shopType:
-        draftFilters.shopType,
-
-      availability:
-        draftFilters.availability,
-
-      city:
-        draftFilters.city.trim(),
-
-      province:
-        draftFilters.province.trim(),
+      search: draftFilters.search.trim(),
+      shopType: draftFilters.shopType,
+      availability: draftFilters.availability,
+      city: draftFilters.city.trim(),
+      province: draftFilters.province.trim(),
     });
   }
 
+  /* CLEAR FILTERS */
+
   function clearFilters(): void {
-    const defaults =
-      createDefaultFilters();
+    const defaults = createDefaultFilters();
 
-    setDraftFilters(
-      defaults,
-    );
-
-    setAppliedFilters({
-      ...defaults,
-    });
-
+    setDraftFilters(defaults);
+    setAppliedFilters({ ...defaults });
     setPage(1);
-
     setIsLoading(true);
-
     setShowFilters(false);
-
     setErrorMessage('');
   }
 
-  function changePage(
-    nextPage: number,
-  ): void {
+  /* CHANGE PAGE */
+
+  function changePage(nextPage: number): void {
     if (
-      isLoading
-      || isRefreshing
-      || !pagination
-      || nextPage < 1
-      || nextPage > pagination.last_page
-      || nextPage === pagination.current_page
+      isLoading ||
+      isRefreshing ||
+      !pagination ||
+      nextPage < 1 ||
+      nextPage > pagination.last_page ||
+      nextPage === pagination.current_page
     ) {
       return;
     }
 
     setIsLoading(true);
-
-    setPage(
-      nextPage,
-    );
+    setPage(nextPage);
   }
 
-  function openShop(
-    shopId: number,
-  ): void {
-    router.push({
-      pathname:
-        '/(customer)/shop/[shopId]',
+  /* OPEN SHOP DETAILS */
 
-      params: {
-        shopId:
-          String(
-            shopId,
-          ),
-      },
+  function openShop(shopId: number): void {
+    router.push({
+      pathname: '/(customer)/shop/[shopId]',
+      params: { shopId: String(shopId) },
     });
   }
 
+  /* RENDER */
+
   return (
     <SafeAreaView
+      edges={['top', 'bottom']}
       style={styles.safeArea}
     >
       <StatusBar
         barStyle="dark-content"
-        backgroundColor={
-          COLORS.background
-        }
+        backgroundColor={COLORS.background}
+        translucent={false}
       />
 
       <ScrollView
@@ -448,48 +353,24 @@ export default function CustomerShopsScreen() {
         keyboardShouldPersistTaps="handled"
         refreshControl={
           <RefreshControl
-            refreshing={
-              isRefreshing
-            }
-            onRefresh={
-              () =>
-                void loadShops(
-                  true,
-                )
-            }
-            tintColor={
-              COLORS.navy
-            }
-            colors={[
-              COLORS.navy,
-            ]}
+            refreshing={isRefreshing}
+            onRefresh={() => void loadShops(true)}
+            tintColor={COLORS.navy}
+            colors={[COLORS.navy]}
           />
         }
-        contentContainerStyle={
-          styles.container
-        }
+        contentContainerStyle={styles.container}
       >
+        {/* TOP BAR */}
 
-        {/* ================================================================
-            TOP BAR
-            ================================================================ */}
-
-        <View
-          style={styles.topBar}
-        >
-          <View
-            style={styles.topBarTitleBlock}
-          >
-            <Text
-              style={styles.topBarTitle}
-            >
+        <View style={styles.topBar}>
+          <View style={styles.topBarTitleBlock}>
+            <Text style={styles.topBarTitle}>
               Discover
             </Text>
 
-            <Text
-              style={styles.topBarCaption}
-            >
-              Shops, ratings & availability
+            <Text style={styles.topBarCaption}>
+              Shops, ratings &amp; availability
             </Text>
           </View>
 
@@ -497,11 +378,8 @@ export default function CustomerShopsScreen() {
             activeOpacity={0.72}
             accessibilityRole="button"
             accessibilityLabel="Open saved shops"
-            onPress={
-              () =>
-                router.push(
-                  '/(customer)/saved-shops',
-                )
+            onPress={() =>
+              router.push('/(customer)/saved-shops')
             }
             style={styles.savedButton}
           >
@@ -513,61 +391,39 @@ export default function CustomerShopsScreen() {
           </TouchableOpacity>
         </View>
 
-        {/* ================================================================
-            HEADER
-            ================================================================ */}
+        {/* HEADER */}
 
-        <View
-          style={styles.header}
-        >
-          <Text
-            style={styles.eyebrow}
-          >
+        <View style={styles.header}>
+          <Text style={styles.eyebrow}>
             FIND YOUR SHOP
           </Text>
 
-          <Text
-            style={styles.title}
-          >
+          <Text style={styles.title}>
             Compare approved barber shops and beauty parlors
           </Text>
 
-          <Text
-            style={styles.subtitle}
-          >
-            Search by name or location, narrow the results by shop type and
-            availability, then open a shop to view its services and booking
-            options.
+          <Text style={styles.subtitle}>
+            Search by name or location, narrow the results
+            by shop type and availability, then open a shop
+            to view its services and booking options.
           </Text>
         </View>
 
-        {/* ================================================================
-            OVERVIEW
-            ================================================================ */}
+        {/* OVERVIEW */}
 
-        <View
-          style={styles.overviewCard}
-        >
-          <View
-            style={styles.overviewTopRow}
-          >
+        <View style={styles.overviewCard}>
+          <View style={styles.overviewTopRow}>
             <View>
-              <Text
-                style={styles.overviewLabel}
-              >
+              <Text style={styles.overviewLabel}>
                 Approved shops found
               </Text>
 
-              <Text
-                style={styles.overviewValue}
-              >
+              <Text style={styles.overviewValue}>
                 {pagination?.total ?? shops.length}
               </Text>
             </View>
 
-            <View
-              style={styles.overviewIcon}
-            >
+            <View style={styles.overviewIcon}>
               <Ionicons
                 name="storefront-outline"
                 size={24}
@@ -576,64 +432,44 @@ export default function CustomerShopsScreen() {
             </View>
           </View>
 
-          <View
-            style={styles.overviewFooter}
-          >
-            <View
-              style={styles.overviewFooterItem}
-            >
+          <View style={styles.overviewFooter}>
+            <View style={styles.overviewFooterItem}>
               <Ionicons
                 name="shield-checkmark-outline"
                 size={14}
                 color="#D4DAE1"
               />
-
-              <Text
-                style={styles.overviewFooterText}
-              >
+              <Text style={styles.overviewFooterText}>
                 Customer-visible shops
               </Text>
             </View>
 
-            <View
-              style={styles.overviewFooterItem}
-            >
+            <View style={styles.overviewFooterItem}>
               <Ionicons
                 name="options-outline"
                 size={14}
                 color="#D4DAE1"
               />
-
-              <Text
-                style={styles.overviewFooterText}
-              >
+              <Text style={styles.overviewFooterText}>
                 {activeFilterCount === 0
                   ? 'No filters applied'
-                  : `${activeFilterCount} filter${activeFilterCount === 1 ? '' : 's'} applied`}
+                  : `${activeFilterCount} filter${
+                      activeFilterCount === 1 ? '' : 's'
+                    } applied`}
               </Text>
             </View>
           </View>
         </View>
 
-        {/* ================================================================
-            SEARCH
-            ================================================================ */}
+        {/* SEARCH */}
 
-        <View
-          style={styles.searchCard}
-        >
-          <Text
-            style={styles.searchLabel}
-          >
+        <View style={styles.searchCard}>
+          <Text style={styles.searchLabel}>
             Search shops
           </Text>
 
-          <View
-            style={styles.searchRow}
-          >
-            <View
-              style={styles.searchBox}
-            >
+          <View style={styles.searchRow}>
+            <View style={styles.searchBox}>
               <Ionicons
                 name="search-outline"
                 size={19}
@@ -641,23 +477,13 @@ export default function CustomerShopsScreen() {
               />
 
               <TextInput
-                value={
-                  draftFilters.search
+                value={draftFilters.search}
+                onChangeText={(value) =>
+                  updateDraftFilter('search', value)
                 }
-                onChangeText={
-                  (value) =>
-                    updateDraftFilter(
-                      'search',
-                      value,
-                    )
-                }
-                onSubmitEditing={
-                  applyFilters
-                }
+                onSubmitEditing={applyFilters}
                 placeholder="Shop name, city, address..."
-                placeholderTextColor={
-                  COLORS.textLight
-                }
+                placeholderTextColor={COLORS.textLight}
                 autoCapitalize="none"
                 autoCorrect={false}
                 returnKeyType="search"
@@ -669,12 +495,8 @@ export default function CustomerShopsScreen() {
                   activeOpacity={0.7}
                   accessibilityRole="button"
                   accessibilityLabel="Clear search text"
-                  onPress={
-                    () =>
-                      updateDraftFilter(
-                        'search',
-                        '',
-                      )
+                  onPress={() =>
+                    updateDraftFilter('search', '')
                   }
                   style={styles.searchClearButton}
                 >
@@ -691,21 +513,11 @@ export default function CustomerShopsScreen() {
               activeOpacity={0.82}
               accessibilityRole="button"
               accessibilityLabel="Search shops"
-              disabled={
-                isLoading
-                || isRefreshing
-              }
-              onPress={
-                applyFilters
-              }
+              disabled={isLoading || isRefreshing}
+              onPress={applyFilters}
               style={[
                 styles.searchButton,
-
-                (
-                  isLoading
-                  || isRefreshing
-                )
-                &&
+                (isLoading || isRefreshing) &&
                   styles.disabledButton,
               ]}
             >
@@ -717,29 +529,19 @@ export default function CustomerShopsScreen() {
             </TouchableOpacity>
           </View>
 
-          <View
-            style={styles.filterToggleRow}
-          >
+          {/* FILTER TOGGLE */}
+
+          <View style={styles.filterToggleRow}>
             <TouchableOpacity
               activeOpacity={0.78}
               accessibilityRole="button"
-              accessibilityState={{
-                expanded:
-                  showFilters,
-              }}
-              onPress={
-                () =>
-                  setShowFilters(
-                    (current) =>
-                      !current,
-                  )
+              accessibilityState={{ expanded: showFilters }}
+              onPress={() =>
+                setShowFilters((current) => !current)
               }
               style={[
                 styles.filterToggle,
-
-                showFilters
-                &&
-                  styles.filterToggleOpen,
+                showFilters && styles.filterToggleOpen,
               ]}
             >
               <Ionicons
@@ -755,9 +557,7 @@ export default function CustomerShopsScreen() {
               <Text
                 style={[
                   styles.filterToggleText,
-
-                  showFilters
-                  &&
+                  showFilters &&
                     styles.filterToggleTextOpen,
                 ]}
               >
@@ -768,18 +568,14 @@ export default function CustomerShopsScreen() {
                 <View
                   style={[
                     styles.filterCountBadge,
-
-                    showFilters
-                    &&
+                    showFilters &&
                       styles.filterCountBadgeOpen,
                   ]}
                 >
                   <Text
                     style={[
                       styles.filterCountText,
-
-                      showFilters
-                      &&
+                      showFilters &&
                         styles.filterCountTextOpen,
                     ]}
                   >
@@ -794,14 +590,10 @@ export default function CustomerShopsScreen() {
                 activeOpacity={0.7}
                 accessibilityRole="button"
                 accessibilityLabel="Clear all filters"
-                onPress={
-                  clearFilters
-                }
+                onPress={clearFilters}
                 style={styles.clearFiltersButton}
               >
-                <Text
-                  style={styles.clearFiltersText}
-                >
+                <Text style={styles.clearFiltersText}>
                   Clear all
                 </Text>
               </TouchableOpacity>
@@ -809,47 +601,40 @@ export default function CustomerShopsScreen() {
           </View>
         </View>
 
-        {/* ================================================================
-            FILTER PANEL
-            ================================================================ */}
+        {/* FILTER PANEL */}
 
         {showFilters ? (
-          <View
-            style={styles.filtersCard}
-          >
+          <View style={styles.filtersCard}>
+            {/* SHOP TYPE */}
+
             <FilterSection
               icon="storefront-outline"
               title="Shop type"
               subtitle="Choose the kind of shop you want to browse."
             >
-              <View
-                style={styles.typeGrid}
-              >
-                {SHOP_TYPES.map(
-                  (option) => (
-                    <TypeFilterButton
-                      key={option.value}
-                      icon={option.icon}
-                      label={option.label}
-                      selected={
-                        draftFilters.shopType === option.value
-                      }
-                      onPress={
-                        () =>
-                          updateDraftFilter(
-                            'shopType',
-                            option.value,
-                          )
-                      }
-                    />
-                  ),
-                )}
+              <View style={styles.typeGrid}>
+                {SHOP_TYPES.map((option) => (
+                  <TypeFilterButton
+                    key={option.value}
+                    icon={option.icon}
+                    label={option.label}
+                    selected={
+                      draftFilters.shopType === option.value
+                    }
+                    onPress={() =>
+                      updateDraftFilter(
+                        'shopType',
+                        option.value,
+                      )
+                    }
+                  />
+                ))}
               </View>
             </FilterSection>
 
-            <View
-              style={styles.filterDivider}
-            />
+            <View style={styles.filterDivider} />
+
+            {/* AVAILABILITY */}
 
             <FilterSection
               icon="radio-outline"
@@ -859,47 +644,43 @@ export default function CustomerShopsScreen() {
               <ScrollView
                 horizontal
                 showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.availabilityChips}
+                contentContainerStyle={
+                  styles.availabilityChips
+                }
               >
-                {AVAILABILITY_OPTIONS.map(
-                  (option) => (
-                    <FilterChip
-                      key={option.value}
-                      label={option.label}
-                      selected={
-                        draftFilters.availability === option.value
-                      }
-                      onPress={
-                        () =>
-                          updateDraftFilter(
-                            'availability',
-                            option.value,
-                          )
-                      }
-                    />
-                  ),
-                )}
+                {AVAILABILITY_OPTIONS.map((option) => (
+                  <FilterChip
+                    key={option.value}
+                    label={option.label}
+                    selected={
+                      draftFilters.availability ===
+                      option.value
+                    }
+                    onPress={() =>
+                      updateDraftFilter(
+                        'availability',
+                        option.value,
+                      )
+                    }
+                  />
+                ))}
               </ScrollView>
             </FilterSection>
 
-            <View
-              style={styles.filterDivider}
-            />
+            <View style={styles.filterDivider} />
+
+            {/* LOCATION */}
 
             <FilterSection
               icon="location-outline"
               title="Location"
               subtitle="Use the city and province filters already supported by the StyleHub shop API."
             >
-              <Text
-                style={styles.inputLabel}
-              >
+              <Text style={styles.inputLabel}>
                 City or municipality
               </Text>
 
-              <View
-                style={styles.locationInputShell}
-              >
+              <View style={styles.locationInputShell}>
                 <Ionicons
                   name="business-outline"
                   size={17}
@@ -907,35 +688,23 @@ export default function CustomerShopsScreen() {
                 />
 
                 <TextInput
-                  value={
-                    draftFilters.city
-                  }
-                  onChangeText={
-                    (value) =>
-                      updateDraftFilter(
-                        'city',
-                        value,
-                      )
+                  value={draftFilters.city}
+                  onChangeText={(value) =>
+                    updateDraftFilter('city', value)
                   }
                   placeholder="Example: Surigao City"
-                  placeholderTextColor={
-                    COLORS.textLight
-                  }
+                  placeholderTextColor={COLORS.textLight}
                   autoCapitalize="words"
                   autoCorrect={false}
                   style={styles.locationInput}
                 />
               </View>
 
-              <Text
-                style={styles.inputLabelSecondary}
-              >
+              <Text style={styles.inputLabelSecondary}>
                 Province
               </Text>
 
-              <View
-                style={styles.locationInputShell}
-              >
+              <View style={styles.locationInputShell}>
                 <Ionicons
                   name="map-outline"
                   size={17}
@@ -943,20 +712,12 @@ export default function CustomerShopsScreen() {
                 />
 
                 <TextInput
-                  value={
-                    draftFilters.province
-                  }
-                  onChangeText={
-                    (value) =>
-                      updateDraftFilter(
-                        'province',
-                        value,
-                      )
+                  value={draftFilters.province}
+                  onChangeText={(value) =>
+                    updateDraftFilter('province', value)
                   }
                   placeholder="Example: Surigao del Norte"
-                  placeholderTextColor={
-                    COLORS.textLight
-                  }
+                  placeholderTextColor={COLORS.textLight}
                   autoCapitalize="words"
                   autoCorrect={false}
                   style={styles.locationInput}
@@ -964,24 +725,19 @@ export default function CustomerShopsScreen() {
               </View>
             </FilterSection>
 
-            <View
-              style={styles.filterActions}
-            >
+            {/* FILTER ACTIONS */}
+
+            <View style={styles.filterActions}>
               <TouchableOpacity
                 activeOpacity={0.78}
                 accessibilityRole="button"
                 accessibilityLabel="Reset discovery filters"
-                onPress={
-                  () =>
-                    setDraftFilters(
-                      createDefaultFilters(),
-                    )
+                onPress={() =>
+                  setDraftFilters(createDefaultFilters())
                 }
                 style={styles.resetDraftButton}
               >
-                <Text
-                  style={styles.resetDraftText}
-                >
+                <Text style={styles.resetDraftText}>
                   Reset
                 </Text>
               </TouchableOpacity>
@@ -990,21 +746,11 @@ export default function CustomerShopsScreen() {
                 activeOpacity={0.84}
                 accessibilityRole="button"
                 accessibilityLabel="Apply discovery filters"
-                disabled={
-                  isLoading
-                  || isRefreshing
-                }
-                onPress={
-                  applyFilters
-                }
+                disabled={isLoading || isRefreshing}
+                onPress={applyFilters}
                 style={[
                   styles.applyButton,
-
-                  (
-                    isLoading
-                    || isRefreshing
-                  )
-                  &&
+                  (isLoading || isRefreshing) &&
                     styles.disabledButton,
                 ]}
               >
@@ -1014,9 +760,7 @@ export default function CustomerShopsScreen() {
                   color={COLORS.white}
                 />
 
-                <Text
-                  style={styles.applyButtonText}
-                >
+                <Text style={styles.applyButtonText}>
                   Show results
                 </Text>
               </TouchableOpacity>
@@ -1024,17 +768,11 @@ export default function CustomerShopsScreen() {
           </View>
         ) : null}
 
-        {/* ================================================================
-            ERROR
-            ================================================================ */}
+        {/* ERROR */}
 
         {errorMessage ? (
-          <View
-            style={styles.errorBox}
-          >
-            <View
-              style={styles.errorIcon}
-            >
+          <View style={styles.errorBox}>
+            <View style={styles.errorIcon}>
               <Ionicons
                 name="alert-circle-outline"
                 size={19}
@@ -1042,99 +780,67 @@ export default function CustomerShopsScreen() {
               />
             </View>
 
-            <View
-              style={styles.errorCopy}
-            >
-              <Text
-                style={styles.errorTitle}
-              >
-                Couldn&apos;t load shops
+            <View style={styles.errorCopy}>
+              <Text style={styles.errorTitle}>
+                Couldn't load shops
               </Text>
 
-              <Text
-                style={styles.errorText}
-              >
+              <Text style={styles.errorText}>
                 {errorMessage}
               </Text>
             </View>
           </View>
         ) : null}
 
-        {/* ================================================================
-            RESULTS HEADER
-            ================================================================ */}
+        {/* RESULTS HEADER */}
 
-        <View
-          style={styles.resultsHeader}
-        >
-          <View
-            style={styles.resultsHeaderCopy}
-          >
-            <Text
-              style={styles.resultsTitle}
-            >
+        <View style={styles.resultsHeader}>
+          <View style={styles.resultsHeaderCopy}>
+            <Text style={styles.resultsTitle}>
               Shop results
             </Text>
 
-            <Text
-              style={styles.resultsSubtitle}
-            >
+            <Text style={styles.resultsSubtitle}>
               {pagination
-                ? `${pagination.total} approved shop${pagination.total === 1 ? '' : 's'} match your current filters.`
+                ? `${pagination.total} approved shop${
+                    pagination.total === 1 ? '' : 's'
+                  } match your current filters.`
                 : 'Browse approved StyleHub shops.'}
             </Text>
           </View>
 
           {resultRange && pagination ? (
-            <View
-              style={styles.rangeBadge}
-            >
-              <Text
-                style={styles.rangeBadgeText}
-              >
+            <View style={styles.rangeBadge}>
+              <Text style={styles.rangeBadgeText}>
                 {resultRange.first}–{resultRange.last}
               </Text>
             </View>
           ) : null}
         </View>
 
-        {/* ================================================================
-            LOADING / EMPTY / RESULTS
-            ================================================================ */}
+        {/* LOADING, EMPTY OR RESULTS */}
 
         {isLoading ? (
-          <View
-            style={styles.loadingCard}
-          >
-            <View
-              style={styles.loadingIcon}
-            >
+          <View style={styles.loadingCard}>
+            <View style={styles.loadingIcon}>
               <ActivityIndicator
                 size="small"
                 color={COLORS.navy}
               />
             </View>
 
-            <Text
-              style={styles.loadingTitle}
-            >
+            <Text style={styles.loadingTitle}>
               Finding shops
             </Text>
 
-            <Text
-              style={styles.loadingText}
-            >
-              Applying your current search, shop type, availability, and
-              location filters.
+            <Text style={styles.loadingText}>
+              Applying your current search, shop type,
+              availability, and location filters.
             </Text>
           </View>
         ) : shops.length === 0 ? (
-          <View
-            style={styles.emptyCard}
-          >
-            <View
-              style={styles.emptyIcon}
-            >
+          <View style={styles.emptyCard}>
+            <View style={styles.emptyIcon}>
               <Ionicons
                 name="search-outline"
                 size={28}
@@ -1142,26 +848,20 @@ export default function CustomerShopsScreen() {
               />
             </View>
 
-            <Text
-              style={styles.emptyTitle}
-            >
+            <Text style={styles.emptyTitle}>
               No shops match these filters
             </Text>
 
-            <Text
-              style={styles.emptyText}
-            >
-              Try a broader search, remove a location filter, or choose
-              another availability status.
+            <Text style={styles.emptyText}>
+              Try a broader search, remove a location
+              filter, or choose another availability status.
             </Text>
 
             <TouchableOpacity
               activeOpacity={0.8}
               accessibilityRole="button"
               accessibilityLabel="Clear discovery filters"
-              onPress={
-                clearFilters
-              }
+              onPress={clearFilters}
               style={styles.emptyButton}
             >
               <Ionicons
@@ -1170,90 +870,60 @@ export default function CustomerShopsScreen() {
                 color={COLORS.white}
               />
 
-              <Text
-                style={styles.emptyButtonText}
-              >
+              <Text style={styles.emptyButtonText}>
                 Clear filters
               </Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <View
-            style={styles.shopList}
-          >
-            {shops.map(
-              (shop) => (
-                <ShopCard
-                  key={shop.id}
-                  shop={shop}
-                  onPress={
-                    () =>
-                      openShop(
-                        shop.id,
-                      )
-                  }
-                />
-              ),
-            )}
+          <View style={styles.shopList}>
+            {shops.map((shop) => (
+              <ShopCard
+                key={shop.id}
+                shop={shop}
+                onPress={() => openShop(shop.id)}
+              />
+            ))}
           </View>
         )}
 
-        {/* ================================================================
-            PAGINATION
-            ================================================================ */}
+        {/* PAGINATION */}
 
-        {!isLoading
-        && pagination
-        && pagination.total > 0 ? (
-          <View
-            style={styles.paginationCard}
-          >
-            <View
-              style={styles.paginationCopy}
-            >
-              <Text
-                style={styles.paginationTitle}
-              >
-                Page {pagination.current_page} of {Math.max(
-                  1,
-                  pagination.last_page,
-                )}
+        {!isLoading &&
+        pagination &&
+        pagination.total > 0 ? (
+          <View style={styles.paginationCard}>
+            <View style={styles.paginationCopy}>
+              <Text style={styles.paginationTitle}>
+                Page {pagination.current_page} of{' '}
+                {Math.max(1, pagination.last_page)}
               </Text>
 
-              <Text
-                style={styles.paginationText}
-              >
+              <Text style={styles.paginationText}>
                 {resultRange
                   ? `Showing ${resultRange.first}–${resultRange.last} of ${pagination.total} shops.`
                   : `${pagination.total} shops found.`}
               </Text>
             </View>
 
-            <View
-              style={styles.paginationButtons}
-            >
+            <View style={styles.paginationButtons}>
               <TouchableOpacity
                 activeOpacity={0.78}
                 disabled={
-                  pagination.current_page <= 1
-                  || isRefreshing
+                  pagination.current_page <= 1 ||
+                  isRefreshing
                 }
                 accessibilityRole="button"
                 accessibilityLabel="Previous shop results page"
-                onPress={
-                  () =>
-                    changePage(
-                      pagination.current_page - 1,
-                    )
+                onPress={() =>
+                  changePage(
+                    pagination.current_page - 1,
+                  )
                 }
                 style={[
                   styles.pageButton,
-
-                  (
-                    pagination.current_page <= 1
-                    || isRefreshing
-                  )
-                  &&
+                  (pagination.current_page <= 1 ||
+                    isRefreshing) &&
                     styles.disabledButton,
                 ]}
               >
@@ -1263,9 +933,7 @@ export default function CustomerShopsScreen() {
                   color={COLORS.navy}
                 />
 
-                <Text
-                  style={styles.pageButtonText}
-                >
+                <Text style={styles.pageButtonText}>
                   Previous
                 </Text>
               </TouchableOpacity>
@@ -1273,31 +941,24 @@ export default function CustomerShopsScreen() {
               <TouchableOpacity
                 activeOpacity={0.78}
                 disabled={
-                  !pagination.has_more_pages
-                  || isRefreshing
+                  !pagination.has_more_pages ||
+                  isRefreshing
                 }
                 accessibilityRole="button"
                 accessibilityLabel="Next shop results page"
-                onPress={
-                  () =>
-                    changePage(
-                      pagination.current_page + 1,
-                    )
+                onPress={() =>
+                  changePage(
+                    pagination.current_page + 1,
+                  )
                 }
                 style={[
                   styles.pageButton,
-
-                  (
-                    !pagination.has_more_pages
-                    || isRefreshing
-                  )
-                  &&
+                  (!pagination.has_more_pages ||
+                    isRefreshing) &&
                     styles.disabledButton,
                 ]}
               >
-                <Text
-                  style={styles.pageButtonText}
-                >
+                <Text style={styles.pageButtonText}>
                   Next
                 </Text>
 
@@ -1315,6 +976,8 @@ export default function CustomerShopsScreen() {
   );
 }
 
+/* FILTER SECTION */
+
 function FilterSection({
   icon,
   title,
@@ -1324,16 +987,12 @@ function FilterSection({
   icon: IconName;
   title: string;
   subtitle: string;
-  children: React.ReactNode;
+  children: ReactNode;
 }) {
   return (
     <View>
-      <View
-        style={styles.filterSectionHeader}
-      >
-        <View
-          style={styles.filterSectionIcon}
-        >
+      <View style={styles.filterSectionHeader}>
+        <View style={styles.filterSectionIcon}>
           <Ionicons
             name={icon}
             size={18}
@@ -1341,31 +1000,25 @@ function FilterSection({
           />
         </View>
 
-        <View
-          style={styles.filterSectionCopy}
-        >
-          <Text
-            style={styles.filterSectionTitle}
-          >
+        <View style={styles.filterSectionCopy}>
+          <Text style={styles.filterSectionTitle}>
             {title}
           </Text>
 
-          <Text
-            style={styles.filterSectionSubtitle}
-          >
+          <Text style={styles.filterSectionSubtitle}>
             {subtitle}
           </Text>
         </View>
       </View>
 
-      <View
-        style={styles.filterSectionBody}
-      >
+      <View style={styles.filterSectionBody}>
         {children}
       </View>
     </View>
   );
 }
+
+/* SHOP TYPE BUTTON */
 
 function TypeFilterButton({
   icon,
@@ -1382,37 +1035,23 @@ function TypeFilterButton({
     <TouchableOpacity
       activeOpacity={0.8}
       accessibilityRole="button"
-      accessibilityState={{
-        selected,
-      }}
-      onPress={
-        onPress
-      }
+      accessibilityState={{ selected }}
+      onPress={onPress}
       style={[
         styles.typeButton,
-
-        selected
-        &&
-          styles.typeButtonSelected,
+        selected && styles.typeButtonSelected,
       ]}
     >
       <View
         style={[
           styles.typeButtonIcon,
-
-          selected
-          &&
-            styles.typeButtonIconSelected,
+          selected && styles.typeButtonIconSelected,
         ]}
       >
         <Ionicons
           name={icon}
           size={18}
-          color={
-            selected
-              ? COLORS.white
-              : COLORS.navy
-          }
+          color={selected ? COLORS.white : COLORS.navy}
         />
       </View>
 
@@ -1420,10 +1059,7 @@ function TypeFilterButton({
         numberOfLines={1}
         style={[
           styles.typeButtonText,
-
-          selected
-          &&
-            styles.typeButtonTextSelected,
+          selected && styles.typeButtonTextSelected,
         ]}
       >
         {label}
@@ -1446,6 +1082,8 @@ function TypeFilterButton({
   );
 }
 
+/* AVAILABILITY CHIP */
+
 function FilterChip({
   label,
   selected,
@@ -1459,27 +1097,17 @@ function FilterChip({
     <TouchableOpacity
       activeOpacity={0.76}
       accessibilityRole="button"
-      accessibilityState={{
-        selected,
-      }}
-      onPress={
-        onPress
-      }
+      accessibilityState={{ selected }}
+      onPress={onPress}
       style={[
         styles.filterChip,
-
-        selected
-        &&
-          styles.filterChipSelected,
+        selected && styles.filterChipSelected,
       ]}
     >
       <Text
         style={[
           styles.filterChipText,
-
-          selected
-          &&
-            styles.filterChipTextSelected,
+          selected && styles.filterChipTextSelected,
         ]}
       >
         {label}
@@ -1488,6 +1116,8 @@ function FilterChip({
   );
 }
 
+/* DISCOVER SHOP CARD */
+
 function ShopCard({
   shop,
   onPress,
@@ -1495,18 +1125,15 @@ function ShopCard({
   shop: CustomerShop;
   onPress: () => void;
 }) {
-  const availability =
-    getAvailabilityPresentation(
-      shop.availability.status,
-    );
+  const availability = getAvailabilityPresentation(
+    shop.availability.status,
+  );
 
   const description =
-    shop.description?.trim()
-    || (
-      shop.type === 'barber_shop'
-        ? 'Explore this barber shop, available services, and appointment options.'
-        : 'Explore this beauty parlor, available services, and appointment options.'
-    );
+    shop.description?.trim() ||
+    (shop.type === 'barber_shop'
+      ? 'Explore this barber shop, available services, and appointment options.'
+      : 'Explore this beauty parlor, available services, and appointment options.');
 
   return (
     <TouchableOpacity
@@ -1516,9 +1143,7 @@ function ShopCard({
       onPress={onPress}
       style={styles.shopCard}
     >
-      <View
-        style={styles.shopCardHeader}
-      >
+      <View style={styles.shopCardHeader}>
         <ShopOwnerAvatar
           shop={shop}
           size={58}
@@ -1528,17 +1153,11 @@ function ShopCard({
               ? 'cut-outline'
               : 'sparkles-outline'
           }
-          containerStyle={
-            styles.shopAvatar
-          }
-          imageStyle={
-            styles.shopAvatarImage
-          }
+          containerStyle={styles.shopAvatar}
+          imageStyle={styles.shopAvatarImage}
         />
 
-        <View
-          style={styles.shopHeading}
-        >
+        <View style={styles.shopHeading}>
           <Text
             numberOfLines={1}
             style={styles.shopName}
@@ -1546,9 +1165,7 @@ function ShopCard({
             {shop.name}
           </Text>
 
-          <Text
-            style={styles.shopType}
-          >
+          <Text style={styles.shopType}>
             {shop.type_label}
           </Text>
         </View>
@@ -1557,8 +1174,7 @@ function ShopCard({
           style={[
             styles.availabilityBadge,
             {
-              backgroundColor:
-                availability.background,
+              backgroundColor: availability.background,
             },
           ]}
         >
@@ -1571,10 +1187,7 @@ function ShopCard({
           <Text
             style={[
               styles.availabilityText,
-              {
-                color:
-                  availability.color,
-              },
+              { color: availability.color },
             ]}
           >
             {shop.availability.status_label}
@@ -1589,12 +1202,8 @@ function ShopCard({
         {description}
       </Text>
 
-      <View
-        style={styles.locationCard}
-      >
-        <View
-          style={styles.locationIcon}
-        >
+      <View style={styles.locationCard}>
+        <View style={styles.locationIcon}>
           <Ionicons
             name="location-outline"
             size={17}
@@ -1602,12 +1211,8 @@ function ShopCard({
           />
         </View>
 
-        <View
-          style={styles.locationCopy}
-        >
-          <Text
-            style={styles.locationLabel}
-          >
+        <View style={styles.locationCopy}>
+          <Text style={styles.locationLabel}>
             Location
           </Text>
 
@@ -1620,55 +1225,45 @@ function ShopCard({
         </View>
       </View>
 
-      <View
-        style={styles.shopMetaRow}
-      >
-        <View
-          style={styles.metaPill}
-        >
+      <View style={styles.shopMetaRow}>
+        <View style={styles.metaPill}>
           <Ionicons
             name="star"
             size={13}
             color={COLORS.warning}
           />
 
-          <Text
-            style={styles.metaPrimaryText}
-          >
+          <Text style={styles.metaPrimaryText}>
             {shop.rating.average === null
               ? 'New'
               : shop.rating.average.toFixed(1)}
           </Text>
 
           {shop.rating.review_count > 0 ? (
-            <Text
-              style={styles.metaSecondaryText}
-            >
+            <Text style={styles.metaSecondaryText}>
               ({shop.rating.review_count})
             </Text>
           ) : null}
         </View>
 
-        {typeof shop.active_services_count === 'number' ? (
-          <View
-            style={styles.metaPill}
-          >
+        {typeof shop.active_services_count ===
+        'number' ? (
+          <View style={styles.metaPill}>
             <Ionicons
               name="cut-outline"
               size={13}
               color={COLORS.textMuted}
             />
 
-            <Text
-              style={styles.metaPrimaryText}
-            >
+            <Text style={styles.metaPrimaryText}>
               {shop.active_services_count}
             </Text>
 
-            <Text
-              style={styles.metaSecondaryText}
-            >
-              service{shop.active_services_count === 1 ? '' : 's'}
+            <Text style={styles.metaSecondaryText}>
+              service
+              {shop.active_services_count === 1
+                ? ''
+                : 's'}
             </Text>
           </View>
         ) : null}
@@ -1716,21 +1311,13 @@ function ShopCard({
         </View>
       </View>
 
-      <View
-        style={styles.shopCardFooter}
-      >
-        <Text
-          style={styles.shopCardFooterText}
-        >
-          View services, details & reviews
+      <View style={styles.shopCardFooter}>
+        <Text style={styles.shopCardFooterText}>
+          View services, details &amp; reviews
         </Text>
 
-        <View
-          style={styles.shopCardFooterAction}
-        >
-          <Text
-            style={styles.shopCardFooterActionText}
-          >
+        <View style={styles.shopCardFooterAction}>
+          <Text style={styles.shopCardFooterActionText}>
             View shop
           </Text>
 
@@ -1745,18 +1332,21 @@ function ShopCard({
   );
 }
 
+/* STYLES */
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
 
+  // Updated: same top spacing as other screens.
   container: {
     width: '100%',
     maxWidth: LAYOUT.contentMaxWidth,
     alignSelf: 'center',
     paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingTop: 40,
     paddingBottom: 110,
   },
 

@@ -1,13 +1,14 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import {
   useCallback,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
@@ -21,6 +22,7 @@ import {
   View,
 } from 'react-native';
 
+import StyleHubModal from '@/src/components/StyleHubModal';
 import { COLORS } from '@/src/constants/colors';
 import {
   LAYOUT,
@@ -44,23 +46,15 @@ import type {
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
 
 const QUICK_DATE_OPTIONS = [
-  {
-    label: 'Today',
-    days: 0,
-  },
-  {
-    label: 'Tomorrow',
-    days: 1,
-  },
-  {
-    label: '+7 days',
-    days: 7,
-  },
-  {
-    label: '+30 days',
-    days: 30,
-  },
+  { label: 'Today', days: 0 },
+  { label: 'Tomorrow', days: 1 },
+  { label: '+7 days', days: 7 },
+  { label: '+30 days', days: 30 },
 ] as const;
+
+/* ==========================================================
+   DATE HELPERS
+   ========================================================== */
 
 function pad(value: number): string {
   return String(value).padStart(2, '0');
@@ -68,9 +62,9 @@ function pad(value: number): string {
 
 function localDateString(date: Date): string {
   return (
-    `${date.getFullYear()}-`
-    + `${pad(date.getMonth() + 1)}-`
-    + `${pad(date.getDate())}`
+    `${date.getFullYear()}-` +
+    `${pad(date.getMonth() + 1)}-` +
+    `${pad(date.getDate())}`
   );
 }
 
@@ -80,18 +74,8 @@ function todayString(): string {
 
 function dateFromToday(days: number): string {
   const date = new Date();
-
-  date.setHours(
-    12,
-    0,
-    0,
-    0,
-  );
-
-  date.setDate(
-    date.getDate() + days,
-  );
-
+  date.setHours(12, 0, 0, 0);
+  date.setDate(date.getDate() + days);
   return localDateString(date);
 }
 
@@ -100,12 +84,7 @@ function isValidCalendarDate(value: string): boolean {
     return false;
   }
 
-  const [
-    yearText,
-    monthText,
-    dayText,
-  ] = value.split('-');
-
+  const [yearText, monthText, dayText] = value.split('-');
   const year = Number(yearText);
   const month = Number(monthText);
   const day = Number(dayText);
@@ -121,9 +100,9 @@ function isValidCalendarDate(value: string): boolean {
   );
 
   return (
-    candidate.getFullYear() === year
-    && candidate.getMonth() === month - 1
-    && candidate.getDate() === day
+    candidate.getFullYear() === year &&
+    candidate.getMonth() === month - 1 &&
+    candidate.getDate() === day
   );
 }
 
@@ -132,11 +111,7 @@ function calendarDate(value: string): Date | null {
     return null;
   }
 
-  const [
-    yearText,
-    monthText,
-    dayText,
-  ] = value.split('-');
+  const [yearText, monthText, dayText] = value.split('-');
 
   return new Date(
     Number(yearText),
@@ -156,35 +131,28 @@ function formatDisplayDate(value: string): string {
     return value;
   }
 
-  return date.toLocaleDateString(
-    'en-PH',
-    {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-    },
-  );
+  return date.toLocaleDateString('en-PH', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
 }
 
 function formatDayNumber(value: string): string {
   const date = calendarDate(value);
-
-  return date
-    ? String(date.getDate())
-    : '--';
+  return date ? String(date.getDate()) : '--';
 }
 
 function formatMonth(value: string): string {
   const date = calendarDate(value);
 
   return date
-    ? date.toLocaleDateString(
-        'en-PH',
-        {
+    ? date
+        .toLocaleDateString('en-PH', {
           month: 'short',
-        },
-      ).toUpperCase()
+        })
+        .toUpperCase()
     : 'DATE';
 }
 
@@ -192,19 +160,16 @@ function formatWeekday(value: string): string {
   const date = calendarDate(value);
 
   return date
-    ? date.toLocaleDateString(
-        'en-PH',
-        {
-          weekday: 'long',
-        },
-      )
+    ? date.toLocaleDateString('en-PH', {
+        weekday: 'long',
+      })
     : 'Selected date';
 }
 
 function isPastDate(value: string): boolean {
   return (
-    isValidCalendarDate(value)
-    && value < todayString()
+    isValidCalendarDate(value) &&
+    value < todayString()
   );
 }
 
@@ -222,154 +187,119 @@ function isThisMonth(value: string): boolean {
   return value.slice(0, 7) === today.slice(0, 7);
 }
 
+/* ==========================================================
+   SHOP OWNER BLOCKED DATES
+   ========================================================== */
+
 export default function ShopOwnerBlockedDatesScreen() {
-  const {
-    token,
-  } = useAuth();
+  const { token } = useAuth();
 
-  const [
-    blockedDates,
-    setBlockedDates,
-  ] = useState<ShopOwnerBlockedDate[]>([]);
+  const [blockedDates, setBlockedDates] = useState<
+    ShopOwnerBlockedDate[]
+  >([]);
 
-  const [
-    selectedId,
-    setSelectedId,
-  ] = useState<number | null>(null);
+  const [selectedId, setSelectedId] =
+    useState<number | null>(null);
 
-  const [
-    blockedDate,
-    setBlockedDate,
-  ] = useState(
+  const [blockedDate, setBlockedDate] = useState(
     dateFromToday(1),
   );
 
-  const [
-    reason,
-    setReason,
-  ] = useState('');
+  const [reason, setReason] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
-  const [
-    isLoading,
-    setIsLoading,
-  ] = useState(true);
+  const [deletingId, setDeletingId] =
+    useState<number | null>(null);
 
-  const [
-    isRefreshing,
-    setIsRefreshing,
-  ] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
-  const [
-    isSaving,
-    setIsSaving,
-  ] = useState(false);
+  /* ========================================================
+     SHARED MODAL STATES
+     ======================================================== */
 
-  const [
-    deletingId,
-    setDeletingId,
-  ] = useState<number | null>(null);
+  const [deleteTarget, setDeleteTarget] =
+    useState<ShopOwnerBlockedDate | null>(null);
 
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] = useState('');
+  const [deleteSuccessVisible, setDeleteSuccessVisible] =
+    useState(false);
 
-  const [
-    successMessage,
-    setSuccessMessage,
-  ] = useState('');
+  const [deleteModalError, setDeleteModalError] =
+    useState('');
+
+  const deleteInFlightRef = useRef(false);
+
+  /* ========================================================
+     BLOCKED DATE COLLECTIONS
+     ======================================================== */
 
   const editingRecord = useMemo(
     () =>
-      blockedDates.find(
-        (item) => item.id === selectedId,
-      ) ?? null,
-    [
-      blockedDates,
-      selectedId,
-    ],
+      blockedDates.find((item) => item.id === selectedId) ??
+      null,
+    [blockedDates, selectedId],
   );
 
   const upcomingBlockedDates = useMemo(
     () =>
       blockedDates
-        .filter(
-          (item) => !isPastDate(item.blocked_date),
-        )
-        .sort(
-          (first, second) =>
-            first.blocked_date.localeCompare(
-              second.blocked_date,
-            ),
+        .filter((item) => !isPastDate(item.blocked_date))
+        .sort((first, second) =>
+          first.blocked_date.localeCompare(
+            second.blocked_date,
+          ),
         ),
-    [
-      blockedDates,
-    ],
+    [blockedDates],
   );
 
   const pastBlockedDates = useMemo(
     () =>
       blockedDates
-        .filter(
-          (item) => isPastDate(item.blocked_date),
-        )
-        .sort(
-          (first, second) =>
-            second.blocked_date.localeCompare(
-              first.blocked_date,
-            ),
+        .filter((item) => isPastDate(item.blocked_date))
+        .sort((first, second) =>
+          second.blocked_date.localeCompare(
+            first.blocked_date,
+          ),
         ),
-    [
-      blockedDates,
-    ],
+    [blockedDates],
   );
 
   const thisMonthCount = useMemo(
     () =>
-      upcomingBlockedDates.filter(
-        (item) => isThisMonth(item.blocked_date),
+      upcomingBlockedDates.filter((item) =>
+        isThisMonth(item.blocked_date),
       ).length,
-    [
-      upcomingBlockedDates,
-    ],
+    [upcomingBlockedDates],
   );
 
-  const selectedDateValid =
-    isValidCalendarDate(
-      blockedDate.trim(),
-    );
+  const selectedDateValid = isValidCalendarDate(
+    blockedDate.trim(),
+  );
 
   const selectedDatePast =
-    selectedDateValid
-    && isPastDate(
-      blockedDate.trim(),
-    );
+    selectedDateValid && isPastDate(blockedDate.trim());
 
-  const selectedDateLabel =
-    selectedDateValid
-      ? formatDisplayDate(
-          blockedDate.trim(),
-        )
-      : 'Enter a valid YYYY-MM-DD date';
+  const selectedDateLabel = selectedDateValid
+    ? formatDisplayDate(blockedDate.trim())
+    : 'Enter a valid YYYY-MM-DD date';
 
-  const selectedWeekday =
-    selectedDateValid
-      ? formatWeekday(
-          blockedDate.trim(),
-        )
-      : 'Date not ready';
+  const selectedWeekday = selectedDateValid
+    ? formatWeekday(blockedDate.trim())
+    : 'Date not ready';
+
+  /* ========================================================
+     LOAD BLOCKED DATES FROM LARAVEL
+     ======================================================== */
 
   const loadBlockedDates = useCallback(
-    async (
-      refreshing = false,
-    ): Promise<void> => {
+    async (refreshing = false): Promise<void> => {
       if (!token) {
         setIsLoading(false);
-
         setErrorMessage(
           'You must be signed in as a Shop Owner.',
         );
-
         return;
       }
 
@@ -382,14 +312,11 @@ export default function ShopOwnerBlockedDatesScreen() {
       setErrorMessage('');
 
       try {
-        const response =
-          await getShopOwnerBlockedDates(
-            token,
-          );
-
-        setBlockedDates(
-          response.data.blocked_dates,
+        const response = await getShopOwnerBlockedDates(
+          token,
         );
+
+        setBlockedDates(response.data.blocked_dates);
       } catch (error) {
         setErrorMessage(
           error instanceof ApiError
@@ -401,21 +328,18 @@ export default function ShopOwnerBlockedDatesScreen() {
         setIsRefreshing(false);
       }
     },
-    [
-      token,
-    ],
+    [token],
   );
 
   useFocusEffect(
-    useCallback(
-      () => {
-        void loadBlockedDates();
-      },
-      [
-        loadBlockedDates,
-      ],
-    ),
+    useCallback(() => {
+      void loadBlockedDates();
+    }, [loadBlockedDates]),
   );
+
+  /* ========================================================
+     FORM HELPERS
+     ======================================================== */
 
   function clearMessages(): void {
     setErrorMessage('');
@@ -424,53 +348,33 @@ export default function ShopOwnerBlockedDatesScreen() {
 
   function resetForm(): void {
     setSelectedId(null);
-
-    setBlockedDate(
-      dateFromToday(1),
-    );
-
+    setBlockedDate(dateFromToday(1));
     setReason('');
   }
 
   function chooseQuickDate(days: number): void {
-    if (
-      isSaving
-      || deletingId !== null
-    ) {
+    if (isSaving || deletingId !== null) {
       return;
     }
 
-    setBlockedDate(
-      dateFromToday(days),
-    );
-
+    setBlockedDate(dateFromToday(days));
     clearMessages();
   }
 
-  function beginEdit(
-    item: ShopOwnerBlockedDate,
-  ): void {
+  function beginEdit(item: ShopOwnerBlockedDate): void {
     if (
-      isSaving
-      || deletingId !== null
-      || isPastDate(item.blocked_date)
+      isSaving ||
+      deletingId !== null ||
+      isPastDate(item.blocked_date)
     ) {
       return;
     }
 
     clearMessages();
 
-    setSelectedId(
-      item.id,
-    );
-
-    setBlockedDate(
-      item.blocked_date,
-    );
-
-    setReason(
-      item.reason ?? '',
-    );
+    setSelectedId(item.id);
+    setBlockedDate(item.blocked_date);
+    setReason(item.reason ?? '');
   }
 
   function cancelEdit(): void {
@@ -483,8 +387,7 @@ export default function ShopOwnerBlockedDatesScreen() {
   }
 
   function validateForm(): string | null {
-    const cleanDate =
-      blockedDate.trim();
+    const cleanDate = blockedDate.trim();
 
     if (!isValidCalendarDate(cleanDate)) {
       return 'Enter a valid date using YYYY-MM-DD.';
@@ -501,25 +404,20 @@ export default function ShopOwnerBlockedDatesScreen() {
     return null;
   }
 
+  /* ========================================================
+     CREATE OR UPDATE BLOCKED DATE
+     ======================================================== */
+
   async function handleSave(): Promise<void> {
-    if (
-      !token
-      || isSaving
-      || deletingId !== null
-    ) {
+    if (!token || isSaving || deletingId !== null) {
       return;
     }
 
-    const validationError =
-      validateForm();
+    const validationError = validateForm();
 
     if (validationError) {
       setSuccessMessage('');
-
-      setErrorMessage(
-        validationError,
-      );
-
+      setErrorMessage(validationError);
       return;
     }
 
@@ -528,18 +426,13 @@ export default function ShopOwnerBlockedDatesScreen() {
 
     try {
       const payload = {
-        blockedDate:
-          blockedDate.trim(),
-
+        blockedDate: blockedDate.trim(),
         reason,
       };
 
       const response =
         selectedId === null
-          ? await createShopOwnerBlockedDate(
-              token,
-              payload,
-            )
+          ? await createShopOwnerBlockedDate(token, payload)
           : await updateShopOwnerBlockedDate(
               token,
               selectedId,
@@ -547,16 +440,13 @@ export default function ShopOwnerBlockedDatesScreen() {
             );
 
       setSuccessMessage(
-        response.message
-        ?? (
-          selectedId === null
+        response.message ??
+          (selectedId === null
             ? 'Blocked date added successfully.'
-            : 'Blocked date updated successfully.'
-        ),
+            : 'Blocked date updated successfully.'),
       );
 
       resetForm();
-
       await loadBlockedDates();
     } catch (error) {
       setErrorMessage(
@@ -569,182 +459,158 @@ export default function ShopOwnerBlockedDatesScreen() {
     }
   }
 
-  function confirmDelete(
-    item: ShopOwnerBlockedDate,
-  ): void {
+  /* ========================================================
+     OPEN DELETE CONFIRMATION
+     ======================================================== */
+
+  function confirmDelete(item: ShopOwnerBlockedDate): void {
     if (
-      isSaving
-      || deletingId !== null
+      isSaving ||
+      deletingId !== null ||
+      deleteInFlightRef.current
     ) {
       return;
     }
-
-    Alert.alert(
-      'Remove blocked date?',
-      `${formatDisplayDate(
-        item.blocked_date,
-      )} will become available again unless another booking rule prevents it.`,
-      [
-        {
-          text: 'Keep Date',
-          style: 'cancel',
-        },
-        {
-          text: 'Remove',
-          style: 'destructive',
-          onPress: () => {
-            void handleDelete(item);
-          },
-        },
-      ],
-    );
-  }
-
-  async function handleDelete(
-    item: ShopOwnerBlockedDate,
-  ): Promise<void> {
-    if (
-      !token
-      || deletingId !== null
-      || isSaving
-    ) {
-      return;
-    }
-
-    setDeletingId(
-      item.id,
-    );
 
     clearMessages();
 
+    setDeleteModalError('');
+    setDeleteSuccessVisible(false);
+    setDeleteTarget(item);
+  }
+
+  /* ========================================================
+     CLOSE SHARED MODAL
+     ======================================================== */
+
+  function closeDeleteModal(): void {
+    if (
+      deletingId !== null ||
+      deleteInFlightRef.current
+    ) {
+      return;
+    }
+
+    setDeleteTarget(null);
+    setDeleteSuccessVisible(false);
+    setDeleteModalError('');
+  }
+
+  /* ========================================================
+     REMOVE BLOCKED DATE USING LARAVEL
+     ======================================================== */
+
+  async function handleDelete(): Promise<void> {
+    const item = deleteTarget;
+
+    if (
+      !token ||
+      !item ||
+      deletingId !== null ||
+      isSaving ||
+      deleteInFlightRef.current
+    ) {
+      return;
+    }
+
+    deleteInFlightRef.current = true;
+
+    setDeletingId(item.id);
+    setDeleteModalError('');
+    clearMessages();
+
     try {
-      const response =
-        await deleteShopOwnerBlockedDate(
-          token,
-          item.id,
-        );
+      const response = await deleteShopOwnerBlockedDate(
+        token,
+        item.id,
+      );
 
       if (selectedId === item.id) {
         resetForm();
       }
 
       setSuccessMessage(
-        response.message
-        ?? 'Blocked date removed successfully.',
+        response.message ??
+          'Blocked date removed successfully.',
       );
 
       await loadBlockedDates();
+
+      /* Switch to green success modal. */
+
+      setDeleteTarget(null);
+      setDeleteSuccessVisible(true);
     } catch (error) {
-      setErrorMessage(
+      /* Keep red confirmation open on Laravel failure. */
+
+      setDeleteModalError(
         error instanceof ApiError
           ? error.message
           : 'Unable to remove the blocked date.',
       );
     } finally {
+      deleteInFlightRef.current = false;
       setDeletingId(null);
     }
   }
 
+  /* ========================================================
+     MAIN SCREEN
+     ======================================================== */
+
   return (
-    <SafeAreaView
-      style={
-        styles.safeArea
-      }
-    >
+    <SafeAreaView style={styles.safeArea}>
       <StatusBar
         barStyle="dark-content"
-        backgroundColor={
-          COLORS.background
-        }
+        backgroundColor={COLORS.background}
       />
 
       <KeyboardAvoidingView
-        style={
-          styles.flex
-        }
+        style={styles.flex}
         behavior={
-          Platform.OS === 'ios'
-            ? 'padding'
-            : undefined
+          Platform.OS === 'ios' ? 'padding' : undefined
         }
       >
         <ScrollView
           keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={
-            false
-          }
+          showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
-              refreshing={
-                isRefreshing
-              }
-              onRefresh={
-                () =>
-                  void loadBlockedDates(true)
-              }
-              tintColor={
-                COLORS.navy
-              }
-              colors={[
-                COLORS.navy,
-              ]}
+              refreshing={isRefreshing}
+              onRefresh={() => void loadBlockedDates(true)}
+              tintColor={COLORS.navy}
+              colors={[COLORS.navy]}
             />
           }
-          contentContainerStyle={
-            styles.container
-          }
+          contentContainerStyle={styles.container}
         >
+          {/* TOP NAVIGATION */}
 
-          {/* ================================================================
-              TOP BAR
-              ================================================================ */}
-
-          <View
-            style={
-              styles.topBar
-            }
-          >
+          <View style={styles.topBar}>
             <TouchableOpacity
               activeOpacity={0.7}
               accessibilityRole="button"
               accessibilityLabel="Back to schedule"
-              onPress={
-                () =>
-                  router.replace(
-                    '/(shop-owner)/shop-owner/schedule',
-                  )
+              onPress={() =>
+                router.replace(
+                  '/(shop-owner)/shop-owner/schedule',
+                )
               }
-              style={
-                styles.topIconButton
-              }
+              style={styles.topIconButton}
             >
               <Ionicons
                 name="arrow-back"
                 size={22}
-                color={
-                  COLORS.navy
-                }
+                color={COLORS.navy}
               />
             </TouchableOpacity>
 
-            <View
-              style={
-                styles.topBarTitleBlock
-              }
-            >
-              <Text
-                style={
-                  styles.topBarTitle
-                }
-              >
+            <View style={styles.topBarTitleBlock}>
+              <Text style={styles.topBarTitle}>
                 Blocked dates
               </Text>
 
-              <Text
-                style={
-                  styles.topBarCaption
-                }
-              >
+              <Text style={styles.topBarCaption}>
                 Full-day shop closures
               </Text>
             </View>
@@ -753,71 +619,43 @@ export default function ShopOwnerBlockedDatesScreen() {
               activeOpacity={0.7}
               accessibilityRole="button"
               accessibilityLabel="Refresh blocked dates"
-              onPress={
-                () =>
-                  void loadBlockedDates(true)
-              }
-              style={
-                styles.topIconButton
-              }
+              onPress={() => void loadBlockedDates(true)}
+              style={styles.topIconButton}
             >
               <Ionicons
                 name="refresh-outline"
                 size={21}
-                color={
-                  COLORS.navy
-                }
+                color={COLORS.navy}
               />
             </TouchableOpacity>
           </View>
 
+          {/* HEADER */}
 
-          {/* ================================================================
-              HEADER
-              ================================================================ */}
-
-          <View
-            style={
-              styles.header
-            }
-          >
-            <Text
-              style={
-                styles.eyebrow
-              }
-            >
+          <View style={styles.header}>
+            <Text style={styles.eyebrow}>
               SPECIAL CLOSURES
             </Text>
 
-            <Text
-              style={
-                styles.title
-              }
-            >
-              Close your shop for holidays, leave, or special dates
+            <Text style={styles.title}>
+              Close your shop for holidays, leave, or
+              special dates
             </Text>
 
-            <Text
-              style={
-                styles.subtitle
-              }
-            >
-              A blocked date removes new customer availability for the full day while keeping your weekly schedule unchanged.
+            <Text style={styles.subtitle}>
+              A blocked date removes new customer
+              availability for the full day while keeping
+              your weekly schedule unchanged.
             </Text>
           </View>
 
-
-          {/* ================================================================
-              MESSAGES
-              ================================================================ */}
+          {/* STATUS MESSAGES */}
 
           {errorMessage ? (
             <MessageBox
               type="error"
               title="Blocked dates need attention"
-              message={
-                errorMessage
-              }
+              message={errorMessage}
             />
           ) : null}
 
@@ -825,193 +663,103 @@ export default function ShopOwnerBlockedDatesScreen() {
             <MessageBox
               type="success"
               title="Saved successfully"
-              message={
-                successMessage
-              }
+              message={successMessage}
             />
           ) : null}
 
-
-          {/* ================================================================
-              LOADING
-              ================================================================ */}
+          {/* LOADING */}
 
           {isLoading ? (
-            <View
-              style={
-                styles.loadingCard
-              }
-            >
-              <View
-                style={
-                  styles.loadingIcon
-                }
-              >
+            <View style={styles.loadingCard}>
+              <View style={styles.loadingIcon}>
                 <ActivityIndicator
                   size="small"
-                  color={
-                    COLORS.navy
-                  }
+                  color={COLORS.navy}
                 />
               </View>
 
-              <Text
-                style={
-                  styles.loadingTitle
-                }
-              >
+              <Text style={styles.loadingTitle}>
                 Loading blocked dates
               </Text>
 
-              <Text
-                style={
-                  styles.loadingText
-                }
-              >
-                Getting your upcoming full-day shop closures.
+              <Text style={styles.loadingText}>
+                Getting your upcoming full-day shop
+                closures.
               </Text>
             </View>
           ) : (
             <>
+              {/* OVERVIEW */}
 
-              {/* ============================================================
-                  OVERVIEW
-                  ============================================================ */}
-
-              <View
-                style={
-                  styles.overviewCard
-                }
-              >
-                <View
-                  style={
-                    styles.overviewHeader
-                  }
-                >
+              <View style={styles.overviewCard}>
+                <View style={styles.overviewHeader}>
                   <View>
-                    <Text
-                      style={
-                        styles.overviewLabel
-                      }
-                    >
+                    <Text style={styles.overviewLabel}>
                       Upcoming closures
                     </Text>
 
-                    <Text
-                      style={
-                        styles.overviewValue
-                      }
-                    >
+                    <Text style={styles.overviewValue}>
                       {upcomingBlockedDates.length}
                     </Text>
                   </View>
 
-                  <View
-                    style={
-                      styles.overviewIcon
-                    }
-                  >
+                  <View style={styles.overviewIcon}>
                     <Ionicons
                       name="calendar-clear-outline"
                       size={24}
-                      color={
-                        COLORS.white
-                      }
+                      color={COLORS.white}
                     />
                   </View>
                 </View>
 
-                <View
-                  style={
-                    styles.overviewStats
-                  }
-                >
+                <View style={styles.overviewStats}>
                   <OverviewStat
-                    value={
-                      upcomingBlockedDates.length
-                    }
+                    value={upcomingBlockedDates.length}
                     label="Upcoming"
                   />
 
-                  <View
-                    style={
-                      styles.overviewDivider
-                    }
-                  />
+                  <View style={styles.overviewDivider} />
 
                   <OverviewStat
-                    value={
-                      thisMonthCount
-                    }
+                    value={thisMonthCount}
                     label="This month"
                   />
 
-                  <View
-                    style={
-                      styles.overviewDivider
-                    }
-                  />
+                  <View style={styles.overviewDivider} />
 
                   <OverviewStat
-                    value={
-                      pastBlockedDates.length
-                    }
+                    value={pastBlockedDates.length}
                     label="Past"
                   />
                 </View>
               </View>
 
+              {/* BOOKING INFORMATION */}
 
-              {/* ============================================================
-                  INFO
-                  ============================================================ */}
-
-              <View
-                style={
-                  styles.infoCard
-                }
-              >
-                <View
-                  style={
-                    styles.infoIcon
-                  }
-                >
+              <View style={styles.infoCard}>
+                <View style={styles.infoIcon}>
                   <Ionicons
                     name="information-circle-outline"
                     size={20}
-                    color={
-                      COLORS.blue
-                    }
+                    color={COLORS.blue}
                   />
                 </View>
 
-                <View
-                  style={
-                    styles.infoContent
-                  }
-                >
-                  <Text
-                    style={
-                      styles.infoTitle
-                    }
-                  >
+                <View style={styles.infoContent}>
+                  <Text style={styles.infoTitle}>
                     Existing appointments stay recorded
                   </Text>
 
-                  <Text
-                    style={
-                      styles.infoText
-                    }
-                  >
-                    Blocking a date prevents new availability on that day. It does not automatically delete appointments that were already created.
+                  <Text style={styles.infoText}>
+                    Blocking a date prevents new
+                    availability on that day. It does
+                    not automatically delete appointments
+                    that were already created.
                   </Text>
                 </View>
               </View>
 
-
-              {/* ============================================================
-                  ADD / EDIT
-                  ============================================================ */}
+              {/* FORM SECTION */}
 
               <SectionHeading
                 title={
@@ -1025,76 +773,39 @@ export default function ShopOwnerBlockedDatesScreen() {
                     : 'Choose one calendar date when customers should not be able to book your shop.'
                 }
                 actionLabel={
-                  editingRecord
-                    ? 'Cancel edit'
-                    : undefined
+                  editingRecord ? 'Cancel edit' : undefined
                 }
                 onAction={
-                  editingRecord
-                    ? cancelEdit
-                    : undefined
+                  editingRecord ? cancelEdit : undefined
                 }
               />
 
-              <View
-                style={
-                  styles.formCard
-                }
-              >
-
+              <View style={styles.formCard}>
                 {/* DATE PREVIEW */}
 
-                <View
-                  style={
-                    styles.datePreview
-                  }
-                >
-                  <View
-                    style={
-                      styles.datePreviewCalendar
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.datePreviewMonth
-                      }
-                    >
+                <View style={styles.datePreview}>
+                  <View style={styles.datePreviewCalendar}>
+                    <Text style={styles.datePreviewMonth}>
                       {selectedDateValid
                         ? formatMonth(blockedDate.trim())
                         : 'DATE'}
                     </Text>
 
-                    <Text
-                      style={
-                        styles.datePreviewDay
-                      }
-                    >
+                    <Text style={styles.datePreviewDay}>
                       {selectedDateValid
                         ? formatDayNumber(blockedDate.trim())
                         : '--'}
                     </Text>
                   </View>
 
-                  <View
-                    style={
-                      styles.datePreviewContent
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.datePreviewTitle
-                      }
-                    >
+                  <View style={styles.datePreviewContent}>
+                    <Text style={styles.datePreviewTitle}>
                       {selectedDatePast
                         ? 'Past date'
                         : selectedWeekday}
                     </Text>
 
-                    <Text
-                      style={
-                        styles.datePreviewText
-                      }
-                    >
+                    <Text style={styles.datePreviewText}>
                       {selectedDateLabel}
                     </Text>
                   </View>
@@ -1102,7 +813,6 @@ export default function ShopOwnerBlockedDatesScreen() {
                   <View
                     style={[
                       styles.dateStatusBadge,
-
                       selectedDatePast
                         ? styles.dateStatusPast
                         : styles.dateStatusUpcoming,
@@ -1111,7 +821,6 @@ export default function ShopOwnerBlockedDatesScreen() {
                     <Text
                       style={[
                         styles.dateStatusText,
-
                         selectedDatePast
                           ? styles.dateStatusTextPast
                           : styles.dateStatusTextUpcoming,
@@ -1126,208 +835,136 @@ export default function ShopOwnerBlockedDatesScreen() {
                   </View>
                 </View>
 
+                {/* DATE INPUT */}
 
-                {/* DATE */}
-
-                <View
-                  style={
-                    styles.fieldHeader
-                  }
-                >
-                  <Text
-                    style={
-                      styles.fieldLabel
-                    }
-                  >
+                <View style={styles.fieldHeader}>
+                  <Text style={styles.fieldLabel}>
                     Closure date
                   </Text>
 
-                  <Text
-                    style={
-                      styles.fieldHint
-                    }
-                  >
+                  <Text style={styles.fieldHint}>
                     YYYY-MM-DD
                   </Text>
                 </View>
 
-                <View
-                  style={
-                    styles.dateInputShell
-                  }
-                >
+                <View style={styles.dateInputShell}>
                   <Ionicons
                     name="calendar-outline"
                     size={19}
-                    color={
-                      COLORS.textMuted
-                    }
+                    color={COLORS.textMuted}
                   />
 
                   <TextInput
-                    value={
-                      blockedDate
-                    }
-                    onChangeText={
-                      (value) => {
-                        setBlockedDate(value);
-                        clearMessages();
-                      }
-                    }
+                    value={blockedDate}
+                    onChangeText={(value) => {
+                      setBlockedDate(value);
+                      clearMessages();
+                    }}
                     editable={
-                      !isSaving
-                      && deletingId === null
+                      !isSaving && deletingId === null
                     }
                     autoCapitalize="none"
                     autoCorrect={false}
                     keyboardType="numbers-and-punctuation"
                     maxLength={10}
                     placeholder="2026-12-25"
-                    placeholderTextColor={
-                      COLORS.textLight
-                    }
-                    selectionColor={
-                      COLORS.navy
-                    }
-                    style={
-                      styles.dateInput
-                    }
+                    placeholderTextColor={COLORS.textLight}
+                    selectionColor={COLORS.navy}
+                    style={styles.dateInput}
                   />
                 </View>
 
-
                 {/* QUICK DATES */}
 
-                <Text
-                  style={
-                    styles.quickLabel
-                  }
-                >
+                <Text style={styles.quickLabel}>
                   Quick dates
                 </Text>
 
-                <View
-                  style={
-                    styles.quickDates
-                  }
-                >
-                  {QUICK_DATE_OPTIONS.map(
-                    (option) => {
-                      const optionDate =
-                        dateFromToday(option.days);
+                <View style={styles.quickDates}>
+                  {QUICK_DATE_OPTIONS.map((option) => {
+                    const optionDate = dateFromToday(
+                      option.days,
+                    );
 
-                      const selected =
-                        blockedDate.trim() === optionDate;
+                    const selected =
+                      blockedDate.trim() === optionDate;
 
-                      return (
-                        <TouchableOpacity
-                          key={
-                            option.label
-                          }
-                          activeOpacity={0.78}
-                          disabled={
-                            isSaving
-                            || deletingId !== null
-                          }
-                          accessibilityRole="button"
-                          accessibilityState={{
-                            selected,
-
-                            disabled:
-                              isSaving
-                              || deletingId !== null,
-                          }}
-                          onPress={
-                            () =>
-                              chooseQuickDate(option.days)
-                          }
+                    return (
+                      <TouchableOpacity
+                        key={option.label}
+                        activeOpacity={0.78}
+                        disabled={
+                          isSaving ||
+                          deletingId !== null
+                        }
+                        accessibilityRole="button"
+                        accessibilityState={{
+                          selected,
+                          disabled:
+                            isSaving ||
+                            deletingId !== null,
+                        }}
+                        onPress={() =>
+                          chooseQuickDate(option.days)
+                        }
+                        style={[
+                          styles.quickDateButton,
+                          selected &&
+                            styles.quickDateButtonSelected,
+                        ]}
+                      >
+                        <Text
                           style={[
-                            styles.quickDateButton,
-
-                            selected
-                            && styles.quickDateButtonSelected,
+                            styles.quickDateText,
+                            selected &&
+                              styles.quickDateTextSelected,
                           ]}
                         >
-                          <Text
-                            style={[
-                              styles.quickDateText,
-
-                              selected
-                              && styles.quickDateTextSelected,
-                            ]}
-                          >
-                            {option.label}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    },
-                  )}
+                          {option.label}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
-
 
                 {/* REASON */}
 
-                <View
-                  style={
-                    styles.reasonHeader
-                  }
-                >
-                  <Text
-                    style={
-                      styles.fieldLabel
-                    }
-                  >
+                <View style={styles.reasonHeader}>
+                  <Text style={styles.fieldLabel}>
                     Reason
                   </Text>
 
-                  <Text
-                    style={
-                      styles.optionalText
-                    }
-                  >
+                  <Text style={styles.optionalText}>
                     Optional · {reason.length}/255
                   </Text>
                 </View>
 
                 <TextInput
-                  value={
-                    reason
-                  }
-                  onChangeText={
-                    (value) => {
-                      if (value.length <= 255) {
-                        setReason(value);
-                        clearMessages();
-                      }
+                  value={reason}
+                  onChangeText={(value) => {
+                    if (value.length <= 255) {
+                      setReason(value);
+                      clearMessages();
                     }
-                  }
+                  }}
                   editable={
-                    !isSaving
-                    && deletingId === null
+                    !isSaving && deletingId === null
                   }
                   multiline
                   textAlignVertical="top"
                   autoCapitalize="sentences"
                   placeholder="Example: Christmas Day, staff leave, maintenance, or shop event"
-                  placeholderTextColor={
-                    COLORS.textLight
-                  }
-                  selectionColor={
-                    COLORS.navy
-                  }
-                  style={
-                    styles.reasonInput
-                  }
+                  placeholderTextColor={COLORS.textLight}
+                  selectionColor={COLORS.navy}
+                  style={styles.reasonInput}
                 />
 
-
-                {/* SAVE */}
+                {/* SAVE BLOCKED DATE */}
 
                 <TouchableOpacity
                   activeOpacity={0.84}
                   disabled={
-                    isSaving
-                    || deletingId !== null
+                    isSaving || deletingId !== null
                   }
                   accessibilityRole="button"
                   accessibilityLabel={
@@ -1335,26 +972,18 @@ export default function ShopOwnerBlockedDatesScreen() {
                       ? 'Save blocked date changes'
                       : 'Add blocked date'
                   }
-                  onPress={
-                    () =>
-                      void handleSave()
-                  }
+                  onPress={() => void handleSave()}
                   style={[
                     styles.primaryButton,
-
-                    (
-                      isSaving
-                      || deletingId !== null
-                    )
-                    && styles.disabledButton,
+                    (isSaving ||
+                      deletingId !== null) &&
+                      styles.disabledButton,
                   ]}
                 >
                   {isSaving ? (
                     <ActivityIndicator
                       size="small"
-                      color={
-                        COLORS.white
-                      }
+                      color={COLORS.white}
                     />
                   ) : (
                     <Ionicons
@@ -1364,17 +993,11 @@ export default function ShopOwnerBlockedDatesScreen() {
                           : 'add-circle-outline'
                       }
                       size={19}
-                      color={
-                        COLORS.white
-                      }
+                      color={COLORS.white}
                     />
                   )}
 
-                  <Text
-                    style={
-                      styles.primaryButtonText
-                    }
-                  >
+                  <Text style={styles.primaryButtonText}>
                     {isSaving
                       ? 'Saving blocked date...'
                       : editingRecord
@@ -1384,10 +1007,7 @@ export default function ShopOwnerBlockedDatesScreen() {
                 </TouchableOpacity>
               </View>
 
-
-              {/* ============================================================
-                  UPCOMING DATES
-                  ============================================================ */}
+              {/* UPCOMING CLOSURES */}
 
               <SectionHeading
                 title="Upcoming closures"
@@ -1403,88 +1023,49 @@ export default function ShopOwnerBlockedDatesScreen() {
               />
 
               {upcomingBlockedDates.length === 0 ? (
-                <View
-                  style={
-                    styles.emptyCard
-                  }
-                >
-                  <View
-                    style={
-                      styles.emptyIcon
-                    }
-                  >
+                <View style={styles.emptyCard}>
+                  <View style={styles.emptyIcon}>
                     <Ionicons
                       name="calendar-outline"
                       size={28}
-                      color={
-                        COLORS.navy
-                      }
+                      color={COLORS.navy}
                     />
                   </View>
 
-                  <Text
-                    style={
-                      styles.emptyTitle
-                    }
-                  >
+                  <Text style={styles.emptyTitle}>
                     No upcoming closures
                   </Text>
 
-                  <Text
-                    style={
-                      styles.emptyText
-                    }
-                  >
-                    Your weekly business hours remain available unless another booking rule or break period blocks them.
+                  <Text style={styles.emptyText}>
+                    Your weekly business hours remain
+                    available unless another booking rule
+                    or break period blocks them.
                   </Text>
                 </View>
               ) : (
-                <View
-                  style={
-                    styles.dateList
-                  }
-                >
-                  {upcomingBlockedDates.map(
-                    (item) => (
-                      <BlockedDateCard
-                        key={
-                          item.id
-                        }
-                        item={
-                          item
-                        }
-                        past={false}
-                        isEditing={
-                          selectedId === item.id
-                        }
-                        isDeleting={
-                          deletingId === item.id
-                        }
-                        disabled={
-                          isSaving
-                          || (
-                            deletingId !== null
-                            && deletingId !== item.id
-                          )
-                        }
-                        onEdit={
-                          () =>
-                            beginEdit(item)
-                        }
-                        onDelete={
-                          () =>
-                            confirmDelete(item)
-                        }
-                      />
-                    ),
-                  )}
+                <View style={styles.dateList}>
+                  {upcomingBlockedDates.map((item) => (
+                    <BlockedDateCard
+                      key={item.id}
+                      item={item}
+                      past={false}
+                      isEditing={selectedId === item.id}
+                      isDeleting={deletingId === item.id}
+                      disabled={
+                        isSaving ||
+                        (deletingId !== null &&
+                          deletingId !== item.id)
+                      }
+                      onEdit={() => beginEdit(item)}
+                      onDelete={() =>
+                        confirmDelete(item)
+                      }
+                    />
+                  ))}
                 </View>
               )}
 
-
-              {/* ============================================================
-                  PAST DATES
-                  ============================================================ */}
+              {/* PAST CLOSURES */}
 
               {pastBlockedDates.length > 0 ? (
                 <>
@@ -1493,91 +1074,49 @@ export default function ShopOwnerBlockedDatesScreen() {
                     subtitle="Past dates are kept for reference. They can be removed, but they can no longer be edited into another past date."
                   />
 
-                  <View
-                    style={
-                      styles.dateList
-                    }
-                  >
-                    {pastBlockedDates.map(
-                      (item) => (
-                        <BlockedDateCard
-                          key={
-                            item.id
-                          }
-                          item={
-                            item
-                          }
-                          past
-                          isEditing={false}
-                          isDeleting={
-                            deletingId === item.id
-                          }
-                          disabled={
-                            isSaving
-                            || (
-                              deletingId !== null
-                              && deletingId !== item.id
-                            )
-                          }
-                          onDelete={
-                            () =>
-                              confirmDelete(item)
-                          }
-                        />
-                      ),
-                    )}
+                  <View style={styles.dateList}>
+                    {pastBlockedDates.map((item) => (
+                      <BlockedDateCard
+                        key={item.id}
+                        item={item}
+                        past
+                        isEditing={false}
+                        isDeleting={deletingId === item.id}
+                        disabled={
+                          isSaving ||
+                          (deletingId !== null &&
+                            deletingId !== item.id)
+                        }
+                        onDelete={() =>
+                          confirmDelete(item)
+                        }
+                      />
+                    ))}
                   </View>
                 </>
               ) : null}
 
+              {/* BREAK PERIODS NAVIGATION */}
 
-              {/* ============================================================
-                  RELATED TOOL
-                  ============================================================ */}
-
-              <View
-                style={
-                  styles.relatedCard
-                }
-              >
-                <View
-                  style={
-                    styles.relatedHeader
-                  }
-                >
-                  <View
-                    style={
-                      styles.relatedIcon
-                    }
-                  >
+              <View style={styles.relatedCard}>
+                <View style={styles.relatedHeader}>
+                  <View style={styles.relatedIcon}>
                     <Ionicons
                       name="cafe-outline"
                       size={20}
-                      color={
-                        COLORS.navy
-                      }
+                      color={COLORS.navy}
                     />
                   </View>
 
-                  <View
-                    style={
-                      styles.relatedContent
-                    }
-                  >
-                    <Text
-                      style={
-                        styles.relatedTitle
-                      }
-                    >
+                  <View style={styles.relatedContent}>
+                    <Text style={styles.relatedTitle}>
                       Only unavailable for part of the day?
                     </Text>
 
-                    <Text
-                      style={
-                        styles.relatedText
-                      }
-                    >
-                      Use Break Periods for recurring lunch, cleaning, rest, or other unavailable time instead of closing the whole date.
+                    <Text style={styles.relatedText}>
+                      Use Break Periods for recurring lunch,
+                      cleaning, rest, or other unavailable
+                      time instead of closing the whole date.
                     </Text>
                   </View>
                 </View>
@@ -1585,30 +1124,21 @@ export default function ShopOwnerBlockedDatesScreen() {
                 <TouchableOpacity
                   activeOpacity={0.8}
                   accessibilityRole="button"
-                  onPress={
-                    () =>
-                      router.push(
-                        '/(shop-owner)/shop-owner/break-periods',
-                      )
+                  onPress={() =>
+                    router.push(
+                      '/(shop-owner)/shop-owner/break-periods',
+                    )
                   }
-                  style={
-                    styles.relatedButton
-                  }
+                  style={styles.relatedButton}
                 >
-                  <Text
-                    style={
-                      styles.relatedButtonText
-                    }
-                  >
+                  <Text style={styles.relatedButtonText}>
                     Open break periods
                   </Text>
 
                   <Ionicons
                     name="arrow-forward"
                     size={17}
-                    color={
-                      COLORS.navy
-                    }
+                    color={COLORS.navy}
                   />
                 </TouchableOpacity>
               </View>
@@ -1616,10 +1146,95 @@ export default function ShopOwnerBlockedDatesScreen() {
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      {/* ==================================================
+          SHARED STYLEHUB MODAL
+
+          Red: Remove blocked date
+          Green: Successful removal
+          ================================================== */}
+
+      <StyleHubModal
+        visible={
+          deleteTarget !== null || deleteSuccessVisible
+        }
+        onClose={closeDeleteModal}
+        title={
+          deleteSuccessVisible
+            ? 'Blocked date removed'
+            : 'Remove blocked date?'
+        }
+        message={
+          deleteSuccessVisible
+            ? successMessage
+            : deleteTarget
+              ? isPastDate(deleteTarget.blocked_date)
+                ? `Remove ${formatDisplayDate(
+                    deleteTarget.blocked_date,
+                  )} from your closure history? This will not change past appointments.`
+                : `${formatDisplayDate(
+                    deleteTarget.blocked_date,
+                  )} will become available again unless another booking rule prevents it.`
+              : 'This date will no longer be blocked.'
+        }
+        tone={
+          deleteSuccessVisible ? 'success' : 'danger'
+        }
+        icon={
+          deleteSuccessVisible
+            ? 'checkmark-circle-outline'
+            : 'trash-outline'
+        }
+        dismissOnBackdrop={false}
+        actions={
+          deleteSuccessVisible
+            ? [
+                {
+                  label: 'Done',
+                  variant: 'primary',
+                  icon: 'checkmark-outline',
+                  onPress: closeDeleteModal,
+                },
+              ]
+            : [
+                {
+                  label: 'Keep date',
+                  variant: 'secondary',
+                  onPress: closeDeleteModal,
+                },
+                {
+                  label: 'Remove date',
+                  variant: 'danger',
+                  icon: 'trash-outline',
+                  loading: deletingId !== null,
+                  onPress: () => void handleDelete(),
+                },
+              ]
+        }
+      >
+        {/* LARAVEL ERROR INSIDE MODAL */}
+
+        {!deleteSuccessVisible && deleteModalError ? (
+          <View style={styles.deleteModalError}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={17}
+              color={COLORS.danger}
+            />
+
+            <Text style={styles.deleteModalErrorText}>
+              {deleteModalError}
+            </Text>
+          </View>
+        ) : null}
+      </StyleHubModal>
     </SafeAreaView>
   );
 }
 
+/* ==========================================================
+   SECTION HEADING
+   ========================================================== */
 
 function SectionHeading({
   title,
@@ -1633,29 +1248,13 @@ function SectionHeading({
   onAction?: () => void;
 }) {
   return (
-    <View
-      style={
-        styles.sectionHeading
-      }
-    >
-      <View
-        style={
-          styles.sectionHeadingCopy
-        }
-      >
-        <Text
-          style={
-            styles.sectionTitle
-          }
-        >
+    <View style={styles.sectionHeading}>
+      <View style={styles.sectionHeadingCopy}>
+        <Text style={styles.sectionTitle}>
           {title}
         </Text>
 
-        <Text
-          style={
-            styles.sectionSubtitle
-          }
-        >
+        <Text style={styles.sectionSubtitle}>
           {subtitle}
         </Text>
       </View>
@@ -1664,18 +1263,10 @@ function SectionHeading({
         <TouchableOpacity
           activeOpacity={0.72}
           accessibilityRole="button"
-          onPress={
-            onAction
-          }
-          style={
-            styles.sectionAction
-          }
+          onPress={onAction}
+          style={styles.sectionAction}
         >
-          <Text
-            style={
-              styles.sectionActionText
-            }
-          >
+          <Text style={styles.sectionActionText}>
             {actionLabel}
           </Text>
         </TouchableOpacity>
@@ -1684,6 +1275,9 @@ function SectionHeading({
   );
 }
 
+/* ==========================================================
+   OVERVIEW STAT
+   ========================================================== */
 
 function OverviewStat({
   value,
@@ -1693,30 +1287,21 @@ function OverviewStat({
   label: string;
 }) {
   return (
-    <View
-      style={
-        styles.overviewStat
-      }
-    >
-      <Text
-        style={
-          styles.overviewStatValue
-        }
-      >
+    <View style={styles.overviewStat}>
+      <Text style={styles.overviewStatValue}>
         {value}
       </Text>
 
-      <Text
-        style={
-          styles.overviewStatLabel
-        }
-      >
+      <Text style={styles.overviewStatLabel}>
         {label}
       </Text>
     </View>
   );
 }
 
+/* ==========================================================
+   BLOCKED DATE CARD
+   ========================================================== */
 
 function BlockedDateCard({
   item,
@@ -1739,161 +1324,76 @@ function BlockedDateCard({
     <View
       style={[
         styles.dateCard,
-
-        past
-        && styles.dateCardPast,
-
-        isEditing
-        && styles.dateCardEditing,
+        past && styles.dateCardPast,
+        isEditing && styles.dateCardEditing,
       ]}
     >
-      <View
-        style={
-          styles.dateCardTopRow
-        }
-      >
-        <View
-          style={
-            styles.calendarBadge
-          }
-        >
-          <Text
-            style={
-              styles.calendarMonth
-            }
-          >
-            {formatMonth(
-              item.blocked_date,
-            )}
+      <View style={styles.dateCardTopRow}>
+        <View style={styles.calendarBadge}>
+          <Text style={styles.calendarMonth}>
+            {formatMonth(item.blocked_date)}
           </Text>
 
-          <Text
-            style={
-              styles.calendarDay
-            }
-          >
-            {formatDayNumber(
-              item.blocked_date,
-            )}
+          <Text style={styles.calendarDay}>
+            {formatDayNumber(item.blocked_date)}
           </Text>
         </View>
 
-        <View
-          style={
-            styles.dateCardIdentity
-          }
-        >
-          <View
-            style={
-              styles.dateCardTitleRow
-            }
-          >
+        <View style={styles.dateCardIdentity}>
+          <View style={styles.dateCardTitleRow}>
             <Text
-              style={
-                styles.dateCardTitle
-              }
+              style={styles.dateCardTitle}
               numberOfLines={1}
             >
-              {item.reason?.trim()
-              || 'Shop closed'}
+              {item.reason?.trim() || 'Shop closed'}
             </Text>
 
             {isEditing ? (
-              <View
-                style={
-                  styles.editingBadge
-                }
-              >
-                <Text
-                  style={
-                    styles.editingBadgeText
-                  }
-                >
+              <View style={styles.editingBadge}>
+                <Text style={styles.editingBadgeText}>
                   Editing
                 </Text>
               </View>
             ) : past ? (
-              <View
-                style={
-                  styles.pastBadge
-                }
-              >
-                <Text
-                  style={
-                    styles.pastBadgeText
-                  }
-                >
+              <View style={styles.pastBadge}>
+                <Text style={styles.pastBadgeText}>
                   Past
                 </Text>
               </View>
             ) : isToday(item.blocked_date) ? (
-              <View
-                style={
-                  styles.todayBadge
-                }
-              >
-                <Text
-                  style={
-                    styles.todayBadgeText
-                  }
-                >
+              <View style={styles.todayBadge}>
+                <Text style={styles.todayBadgeText}>
                   Today
                 </Text>
               </View>
             ) : null}
           </View>
 
-          <Text
-            style={
-              styles.dateCardDate
-            }
-          >
-            {formatDisplayDate(
-              item.blocked_date,
-            )}
+          <Text style={styles.dateCardDate}>
+            {formatDisplayDate(item.blocked_date)}
           </Text>
         </View>
       </View>
 
-      <View
-        style={
-          styles.dateImpactPanel
-        }
-      >
-        <View
-          style={
-            styles.dateImpactIcon
-          }
-        >
+      {/* CLOSURE DESCRIPTION */}
+
+      <View style={styles.dateImpactPanel}>
+        <View style={styles.dateImpactIcon}>
           <Ionicons
             name="ban-outline"
             size={18}
             color={
-              past
-                ? COLORS.textMuted
-                : COLORS.orange
+              past ? COLORS.textMuted : COLORS.orange
             }
           />
         </View>
 
-        <View
-          style={
-            styles.dateImpactContent
-          }
-        >
-          <Text
-            style={
-              styles.dateImpactTitle
-            }
-          >
+        <View style={styles.dateImpactContent}>
+          <Text style={styles.dateImpactTitle}>
             Full-day closure
           </Text>
 
-          <Text
-            style={
-              styles.dateImpactText
-            }
-          >
+          <Text style={styles.dateImpactText}>
             {past
               ? 'This date has already passed.'
               : 'New customer time slots are unavailable for the entire date.'}
@@ -1901,45 +1401,28 @@ function BlockedDateCard({
         </View>
       </View>
 
-      <View
-        style={
-          styles.dateActions
-        }
-      >
+      {/* ACTION BUTTONS */}
+
+      <View style={styles.dateActions}>
         {!past && onEdit ? (
           <TouchableOpacity
             activeOpacity={0.78}
-            disabled={
-              disabled
-              || isDeleting
-            }
+            disabled={disabled || isDeleting}
             accessibilityRole="button"
-            onPress={
-              onEdit
-            }
+            onPress={onEdit}
             style={[
               styles.editButton,
-
-              (
-                disabled
-                || isDeleting
-              )
-              && styles.disabledButton,
+              (disabled || isDeleting) &&
+                styles.disabledButton,
             ]}
           >
             <Ionicons
               name="create-outline"
               size={17}
-              color={
-                COLORS.navy
-              }
+              color={COLORS.navy}
             />
 
-            <Text
-              style={
-                styles.editButtonText
-              }
-            >
+            <Text style={styles.editButtonText}>
               Edit
             </Text>
           </TouchableOpacity>
@@ -1947,52 +1430,31 @@ function BlockedDateCard({
 
         <TouchableOpacity
           activeOpacity={0.78}
-          disabled={
-            disabled
-            || isDeleting
-          }
+          disabled={disabled || isDeleting}
           accessibilityRole="button"
-          onPress={
-            onDelete
-          }
+          onPress={onDelete}
           style={[
             styles.removeButton,
-
-            past
-            && styles.removeButtonFull,
-
-            (
-              disabled
-              || isDeleting
-            )
-            && styles.disabledButton,
+            past && styles.removeButtonFull,
+            (disabled || isDeleting) &&
+              styles.disabledButton,
           ]}
         >
           {isDeleting ? (
             <ActivityIndicator
               size="small"
-              color={
-                COLORS.danger
-              }
+              color={COLORS.danger}
             />
           ) : (
             <Ionicons
               name="trash-outline"
               size={17}
-              color={
-                COLORS.danger
-              }
+              color={COLORS.danger}
             />
           )}
 
-          <Text
-            style={
-              styles.removeButtonText
-            }
-          >
-            {isDeleting
-              ? 'Removing...'
-              : 'Remove'}
+          <Text style={styles.removeButtonText}>
+            {isDeleting ? 'Removing...' : 'Remove'}
           </Text>
         </TouchableOpacity>
       </View>
@@ -2000,6 +1462,9 @@ function BlockedDateCard({
   );
 }
 
+/* ==========================================================
+   MESSAGE BOX
+   ========================================================== */
 
 function MessageBox({
   type,
@@ -2010,27 +1475,20 @@ function MessageBox({
   title: string;
   message: string;
 }) {
-  const success =
-    type === 'success';
+  const success = type === 'success';
 
   return (
     <View
       style={[
         styles.messageBox,
-
         {
-          backgroundColor:
-            success
-              ? COLORS.successSoft
-              : COLORS.dangerSoft,
+          backgroundColor: success
+            ? COLORS.successSoft
+            : COLORS.dangerSoft,
         },
       ]}
     >
-      <View
-        style={
-          styles.messageIcon
-        }
-      >
+      <View style={styles.messageIcon}>
         <Ionicons
           name={
             success
@@ -2039,38 +1497,26 @@ function MessageBox({
           }
           size={20}
           color={
-            success
-              ? COLORS.success
-              : COLORS.danger
+            success ? COLORS.success : COLORS.danger
           }
         />
       </View>
 
-      <View
-        style={
-          styles.messageContent
-        }
-      >
+      <View style={styles.messageContent}>
         <Text
           style={[
             styles.messageTitle,
-
             {
-              color:
-                success
-                  ? COLORS.success
-                  : COLORS.danger,
+              color: success
+                ? COLORS.success
+                : COLORS.danger,
             },
           ]}
         >
           {title}
         </Text>
 
-        <Text
-          style={
-            styles.messageText
-          }
-        >
+        <Text style={styles.messageText}>
           {message}
         </Text>
       </View>
@@ -2078,6 +1524,9 @@ function MessageBox({
   );
 }
 
+/* ==========================================================
+   COMPLETE SCREEN STYLES
+   ========================================================== */
 
 const styles = StyleSheet.create({
   safeArea: {
@@ -2097,6 +1546,8 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.sm,
     paddingBottom: 48,
   },
+
+  /* TOP BAR */
 
   topBar: {
     minHeight: 48,
@@ -2131,6 +1582,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  /* HEADER */
+
   header: {
     marginTop: SPACING.lg,
   },
@@ -2159,6 +1612,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.body,
     lineHeight: 21,
   },
+
+  /* MESSAGES */
 
   messageBox: {
     marginTop: SPACING.lg,
@@ -2193,6 +1648,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 18,
   },
+
+  /* LOADING */
 
   loadingCard: {
     marginTop: SPACING.xl,
@@ -2229,6 +1686,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
     textAlign: 'center',
   },
+
+  /* OVERVIEW */
 
   overviewCard: {
     marginTop: SPACING.xl,
@@ -2299,6 +1758,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.navyMuted,
   },
 
+  /* INFORMATION */
+
   infoCard: {
     marginTop: 12,
     flexDirection: 'row',
@@ -2336,6 +1797,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 18,
   },
+
+  /* SECTION HEADINGS */
 
   sectionHeading: {
     marginTop: SPACING.xxl,
@@ -2379,6 +1842,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.micro,
     fontWeight: '800',
   },
+
+  /* FORM */
 
   formCard: {
     padding: 16,
@@ -2474,6 +1939,8 @@ const styles = StyleSheet.create({
     color: COLORS.textMuted,
   },
 
+  /* DATE INPUT */
+
   fieldHeader: {
     marginTop: 18,
     marginBottom: 8,
@@ -2515,6 +1982,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
+  /* QUICK DATE SELECTION */
+
   quickLabel: {
     marginTop: 13,
     marginBottom: 8,
@@ -2555,6 +2024,8 @@ const styles = StyleSheet.create({
     color: COLORS.white,
   },
 
+  /* REASON INPUT */
+
   reasonHeader: {
     marginTop: 18,
     marginBottom: 8,
@@ -2583,6 +2054,8 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
+  /* SAVE BUTTON */
+
   primaryButton: {
     minHeight: LAYOUT.buttonHeight,
     marginTop: 16,
@@ -2604,6 +2077,8 @@ const styles = StyleSheet.create({
   disabledButton: {
     opacity: 0.5,
   },
+
+  /* EMPTY STATE */
 
   emptyCard: {
     alignItems: 'center',
@@ -2639,6 +2114,8 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     textAlign: 'center',
   },
+
+  /* BLOCKED DATE LIST */
 
   dateList: {
     gap: 12,
@@ -2769,6 +2246,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
+  /* CLOSURE IMPACT */
+
   dateImpactPanel: {
     marginTop: 14,
     flexDirection: 'row',
@@ -2804,6 +2283,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.micro,
     lineHeight: 16,
   },
+
+  /* CARD ACTIONS */
 
   dateActions: {
     marginTop: 14,
@@ -2855,6 +2336,27 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.secondary,
     fontWeight: '800',
   },
+
+  /* SHARED MODAL ERROR */
+
+  deleteModalError: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: 11,
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.dangerSoft,
+  },
+
+  deleteModalErrorText: {
+    flex: 1,
+    color: COLORS.danger,
+    fontSize: TYPOGRAPHY.caption,
+    lineHeight: 18,
+  },
+
+  /* RELATED FEATURE */
 
   relatedCard: {
     marginTop: SPACING.xxl,

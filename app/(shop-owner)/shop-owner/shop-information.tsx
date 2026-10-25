@@ -1,3 +1,4 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import { router, useFocusEffect } from 'expo-router';
 import type { ComponentProps } from 'react';
@@ -7,7 +8,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -16,6 +16,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { COLORS } from '@/src/constants/colors';
 import {
@@ -70,9 +71,7 @@ function phoneForInput(
   return cleaned;
 }
 
-function shopToForm(
-  shop: ShopOwnerShop,
-): ShopFormState {
+function shopToForm(shop: ShopOwnerShop): ShopFormState {
   return {
     name: shop.name,
     type: shop.type,
@@ -85,9 +84,7 @@ function shopToForm(
   };
 }
 
-function formFingerprint(
-  form: ShopFormState,
-): string {
+function formFingerprint(form: ShopFormState): string {
   return JSON.stringify({
     name: form.name.trim(),
     type: form.type,
@@ -100,9 +97,7 @@ function formFingerprint(
   });
 }
 
-function formatDate(
-  value: string | null,
-): string | null {
+function formatDate(value: string | null): string | null {
   if (!value) {
     return null;
   }
@@ -123,9 +118,7 @@ function formatDate(
   }
 }
 
-function approvalPresentation(
-  shop: ShopOwnerShop,
-): {
+function approvalPresentation(shop: ShopOwnerShop): {
   icon: IconName;
   background: string;
   color: string;
@@ -165,10 +158,10 @@ export default function ShopOwnerShopInformationScreen() {
   const [errorMessage, setErrorMessage] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
 
+  /* LOAD SHOP INFORMATION */
+
   const loadShop = useCallback(
-    async (
-      refreshing = false,
-    ): Promise<void> => {
+    async (refreshing = false): Promise<void> => {
       if (!token) {
         setIsLoading(false);
         setIsRefreshing(false);
@@ -210,27 +203,31 @@ export default function ShopOwnerShopInformationScreen() {
     }, [loadShop]),
   );
 
+  /* FORM STATE */
+
   const savedForm = useMemo(
     () => (shop ? shopToForm(shop) : null),
     [shop],
   );
 
   const isDirty = useMemo(
-    () => Boolean(
-      savedForm
-      && formFingerprint(savedForm) !== formFingerprint(form)
-    ),
+    () =>
+      Boolean(
+        savedForm &&
+          formFingerprint(savedForm) !== formFingerprint(form),
+      ),
     [form, savedForm],
   );
 
   const fullAddress = useMemo(
-    () => [
-      form.address.trim(),
-      form.city.trim(),
-      form.province.trim(),
-    ]
-      .filter(Boolean)
-      .join(', '),
+    () =>
+      [
+        form.address.trim(),
+        form.city.trim(),
+        form.province.trim(),
+      ]
+        .filter(Boolean)
+        .join(', '),
     [form.address, form.city, form.province],
   );
 
@@ -257,6 +254,8 @@ export default function ShopOwnerShopInformationScreen() {
     setSuccessMessage('');
   }
 
+  /* VALIDATION */
+
   function validate(): string | null {
     if (form.name.trim().length < 2) {
       return 'Shop name must contain at least 2 characters.';
@@ -267,8 +266,8 @@ export default function ShopOwnerShopInformationScreen() {
     }
 
     if (
-      form.email.trim()
-      && !/^\S+@\S+\.\S+$/.test(form.email.trim())
+      form.email.trim() &&
+      !/^\S+@\S+\.\S+$/.test(form.email.trim())
     ) {
       return 'Enter a valid shop email address.';
     }
@@ -287,6 +286,8 @@ export default function ShopOwnerShopInformationScreen() {
 
     return null;
   }
+
+  /* SAVE SHOP INFORMATION */
 
   async function handleSave(): Promise<void> {
     if (!token || isSaving) {
@@ -322,9 +323,10 @@ export default function ShopOwnerShopInformationScreen() {
 
       setShop(response.data.shop);
       setForm(shopToForm(response.data.shop));
+
       setSuccessMessage(
-        response.message
-        ?? 'Shop information updated successfully.',
+        response.message ??
+          'Shop information updated successfully.',
       );
     } catch (error) {
       setErrorMessage(
@@ -337,12 +339,18 @@ export default function ShopOwnerShopInformationScreen() {
     }
   }
 
+  /* LOADING SCREEN */
+
   if (isLoading && !shop) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView
+        edges={['top', 'bottom']}
+        style={styles.safeArea}
+      >
         <StatusBar
           barStyle="dark-content"
           backgroundColor={COLORS.background}
+          translucent={false}
         />
 
         <View style={styles.loadingContainer}>
@@ -365,12 +373,18 @@ export default function ShopOwnerShopInformationScreen() {
     );
   }
 
+  /* UNAVAILABLE SCREEN */
+
   if (!shop) {
     return (
-      <SafeAreaView style={styles.safeArea}>
+      <SafeAreaView
+        edges={['top', 'bottom']}
+        style={styles.safeArea}
+      >
         <StatusBar
           barStyle="dark-content"
           backgroundColor={COLORS.background}
+          translucent={false}
         />
 
         <View style={styles.unavailableContainer}>
@@ -402,7 +416,8 @@ export default function ShopOwnerShopInformationScreen() {
             </Text>
 
             <Text style={styles.unavailableText}>
-              {errorMessage || 'Unable to display your shop profile.'}
+              {errorMessage ||
+                'Unable to display your shop profile.'}
             </Text>
           </View>
         </View>
@@ -414,11 +429,17 @@ export default function ShopOwnerShopInformationScreen() {
   const reviewedDate = formatDate(shop.reviewed_at);
   const updatedDate = formatDate(shop.updated_at);
 
+  /* MAIN SCREEN */
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView
+      edges={['top', 'bottom']}
+      style={styles.safeArea}
+    >
       <StatusBar
         barStyle="dark-content"
         backgroundColor={COLORS.background}
+        translucent={false}
       />
 
       <KeyboardAvoidingView
@@ -438,6 +459,8 @@ export default function ShopOwnerShopInformationScreen() {
           }
           contentContainerStyle={styles.container}
         >
+          {/* TOP NAVIGATION */}
+
           <View style={styles.topBar}>
             <TouchableOpacity
               activeOpacity={0.7}
@@ -483,19 +506,26 @@ export default function ShopOwnerShopInformationScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* PAGE HEADER */}
+
           <View style={styles.header}>
             <Text style={styles.eyebrow}>
               BUSINESS PROFILE
             </Text>
 
             <Text style={styles.title}>
-              Keep the details customers use to recognize and contact your shop
+              Keep the details customers use to recognize and
+              contact your shop
             </Text>
 
             <Text style={styles.subtitle}>
-              Update the public business name, shop type, description, contact information, and written address shown across StyleHub.
+              Update the public business name, shop type,
+              description, contact information, and written address
+              shown across StyleHub.
             </Text>
           </View>
+
+          {/* MESSAGES */}
 
           {errorMessage ? (
             <MessageBox
@@ -512,6 +542,8 @@ export default function ShopOwnerShopInformationScreen() {
               message={successMessage}
             />
           ) : null}
+
+          {/* SHOP PROFILE SUMMARY */}
 
           <View style={styles.profileCard}>
             <View style={styles.profileTopRow}>
@@ -604,7 +636,10 @@ export default function ShopOwnerShopInformationScreen() {
             </View>
           </View>
 
-          {shop.approval_status === 'rejected' && shop.rejection_reason ? (
+          {/* REJECTION NOTICE */}
+
+          {shop.approval_status === 'rejected' &&
+          shop.rejection_reason ? (
             <View style={styles.rejectionCard}>
               <View style={styles.rejectionIcon}>
                 <Ionicons
@@ -632,6 +667,8 @@ export default function ShopOwnerShopInformationScreen() {
             </View>
           ) : null}
 
+          {/* UNSAVED CHANGES */}
+
           {isDirty ? (
             <View style={styles.unsavedCard}>
               <View style={styles.unsavedIcon}>
@@ -648,7 +685,8 @@ export default function ShopOwnerShopInformationScreen() {
                 </Text>
 
                 <Text style={styles.unsavedText}>
-                  Customers will keep seeing the currently saved details until you save this form.
+                  Customers will keep seeing the currently saved
+                  details until you save this form.
                 </Text>
               </View>
 
@@ -665,6 +703,8 @@ export default function ShopOwnerShopInformationScreen() {
             </View>
           ) : null}
 
+          {/* BUSINESS IDENTITY */}
+
           <SectionHeading
             title="Business identity"
             subtitle="The main information customers use to identify your shop."
@@ -680,7 +720,9 @@ export default function ShopOwnerShopInformationScreen() {
             <FormField
               label="Shop name"
               value={form.name}
-              onChangeText={(value) => updateField('name', value)}
+              onChangeText={(value) =>
+                updateField('name', value)
+              }
               editable={!isSaving}
               placeholder="Business name"
               maxLength={150}
@@ -698,7 +740,9 @@ export default function ShopOwnerShopInformationScreen() {
                 description="Haircuts, grooming, barber services"
                 selected={form.type === 'barber_shop'}
                 disabled={isSaving}
-                onPress={() => updateField('type', 'barber_shop')}
+                onPress={() =>
+                  updateField('type', 'barber_shop')
+                }
               />
 
               <ShopTypeButton
@@ -707,7 +751,9 @@ export default function ShopOwnerShopInformationScreen() {
                 description="Beauty, styling, and salon services"
                 selected={form.type === 'beauty_parlor'}
                 disabled={isSaving}
-                onPress={() => updateField('type', 'beauty_parlor')}
+                onPress={() =>
+                  updateField('type', 'beauty_parlor')
+                }
               />
             </View>
 
@@ -715,7 +761,9 @@ export default function ShopOwnerShopInformationScreen() {
               label="Description"
               optional
               value={form.description}
-              onChangeText={(value) => updateField('description', value)}
+              onChangeText={(value) =>
+                updateField('description', value)
+              }
               editable={!isSaving}
               placeholder="Tell customers about your shop, specialties, atmosphere, or service approach."
               multiline
@@ -723,6 +771,8 @@ export default function ShopOwnerShopInformationScreen() {
               hint={`${form.description.length}/2000`}
             />
           </View>
+
+          {/* CONTACT INFORMATION */}
 
           <SectionHeading
             title="Contact information"
@@ -740,7 +790,9 @@ export default function ShopOwnerShopInformationScreen() {
               icon="call-outline"
               label="Business phone"
               value={form.phoneNumber}
-              onChangeText={(value) => updateField('phoneNumber', value)}
+              onChangeText={(value) =>
+                updateField('phoneNumber', value)
+              }
               editable={!isSaving}
               placeholder="09XXXXXXXXX"
               keyboardType="phone-pad"
@@ -755,7 +807,8 @@ export default function ShopOwnerShopInformationScreen() {
               />
 
               <Text style={styles.contactHintText}>
-                This is the shop contact number customers see. It is not your account verification number.
+                This is the shop contact number customers see.
+                It is not your account verification number.
               </Text>
             </View>
 
@@ -764,7 +817,9 @@ export default function ShopOwnerShopInformationScreen() {
               label="Business email"
               optional
               value={form.email}
-              onChangeText={(value) => updateField('email', value)}
+              onChangeText={(value) =>
+                updateField('email', value)
+              }
               editable={!isSaving}
               placeholder="shop@example.com"
               keyboardType="email-address"
@@ -772,6 +827,8 @@ export default function ShopOwnerShopInformationScreen() {
               maxLength={255}
             />
           </View>
+
+          {/* BUSINESS ADDRESS */}
 
           <SectionHeading
             title="Business address"
@@ -789,7 +846,9 @@ export default function ShopOwnerShopInformationScreen() {
               icon="home-outline"
               label="Address"
               value={form.address}
-              onChangeText={(value) => updateField('address', value)}
+              onChangeText={(value) =>
+                updateField('address', value)
+              }
               editable={!isSaving}
               placeholder="Street, building, barangay"
               maxLength={255}
@@ -800,7 +859,9 @@ export default function ShopOwnerShopInformationScreen() {
                 <FormField
                   label="City"
                   value={form.city}
-                  onChangeText={(value) => updateField('city', value)}
+                  onChangeText={(value) =>
+                    updateField('city', value)
+                  }
                   editable={!isSaving}
                   placeholder="City or municipality"
                   maxLength={100}
@@ -811,7 +872,9 @@ export default function ShopOwnerShopInformationScreen() {
                 <FormField
                   label="Province"
                   value={form.province}
-                  onChangeText={(value) => updateField('province', value)}
+                  onChangeText={(value) =>
+                    updateField('province', value)
+                  }
                   editable={!isSaving}
                   placeholder="Province"
                   maxLength={100}
@@ -834,11 +897,14 @@ export default function ShopOwnerShopInformationScreen() {
                 </Text>
 
                 <Text style={styles.addressPreviewText}>
-                  {fullAddress || 'Complete the address fields to preview the public address.'}
+                  {fullAddress ||
+                    'Complete the address fields to preview the public address.'}
                 </Text>
               </View>
             </View>
           </View>
+
+          {/* MAP LOCATION NOTICE */}
 
           <View style={styles.locationCard}>
             <View style={styles.locationIcon}>
@@ -855,7 +921,9 @@ export default function ShopOwnerShopInformationScreen() {
               </Text>
 
               <Text style={styles.locationText}>
-                Changing this written address does not move your OpenStreetMap/Leaflet marker. Update the exact coordinates from Shop Location.
+                Changing this written address does not move your
+                OpenStreetMap/Leaflet marker. Update the exact
+                coordinates from Shop Location.
               </Text>
             </View>
 
@@ -864,7 +932,11 @@ export default function ShopOwnerShopInformationScreen() {
               accessibilityRole="button"
               accessibilityLabel="Open shop location"
               disabled={isSaving}
-              onPress={() => router.push('/(shop-owner)/shop-owner/location')}
+              onPress={() =>
+                router.push(
+                  '/(shop-owner)/shop-owner/location',
+                )
+              }
               style={styles.locationButton}
             >
               <Ionicons
@@ -875,11 +947,17 @@ export default function ShopOwnerShopInformationScreen() {
             </TouchableOpacity>
           </View>
 
+          {/* SAVE CHANGES */}
+
           <View style={styles.saveCard}>
             <View style={styles.saveHeader}>
               <View style={styles.saveIcon}>
                 <Ionicons
-                  name={isDirty ? 'save-outline' : 'checkmark-circle-outline'}
+                  name={
+                    isDirty
+                      ? 'save-outline'
+                      : 'checkmark-circle-outline'
+                  }
                   size={20}
                   color={COLORS.navy}
                 />
@@ -908,7 +986,8 @@ export default function ShopOwnerShopInformationScreen() {
               onPress={() => void handleSave()}
               style={[
                 styles.primaryButton,
-                (isSaving || !isDirty) && styles.disabledButton,
+                (isSaving || !isDirty) &&
+                  styles.disabledButton,
               ]}
             >
               {isSaving ? (
@@ -918,7 +997,11 @@ export default function ShopOwnerShopInformationScreen() {
                 />
               ) : (
                 <Ionicons
-                  name={isDirty ? 'save-outline' : 'checkmark-circle-outline'}
+                  name={
+                    isDirty
+                      ? 'save-outline'
+                      : 'checkmark-circle-outline'
+                  }
                   size={19}
                   color={COLORS.white}
                 />
@@ -939,6 +1022,8 @@ export default function ShopOwnerShopInformationScreen() {
   );
 }
 
+/* SECTION HEADING */
+
 function SectionHeading({
   title,
   subtitle,
@@ -958,6 +1043,8 @@ function SectionHeading({
     </View>
   );
 }
+
+/* PROFILE STAT */
 
 function ProfileStat({
   label,
@@ -983,6 +1070,8 @@ function ProfileStat({
     </View>
   );
 }
+
+/* SETTING HEADER */
 
 function SettingHeader({
   icon,
@@ -1015,6 +1104,8 @@ function SettingHeader({
     </View>
   );
 }
+
+/* FORM FIELD */
 
 interface FormFieldProps {
   icon?: IconName;
@@ -1105,6 +1196,8 @@ function FormField({
   );
 }
 
+/* SHOP TYPE BUTTON */
+
 function ShopTypeButton({
   icon,
   label,
@@ -1168,14 +1261,24 @@ function ShopTypeButton({
       </Text>
 
       <Ionicons
-        name={selected ? 'radio-button-on' : 'radio-button-off'}
+        name={
+          selected
+            ? 'radio-button-on'
+            : 'radio-button-off'
+        }
         size={18}
-        color={selected ? COLORS.white : COLORS.textLight}
+        color={
+          selected
+            ? COLORS.white
+            : COLORS.textLight
+        }
         style={styles.typeRadio}
       />
     </TouchableOpacity>
   );
 }
+
+/* MESSAGE BOX */
 
 function MessageBox({
   type,
@@ -1201,9 +1304,15 @@ function MessageBox({
     >
       <View style={styles.messageIcon}>
         <Ionicons
-          name={success ? 'checkmark-circle-outline' : 'alert-circle-outline'}
+          name={
+            success
+              ? 'checkmark-circle-outline'
+              : 'alert-circle-outline'
+          }
           size={20}
-          color={success ? COLORS.success : COLORS.danger}
+          color={
+            success ? COLORS.success : COLORS.danger
+          }
         />
       </View>
 
@@ -1212,7 +1321,9 @@ function MessageBox({
           style={[
             styles.messageTitle,
             {
-              color: success ? COLORS.success : COLORS.danger,
+              color: success
+                ? COLORS.success
+                : COLORS.danger,
             },
           ]}
         >
@@ -1227,6 +1338,8 @@ function MessageBox({
   );
 }
 
+/* STYLES */
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
@@ -1237,12 +1350,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
 
+  // UPDATED: Same 40px top spacing as the other
+  // Shop Owner screens, below the safe area.
   container: {
     width: '100%',
     maxWidth: LAYOUT.contentMaxWidth,
     alignSelf: 'center',
     paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingTop: 40,
     paddingBottom: 48,
   },
 
@@ -1950,7 +2065,7 @@ const styles = StyleSheet.create({
   unavailableContainer: {
     flex: 1,
     paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingTop: 40,
   },
 
   unavailableContent: {

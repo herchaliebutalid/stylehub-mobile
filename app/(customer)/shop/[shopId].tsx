@@ -1,3 +1,4 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import {
   router,
@@ -15,7 +16,6 @@ import {
   ActivityIndicator,
   Image,
   RefreshControl,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -23,6 +23,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import CustomerShopGallery from '@/src/components/CustomerShopGallery';
 import CustomerShopLocationCard from '@/src/components/CustomerShopLocationCard';
@@ -55,12 +56,14 @@ import { resolveApiAssetUrl } from '@/src/utils/api-asset-url';
 
 type IconName = ComponentProps<typeof Ionicons>['name'];
 
+/* ==========================================================
+   HELPERS
+   ========================================================== */
+
 function getRouteValue(
   value: string | string[] | undefined,
 ): string | undefined {
-  return Array.isArray(value)
-    ? value[0]
-    : value;
+  return Array.isArray(value) ? value[0] : value;
 }
 
 function formatPrice(
@@ -72,48 +75,34 @@ function formatPrice(
     return String(value);
   }
 
-  return `₱${numericValue.toLocaleString(
-    'en-PH',
-    {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    },
-  )}`;
+  return `₱${numericValue.toLocaleString('en-PH', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function formatTime(
   value: string | null,
 ): string {
-  if (!value) {
-    return '—';
-  }
+  if (!value) return '—';
 
-  const match = value.match(
-    /^(\d{1,2}):(\d{2})/,
-  );
+  const match = value.match(/^(\d{1,2}):(\d{2})/);
 
-  if (!match) {
-    return value;
-  }
+  if (!match) return value;
 
   const hour24 = Number(match[1]);
   const minute = match[2];
 
   if (
-    Number.isNaN(hour24)
-    || hour24 < 0
-    || hour24 > 23
+    Number.isNaN(hour24) ||
+    hour24 < 0 ||
+    hour24 > 23
   ) {
     return value;
   }
 
-  const suffix =
-    hour24 >= 12
-      ? 'PM'
-      : 'AM';
-
-  const hour12 =
-    hour24 % 12 || 12;
+  const suffix = hour24 >= 12 ? 'PM' : 'AM';
+  const hour12 = hour24 % 12 || 12;
 
   return `${hour12}:${minute} ${suffix}`;
 }
@@ -121,9 +110,7 @@ function formatTime(
 function formatPromoDate(
   value: string | null,
 ): string {
-  if (!value) {
-    return 'No end date';
-  }
+  if (!value) return 'No end date';
 
   const date = new Date(value);
 
@@ -132,15 +119,12 @@ function formatPromoDate(
   }
 
   try {
-    return new Intl.DateTimeFormat(
-      'en-PH',
-      {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        timeZone: 'Asia/Manila',
-      },
-    ).format(date);
+    return new Intl.DateTimeFormat('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'Asia/Manila',
+    }).format(date);
   } catch {
     return value;
   }
@@ -149,9 +133,7 @@ function formatPromoDate(
 function formatReviewDate(
   value: string | null,
 ): string | null {
-  if (!value) {
-    return null;
-  }
+  if (!value) return null;
 
   const date = new Date(value);
 
@@ -160,15 +142,12 @@ function formatReviewDate(
   }
 
   try {
-    return new Intl.DateTimeFormat(
-      'en-PH',
-      {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        timeZone: 'Asia/Manila',
-      },
-    ).format(date);
+    return new Intl.DateTimeFormat('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'Asia/Manila',
+    }).format(date);
   } catch {
     return value;
   }
@@ -222,142 +201,88 @@ function availabilityPresentation(
   }
 }
 
-export default function CustomerShopDetailScreen() {
-  const params =
-    useLocalSearchParams<{
-      shopId?: string | string[];
-    }>();
+/* ==========================================================
+   MAIN CUSTOMER SHOP DETAILS SCREEN
+   ========================================================== */
 
-  const {
-    token,
-  } = useAuth();
+export default function CustomerShopDetailScreen() {
+  const params = useLocalSearchParams<{
+    shopId?: string | string[];
+  }>();
+
+  const { token } = useAuth();
 
   const shopId = Number(
-    getRouteValue(
-      params.shopId,
-    ),
+    getRouteValue(params.shopId),
   );
 
-  const [
-    shop,
-    setShop,
-  ] =
-    useState<CustomerShopDetail | null>(
-      null,
-    );
+  const [shop, setShop] =
+    useState<CustomerShopDetail | null>(null);
 
-  const [
-    isSaved,
-    setIsSaved,
-  ] =
-    useState(false);
+  const [isSaved, setIsSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
-  const [
-    isSaving,
-    setIsSaving,
-  ] =
-    useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [savedMessage, setSavedMessage] = useState('');
 
-  const [
-    isLoading,
-    setIsLoading,
-  ] =
-    useState(true);
+  const hasLoadedOnce = useRef(false);
 
-  const [
-    isRefreshing,
-    setIsRefreshing,
-  ] =
-    useState(false);
+  /* ========================================================
+     LOAD SHOP DATA
+     ======================================================== */
 
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] =
-    useState('');
+  const loadShop = useCallback(
+    async (
+      refreshing = false,
+      silent = false,
+    ): Promise<void> => {
+      if (
+        !token ||
+        !Number.isInteger(shopId) ||
+        shopId < 1
+      ) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+        setErrorMessage('The selected shop is invalid.');
+        return;
+      }
 
-  const [
-    savedMessage,
-    setSavedMessage,
-  ] =
-    useState('');
+      if (refreshing) {
+        setIsRefreshing(true);
+      } else if (!silent) {
+        setIsLoading(true);
+      }
 
-  const hasLoadedOnce =
-    useRef(false);
+      setErrorMessage('');
 
-  const loadShop =
-    useCallback(
-      async (
-        refreshing = false,
-        silent = false,
-      ): Promise<void> => {
-        if (
-          !token
-          || !Number.isInteger(
-            shopId,
-          )
-          || shopId < 1
-        ) {
-          setIsLoading(false);
-          setIsRefreshing(false);
+      try {
+        const [
+          shopResponse,
+          savedResponse,
+        ] = await Promise.all([
+          getCustomerShop(token, shopId),
+          getCustomerSavedShopStatus(token, shopId),
+        ]);
 
-          setErrorMessage(
-            'The selected shop is invalid.',
-          );
+        setShop(shopResponse.data.shop);
+        setIsSaved(savedResponse.data.is_saved);
 
-          return;
-        }
-
-        if (refreshing) {
-          setIsRefreshing(true);
-        } else if (!silent) {
-          setIsLoading(true);
-        }
-
-        setErrorMessage('');
-
-        try {
-          const [
-            shopResponse,
-            savedResponse,
-          ] =
-            await Promise.all([
-              getCustomerShop(
-                token,
-                shopId,
-              ),
-
-              getCustomerSavedShopStatus(
-                token,
-                shopId,
-              ),
-            ]);
-
-          setShop(
-            shopResponse.data.shop,
-          );
-
-          setIsSaved(
-            savedResponse.data.is_saved,
-          );
-
-          hasLoadedOnce.current = true;
-        } catch (error) {
-          setErrorMessage(
-            error instanceof ApiError
-              ? error.message
-              : 'Unable to load this shop.',
-          );
-        } finally {
-          setIsLoading(false);
-          setIsRefreshing(false);
-        }
-      },
-      [
-        shopId,
-        token,
-      ],
-    );
+        hasLoadedOnce.current = true;
+      } catch (error) {
+        setErrorMessage(
+          error instanceof ApiError
+            ? error.message
+            : 'Unable to load this shop.',
+        );
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [shopId, token],
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -370,63 +295,51 @@ export default function CustomerShopDetailScreen() {
     }, [loadShop]),
   );
 
-  const serviceCount =
-    shop?.services?.length ?? 0;
+  /* ========================================================
+     SHOP INFORMATION
+     ======================================================== */
 
-  const promoCount =
-    shop?.promos?.length ?? 0;
+  const serviceCount = shop?.services?.length ?? 0;
+  const promoCount = shop?.promos?.length ?? 0;
+  const reviewCount = shop?.rating.review_count ?? 0;
 
-  const reviewCount =
-    shop?.rating.review_count ?? 0;
-
-  const availability =
-    useMemo(
-      () =>
-        shop
-          ? availabilityPresentation(
-              shop.availability.status,
-            )
-          : null,
-      [
-        shop,
-      ],
-    );
-
-  const fullAddress =
-    useMemo(
-      () =>
-        shop
-          ? [
-              shop.address,
-              shop.city,
-              shop.province,
-            ]
-              .map(
-                (part) =>
-                  part?.trim(),
-              )
-              .filter(Boolean)
-              .join(', ')
-          : '',
-      [
-        shop,
-      ],
-    );
-
-  const canBook =
-    Boolean(
+  const availability = useMemo(
+    () =>
       shop
-      && shop.availability
-        .accepts_appointments
-      && serviceCount > 0,
-    );
+        ? availabilityPresentation(
+            shop.availability.status,
+          )
+        : null,
+    [shop],
+  );
+
+  const fullAddress = useMemo(
+    () =>
+      shop
+        ? [
+            shop.address,
+            shop.city,
+            shop.province,
+          ]
+            .map((part) => part?.trim())
+            .filter(Boolean)
+            .join(', ')
+        : '',
+    [shop],
+  );
+
+  const canBook = Boolean(
+    shop &&
+      shop.availability.accepts_appointments &&
+      serviceCount > 0,
+  );
+
+  /* ========================================================
+     SAVE / REMOVE SHOP
+     ======================================================== */
 
   async function toggleSavedShop(): Promise<void> {
-    if (
-      !token
-      || !shop
-      || isSaving
-    ) {
+    if (!token || !shop || isSaving) {
       return;
     }
 
@@ -442,7 +355,6 @@ export default function CustomerShopDetailScreen() {
         );
 
         setIsSaved(false);
-
         setSavedMessage(
           'Removed from saved shops.',
         );
@@ -453,7 +365,6 @@ export default function CustomerShopDetailScreen() {
         );
 
         setIsSaved(true);
-
         setSavedMessage(
           'Saved to your shops.',
         );
@@ -471,29 +382,22 @@ export default function CustomerShopDetailScreen() {
     }
   }
 
+  /* ========================================================
+     NAVIGATION
+     ======================================================== */
+
   function openBooking(
     serviceId?: number,
   ): void {
-    if (!shop) {
-      return;
-    }
+    if (!shop) return;
 
     router.push({
-      pathname:
-        '/(customer)/book/[shopId]',
-
+      pathname: '/(customer)/book/[shopId]',
       params: {
-        shopId:
-          String(
-            shop.id,
-          ),
-
+        shopId: String(shop.id),
         ...(serviceId
           ? {
-              serviceId:
-                String(
-                  serviceId,
-                ),
+              serviceId: String(serviceId),
             }
           : {}),
       },
@@ -501,61 +405,45 @@ export default function CustomerShopDetailScreen() {
   }
 
   function openReviews(): void {
-    if (!shop) {
-      return;
-    }
+    if (!shop) return;
 
     router.push({
-      pathname:
-        '/(customer)/reviews/[shopId]',
-
+      pathname: '/(customer)/reviews/[shopId]',
       params: {
-        shopId:
-          String(
-            shop.id,
-          ),
+        shopId: String(shop.id),
       },
     });
   }
 
-  if (
-    isLoading
-    && !shop
-  ) {
+  /* ========================================================
+     LOADING SCREEN
+     ======================================================== */
+
+  if (isLoading && !shop) {
     return (
       <SafeAreaView
+        edges={['top', 'bottom']}
         style={styles.safeArea}
       >
         <StatusBar
           barStyle="dark-content"
-          backgroundColor={
-            COLORS.background
-          }
+          backgroundColor={COLORS.background}
+          translucent={false}
         />
 
-        <View
-          style={
-            styles.loadingContainer
-          }
-        >
-          <View
-            style={styles.loadingIcon}
-          >
+        <View style={styles.loadingContainer}>
+          <View style={styles.loadingIcon}>
             <ActivityIndicator
               size="small"
               color={COLORS.navy}
             />
           </View>
 
-          <Text
-            style={styles.loadingTitle}
-          >
+          <Text style={styles.loadingTitle}>
             Loading shop
           </Text>
 
-          <Text
-            style={styles.loadingText}
-          >
+          <Text style={styles.loadingText}>
             Getting the latest services,
             availability, photos, promotions,
             and reviews.
@@ -565,30 +453,28 @@ export default function CustomerShopDetailScreen() {
     );
   }
 
+  /* ========================================================
+     SHOP UNAVAILABLE SCREEN
+     ======================================================== */
+
   if (!shop) {
     return (
       <SafeAreaView
+        edges={['top', 'bottom']}
         style={styles.safeArea}
       >
         <StatusBar
           barStyle="dark-content"
-          backgroundColor={
-            COLORS.background
-          }
+          backgroundColor={COLORS.background}
+          translucent={false}
         />
 
-        <View
-          style={
-            styles.unavailableContainer
-          }
-        >
+        <View style={styles.unavailableContainer}>
           <TouchableOpacity
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel="Go back"
-            onPress={() =>
-              router.back()
-            }
+            onPress={() => router.back()}
             style={styles.topIconButton}
           >
             <Ionicons
@@ -598,16 +484,8 @@ export default function CustomerShopDetailScreen() {
             />
           </TouchableOpacity>
 
-          <View
-            style={
-              styles.unavailableContent
-            }
-          >
-            <View
-              style={
-                styles.unavailableIcon
-              }
-            >
+          <View style={styles.unavailableContent}>
+            <View style={styles.unavailableIcon}>
               <Ionicons
                 name="storefront-outline"
                 size={30}
@@ -615,21 +493,13 @@ export default function CustomerShopDetailScreen() {
               />
             </View>
 
-            <Text
-              style={
-                styles.unavailableTitle
-              }
-            >
+            <Text style={styles.unavailableTitle}>
               Shop unavailable
             </Text>
 
-            <Text
-              style={
-                styles.unavailableText
-              }
-            >
-              {errorMessage
-                || 'This shop is not currently available to customers.'}
+            <Text style={styles.unavailableText}>
+              {errorMessage ||
+                'This shop is not currently available to customers.'}
             </Text>
 
             <TouchableOpacity
@@ -639,15 +509,9 @@ export default function CustomerShopDetailScreen() {
                   '/(customer)/customer/shops',
                 )
               }
-              style={
-                styles.discoverButton
-              }
+              style={styles.discoverButton}
             >
-              <Text
-                style={
-                  styles.discoverButtonText
-                }
-              >
+              <Text style={styles.discoverButtonText}>
                 Back to Discover
               </Text>
             </TouchableOpacity>
@@ -657,47 +521,41 @@ export default function CustomerShopDetailScreen() {
     );
   }
 
+  /* ========================================================
+     MAIN SHOP DETAILS SCREEN
+     ======================================================== */
+
   return (
     <SafeAreaView
+      edges={['top', 'bottom']}
       style={styles.safeArea}
     >
       <StatusBar
         barStyle="dark-content"
-        backgroundColor={
-          COLORS.background
-        }
+        backgroundColor={COLORS.background}
+        translucent={false}
       />
 
       <ScrollView
-        showsVerticalScrollIndicator={
-          false
-        }
+        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
-            refreshing={
-              isRefreshing
-            }
-            onRefresh={() =>
-              void loadShop(true)
-            }
+            refreshing={isRefreshing}
+            onRefresh={() => void loadShop(true)}
             tintColor={COLORS.navy}
-            colors={[
-              COLORS.navy,
-            ]}
+            colors={[COLORS.navy]}
           />
         }
-        contentContainerStyle={
-          styles.container
-        }
+        contentContainerStyle={styles.container}
       >
+        {/* TOP NAVIGATION */}
+
         <View style={styles.topBar}>
           <TouchableOpacity
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel="Go back"
-            onPress={() =>
-              router.back()
-            }
+            onPress={() => router.back()}
             style={styles.topIconButton}
           >
             <Ionicons
@@ -707,24 +565,12 @@ export default function CustomerShopDetailScreen() {
             />
           </TouchableOpacity>
 
-          <View
-            style={
-              styles.topBarTitleBlock
-            }
-          >
-            <Text
-              style={
-                styles.topBarTitle
-              }
-            >
+          <View style={styles.topBarTitleBlock}>
+            <Text style={styles.topBarTitle}>
               Shop details
             </Text>
 
-            <Text
-              style={
-                styles.topBarCaption
-              }
-            >
+            <Text style={styles.topBarCaption}>
               Services, location & reviews
             </Text>
           </View>
@@ -738,20 +584,12 @@ export default function CustomerShopDetailScreen() {
                 : 'Save shop'
             }
             disabled={isSaving}
-            onPress={() =>
-              void toggleSavedShop()
-            }
+            onPress={() => void toggleSavedShop()}
             style={[
               styles.topIconButton,
               styles.savedTopButton,
-
-              isSaved
-              &&
-                styles.savedTopButtonActive,
-
-              isSaving
-              &&
-                styles.disabledButton,
+              isSaved && styles.savedTopButtonActive,
+              isSaving && styles.disabledButton,
             ]}
           >
             {isSaving ? (
@@ -773,6 +611,8 @@ export default function CustomerShopDetailScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* ERROR MESSAGE */}
+
         {errorMessage ? (
           <MessageBox
             type="error"
@@ -780,6 +620,8 @@ export default function CustomerShopDetailScreen() {
             message={errorMessage}
           />
         ) : null}
+
+        {/* SAVED SHOP MESSAGE */}
 
         {savedMessage ? (
           <MessageBox
@@ -793,35 +635,27 @@ export default function CustomerShopDetailScreen() {
           />
         ) : null}
 
-        <View
-          style={styles.heroCard}
-        >
-          <View
-            style={styles.heroTopRow}
-          >
+        {/* SHOP HERO */}
+
+        <View style={styles.heroCard}>
+          <View style={styles.heroTopRow}>
             <ShopOwnerAvatar
               shop={shop}
               size={76}
               iconSize={29}
               fallbackIcon={
-                shop.type
-                === 'barber_shop'
+                shop.type === 'barber_shop'
                   ? 'cut-outline'
                   : 'sparkles-outline'
               }
-              containerStyle={
-                styles.heroAvatar
-              }
-              imageStyle={
-                styles.heroAvatarImage
-              }
+              containerStyle={styles.heroAvatar}
+              imageStyle={styles.heroAvatarImage}
             />
 
             {availability ? (
               <View
                 style={[
                   styles.availabilityBadge,
-
                   {
                     backgroundColor:
                       availability.background,
@@ -829,51 +663,34 @@ export default function CustomerShopDetailScreen() {
                 ]}
               >
                 <Ionicons
-                  name={
-                    availability.icon
-                  }
+                  name={availability.icon}
                   size={14}
-                  color={
-                    availability.color
-                  }
+                  color={availability.color}
                 />
 
                 <Text
                   style={[
                     styles.availabilityBadgeText,
-
                     {
-                      color:
-                        availability.color,
+                      color: availability.color,
                     },
                   ]}
                 >
-                  {
-                    shop.availability
-                      .status_label
-                  }
+                  {shop.availability.status_label}
                 </Text>
               </View>
             ) : null}
           </View>
 
-          <Text
-            style={styles.heroType}
-          >
+          <Text style={styles.heroType}>
             {shop.type_label}
           </Text>
 
-          <Text
-            style={styles.heroName}
-          >
+          <Text style={styles.heroName}>
             {shop.name}
           </Text>
 
-          <View
-            style={
-              styles.heroLocationRow
-            }
-          >
+          <View style={styles.heroLocationRow}>
             <Ionicons
               name="location-outline"
               size={15}
@@ -882,126 +699,91 @@ export default function CustomerShopDetailScreen() {
 
             <Text
               numberOfLines={2}
-              style={
-                styles.heroLocationText
-              }
+              style={styles.heroLocationText}
             >
               {fullAddress}
             </Text>
           </View>
 
-          <View
-            style={styles.heroStats}
-          >
+          <View style={styles.heroStats}>
             <HeroStat
               label="Rating"
               value={
-                shop.rating.average
-                === null
+                shop.rating.average === null
                   ? 'New'
                   : `${shop.rating.average.toFixed(1)} / 5`
               }
               icon="star-outline"
             />
 
-            <View
-              style={styles.heroDivider}
-            />
+            <View style={styles.heroDivider} />
 
             <HeroStat
               label="Reviews"
-              value={
-                String(reviewCount)
-              }
+              value={String(reviewCount)}
               icon="chatbubble-outline"
             />
 
-            <View
-              style={styles.heroDivider}
-            />
+            <View style={styles.heroDivider} />
 
             <HeroStat
               label="Services"
-              value={
-                String(serviceCount)
-              }
+              value={String(serviceCount)}
               icon="cut-outline"
             />
           </View>
         </View>
 
+        {/* SHOP AVAILABILITY */}
+
         {availability ? (
           <View
             style={[
               styles.availabilityNotice,
-
               {
                 backgroundColor:
                   availability.background,
               },
             ]}
           >
-            <View
-              style={
-                styles.availabilityNoticeIcon
-              }
-            >
+            <View style={styles.availabilityNoticeIcon}>
               <Ionicons
-                name={
-                  availability.icon
-                }
+                name={availability.icon}
                 size={20}
-                color={
-                  availability.color
-                }
+                color={availability.color}
               />
             </View>
 
-            <View
-              style={
-                styles.availabilityNoticeCopy
-              }
-            >
+            <View style={styles.availabilityNoticeCopy}>
               <Text
                 style={[
                   styles.availabilityNoticeTitle,
-
                   {
-                    color:
-                      availability.color,
+                    color: availability.color,
                   },
                 ]}
               >
-                {
-                  shop.availability
-                    .status_label
-                }
+                {shop.availability.status_label}
               </Text>
 
-              <Text
-                style={
-                  styles.availabilityNoticeText
-                }
-              >
+              <Text style={styles.availabilityNoticeText}>
                 {availability.message}
               </Text>
             </View>
           </View>
         ) : null}
 
+        {/* BOOK APPOINTMENT BUTTON */}
+
         <TouchableOpacity
           activeOpacity={0.84}
           accessibilityRole="button"
           accessibilityLabel="Book appointment"
           disabled={!canBook}
-          onPress={() =>
-            openBooking()
-          }
+          onPress={() => openBooking()}
           style={[
             styles.primaryBookButton,
-
-            !canBook
-            &&
+            !canBook &&
               styles.primaryBookButtonDisabled,
           ]}
         >
@@ -1022,9 +804,7 @@ export default function CustomerShopDetailScreen() {
           <Text
             style={[
               styles.primaryBookButtonText,
-
-              !canBook
-              &&
+              !canBook &&
                 styles.primaryBookButtonTextDisabled,
             ]}
           >
@@ -1036,20 +816,16 @@ export default function CustomerShopDetailScreen() {
           </Text>
         </TouchableOpacity>
 
+        {/* ABOUT THIS SHOP */}
+
         <SectionHeading
           title="About this shop"
           subtitle="Business description and customer-facing contact information."
         />
 
-        <View
-          style={styles.aboutCard}
-        >
-          <View
-            style={styles.aboutHeader}
-          >
-            <View
-              style={styles.aboutIcon}
-            >
+        <View style={styles.aboutCard}>
+          <View style={styles.aboutHeader}>
+            <View style={styles.aboutIcon}>
               <Ionicons
                 name="information-circle-outline"
                 size={21}
@@ -1057,29 +833,19 @@ export default function CustomerShopDetailScreen() {
               />
             </View>
 
-            <View
-              style={styles.aboutCopy}
-            >
-              <Text
-                style={styles.aboutTitle}
-              >
+            <View style={styles.aboutCopy}>
+              <Text style={styles.aboutTitle}>
                 {shop.name}
               </Text>
 
-              <Text
-                style={
-                  styles.aboutDescription
-                }
-              >
-                {shop.description?.trim()
-                  || 'This shop has not added a public description yet.'}
+              <Text style={styles.aboutDescription}>
+                {shop.description?.trim() ||
+                  'This shop has not added a public description yet.'}
               </Text>
             </View>
           </View>
 
-          <View
-            style={styles.contactArea}
-          >
+          <View style={styles.contactArea}>
             <ContactRow
               icon="location-outline"
               label="Address"
@@ -1090,9 +856,7 @@ export default function CustomerShopDetailScreen() {
               <ContactRow
                 icon="call-outline"
                 label="Business phone"
-                value={
-                  shop.phone_number
-                }
+                value={shop.phone_number}
               />
             ) : null}
 
@@ -1106,54 +870,51 @@ export default function CustomerShopDetailScreen() {
           </View>
         </View>
 
+        {/* CURRENT PROMOTIONS */}
+
         {promoCount > 0 ? (
           <>
             <SectionHeading
               title="Current promotions"
-              subtitle={`${promoCount} active offer${promoCount === 1 ? '' : 's'} available from this shop.`}
+              subtitle={`${promoCount} active offer${
+                promoCount === 1 ? '' : 's'
+              } available from this shop.`}
             />
 
-            <View
-              style={styles.promoList}
-            >
-              {shop.promos?.map(
-                (promo) => (
-                  <PromoCard
-                    key={promo.id}
-                    promo={promo}
-                  />
-                ),
-              )}
+            <View style={styles.promoList}>
+              {shop.promos?.map((promo) => (
+                <PromoCard
+                  key={promo.id}
+                  promo={promo}
+                />
+              ))}
             </View>
           </>
         ) : null}
 
+        {/* SERVICES */}
+
         <SectionHeading
           title="Services"
-          subtitle={`${serviceCount} active service${serviceCount === 1 ? '' : 's'} available to customers.`}
+          subtitle={`${serviceCount} active service${
+            serviceCount === 1 ? '' : 's'
+          } available to customers.`}
         />
 
         {serviceCount > 0 ? (
-          <View
-            style={styles.serviceList}
-          >
-            {shop.services?.map(
-              (service) => (
-                <ServiceCard
-                  key={service.id}
-                  service={service}
-                  canBook={
-                    shop.availability
-                      .accepts_appointments
-                  }
-                  onBook={() =>
-                    openBooking(
-                      service.id,
-                    )
-                  }
-                />
-              ),
-            )}
+          <View style={styles.serviceList}>
+            {shop.services?.map((service) => (
+              <ServiceCard
+                key={service.id}
+                service={service}
+                canBook={
+                  shop.availability.accepts_appointments
+                }
+                onBook={() =>
+                  openBooking(service.id)
+                }
+              />
+            ))}
           </View>
         ) : (
           <EmptySection
@@ -1163,11 +924,15 @@ export default function CustomerShopDetailScreen() {
           />
         )}
 
+        {/* SHOP GALLERY */}
+
         <SectionHeading
           title="Shop gallery"
           subtitle={
             shop.gallery.length > 0
-              ? `${shop.gallery.length} public photo${shop.gallery.length === 1 ? '' : 's'} from this shop.`
+              ? `${shop.gallery.length} public photo${
+                  shop.gallery.length === 1 ? '' : 's'
+                } from this shop.`
               : 'Public photos uploaded by the shop.'
           }
         />
@@ -1175,6 +940,8 @@ export default function CustomerShopDetailScreen() {
         <CustomerShopGallery
           images={shop.gallery}
         />
+
+        {/* SHOP LOCATION */}
 
         <SectionHeading
           title="Location & directions"
@@ -1189,13 +956,15 @@ export default function CustomerShopDetailScreen() {
           location={shop.location}
         />
 
+        {/* WEEKLY SCHEDULE */}
+
         <SectionHeading
           title="Weekly schedule"
           subtitle="Regular opening hours published by the shop."
         />
 
-        {shop.schedule
-        && shop.schedule.length > 0 ? (
+        {shop.schedule &&
+        shop.schedule.length > 0 ? (
           <ScheduleCard
             schedule={shop.schedule}
           />
@@ -1207,27 +976,15 @@ export default function CustomerShopDetailScreen() {
           />
         )}
 
-        <View
-          style={
-            styles.reviewSectionHeading
-          }
-        >
-          <View
-            style={
-              styles.reviewSectionCopy
-            }
-          >
-            <Text
-              style={styles.sectionTitle}
-            >
+        {/* RECENT REVIEWS */}
+
+        <View style={styles.reviewSectionHeading}>
+          <View style={styles.reviewSectionCopy}>
+            <Text style={styles.sectionTitle}>
               Recent reviews
             </Text>
 
-            <Text
-              style={
-                styles.sectionSubtitle
-              }
-            >
+            <Text style={styles.sectionSubtitle}>
               Verified feedback from completed
               StyleHub appointments.
             </Text>
@@ -1239,15 +996,9 @@ export default function CustomerShopDetailScreen() {
               accessibilityRole="button"
               accessibilityLabel="View all reviews"
               onPress={openReviews}
-              style={
-                styles.reviewSeeAllButton
-              }
+              style={styles.reviewSeeAllButton}
             >
-              <Text
-                style={
-                  styles.reviewSeeAllText
-                }
-              >
+              <Text style={styles.reviewSeeAllText}>
                 See all
               </Text>
 
@@ -1260,20 +1011,15 @@ export default function CustomerShopDetailScreen() {
           ) : null}
         </View>
 
-        {shop.recent_reviews
-        && shop.recent_reviews.length
-        > 0 ? (
-          <View
-            style={styles.reviewList}
-          >
-            {shop.recent_reviews.map(
-              (review) => (
-                <ReviewCard
-                  key={review.id}
-                  review={review}
-                />
-              ),
-            )}
+        {shop.recent_reviews &&
+        shop.recent_reviews.length > 0 ? (
+          <View style={styles.reviewList}>
+            {shop.recent_reviews.map((review) => (
+              <ReviewCard
+                key={review.id}
+                review={review}
+              />
+            ))}
           </View>
         ) : (
           <EmptySection
@@ -1283,12 +1029,10 @@ export default function CustomerShopDetailScreen() {
           />
         )}
 
-        <View
-          style={styles.footerCard}
-        >
-          <View
-            style={styles.footerIcon}
-          >
+        {/* FOOTER NOTICE */}
+
+        <View style={styles.footerCard}>
+          <View style={styles.footerIcon}>
             <Ionicons
               name="shield-checkmark-outline"
               size={20}
@@ -1296,18 +1040,12 @@ export default function CustomerShopDetailScreen() {
             />
           </View>
 
-          <View
-            style={styles.footerCopy}
-          >
-            <Text
-              style={styles.footerTitle}
-            >
+          <View style={styles.footerCopy}>
+            <Text style={styles.footerTitle}>
               Customer-visible shop information
             </Text>
 
-            <Text
-              style={styles.footerText}
-            >
+            <Text style={styles.footerText}>
               Services, promotions, ratings,
               availability, gallery photos, and
               map location on this page come
@@ -1321,6 +1059,10 @@ export default function CustomerShopDetailScreen() {
   );
 }
 
+/* ==========================================================
+   SECTION HEADING
+   ========================================================== */
+
 function SectionHeading({
   title,
   subtitle,
@@ -1329,23 +1071,21 @@ function SectionHeading({
   subtitle: string;
 }) {
   return (
-    <View
-      style={styles.sectionHeading}
-    >
-      <Text
-        style={styles.sectionTitle}
-      >
+    <View style={styles.sectionHeading}>
+      <Text style={styles.sectionTitle}>
         {title}
       </Text>
 
-      <Text
-        style={styles.sectionSubtitle}
-      >
+      <Text style={styles.sectionSubtitle}>
         {subtitle}
       </Text>
     </View>
   );
 }
+
+/* ==========================================================
+   HERO STAT
+   ========================================================== */
 
 function HeroStat({
   label,
@@ -1358,20 +1098,14 @@ function HeroStat({
 }) {
   return (
     <View style={styles.heroStat}>
-      <View
-        style={
-          styles.heroStatLabelRow
-        }
-      >
+      <View style={styles.heroStatLabelRow}>
         <Ionicons
           name={icon}
           size={12}
           color="#AEB8C5"
         />
 
-        <Text
-          style={styles.heroStatLabel}
-        >
+        <Text style={styles.heroStatLabel}>
           {label}
         </Text>
       </View>
@@ -1388,6 +1122,10 @@ function HeroStat({
   );
 }
 
+/* ==========================================================
+   CONTACT ROW
+   ========================================================== */
+
 function ContactRow({
   icon,
   label,
@@ -1399,9 +1137,7 @@ function ContactRow({
 }) {
   return (
     <View style={styles.contactRow}>
-      <View
-        style={styles.contactIcon}
-      >
+      <View style={styles.contactIcon}>
         <Ionicons
           name={icon}
           size={17}
@@ -1409,24 +1145,22 @@ function ContactRow({
         />
       </View>
 
-      <View
-        style={styles.contactCopy}
-      >
-        <Text
-          style={styles.contactLabel}
-        >
+      <View style={styles.contactCopy}>
+        <Text style={styles.contactLabel}>
           {label}
         </Text>
 
-        <Text
-          style={styles.contactValue}
-        >
+        <Text style={styles.contactValue}>
           {value}
         </Text>
       </View>
     </View>
   );
 }
+
+/* ==========================================================
+   SERVICE CARD
+   ========================================================== */
 
 function ServiceCard({
   service,
@@ -1437,15 +1171,14 @@ function ServiceCard({
   canBook: boolean;
   onBook: () => void;
 }) {
-  const serviceImageUrl =
-    resolveApiAssetUrl(
-      service.image?.image_url,
-    );
+  const serviceImageUrl = resolveApiAssetUrl(
+    service.image?.image_url,
+  );
 
   return (
-    <View
-      style={styles.serviceCard}
-    >
+    <View style={styles.serviceCard}>
+      {/* SERVICE IMAGE */}
+
       {serviceImageUrl ? (
         <Image
           source={{
@@ -1455,16 +1188,8 @@ function ServiceCard({
           style={styles.serviceImage}
         />
       ) : (
-        <View
-          style={
-            styles.serviceImageFallback
-          }
-        >
-          <View
-            style={
-              styles.serviceImageFallbackIcon
-            }
-          >
+        <View style={styles.serviceImageFallback}>
+          <View style={styles.serviceImageFallbackIcon}>
             <Ionicons
               name="cut-outline"
               size={24}
@@ -1472,27 +1197,15 @@ function ServiceCard({
             />
           </View>
 
-          <Text
-            style={
-              styles.serviceImageFallbackText
-            }
-          >
+          <Text style={styles.serviceImageFallbackText}>
             Service photo not available
           </Text>
         </View>
       )}
 
-      <View
-        style={styles.serviceBody}
-      >
-        <View
-          style={styles.serviceHeader}
-        >
-          <View
-            style={
-              styles.serviceHeading
-            }
-          >
+      <View style={styles.serviceBody}>
+        <View style={styles.serviceHeader}>
+          <View style={styles.serviceHeading}>
             <Text
               numberOfLines={2}
               style={styles.serviceName}
@@ -1500,47 +1213,31 @@ function ServiceCard({
               {service.name}
             </Text>
 
-            <View
-              style={
-                styles.serviceDurationRow
-              }
-            >
+            <View style={styles.serviceDurationRow}>
               <Ionicons
                 name="time-outline"
                 size={14}
                 color={COLORS.textMuted}
               />
 
-              <Text
-                style={
-                  styles.serviceDurationText
-                }
-              >
+              <Text style={styles.serviceDurationText}>
                 {service.duration_minutes} minutes
               </Text>
             </View>
           </View>
 
-          <Text
-            style={styles.servicePrice}
-          >
-            {formatPrice(
-              service.price,
-            )}
+          <Text style={styles.servicePrice}>
+            {formatPrice(service.price)}
           </Text>
         </View>
 
-        {service.description?.trim()
-          ? (
-              <Text
-                style={
-                  styles.serviceDescription
-                }
-              >
-                {service.description}
-              </Text>
-            )
-          : null}
+        {service.description?.trim() ? (
+          <Text style={styles.serviceDescription}>
+            {service.description}
+          </Text>
+        ) : null}
+
+        {/* BOOK SERVICE */}
 
         <TouchableOpacity
           activeOpacity={0.82}
@@ -1554,9 +1251,7 @@ function ServiceCard({
           onPress={onBook}
           style={[
             styles.serviceBookButton,
-
-            !canBook
-            &&
+            !canBook &&
               styles.serviceBookButtonDisabled,
           ]}
         >
@@ -1577,9 +1272,7 @@ function ServiceCard({
           <Text
             style={[
               styles.serviceBookButtonText,
-
-              !canBook
-              &&
+              !canBook &&
                 styles.serviceBookButtonTextDisabled,
             ]}
           >
@@ -1592,6 +1285,10 @@ function ServiceCard({
     </View>
   );
 }
+
+/* ==========================================================
+   PROMOTION CARD
+   ========================================================== */
 
 function PromoCard({
   promo,
@@ -1609,9 +1306,7 @@ function PromoCard({
       </View>
 
       <View style={styles.promoCopy}>
-        <View
-          style={styles.promoTopRow}
-        >
+        <View style={styles.promoTopRow}>
           <Text
             numberOfLines={2}
             style={styles.promoTitle}
@@ -1619,71 +1314,47 @@ function PromoCard({
             {promo.title}
           </Text>
 
-          <View
-            style={
-              styles.promoDiscountBadge
-            }
-          >
-            <Text
-              style={
-                styles.promoDiscountText
-              }
-            >
+          <View style={styles.promoDiscountBadge}>
+            <Text style={styles.promoDiscountText}>
               {promo.discount.type_label}:{' '}
-              {String(
-                promo.discount.value,
-              )}
+              {String(promo.discount.value)}
             </Text>
           </View>
         </View>
 
-        <Text
-          style={styles.promoScope}
-        >
+        <Text style={styles.promoScope}>
           {promo.service
             ? `For ${promo.service.name}`
             : 'Shop-wide promotion'}
         </Text>
 
-        {promo.description?.trim()
-          ? (
-              <Text
-                style={
-                  styles.promoDescription
-                }
-              >
-                {promo.description}
-              </Text>
-            )
-          : null}
+        {promo.description?.trim() ? (
+          <Text style={styles.promoDescription}>
+            {promo.description}
+          </Text>
+        ) : null}
 
-        <View
-          style={styles.promoPeriodRow}
-        >
+        <View style={styles.promoPeriodRow}>
           <Ionicons
             name="calendar-outline"
             size={13}
             color={COLORS.textMuted}
           />
 
-          <Text
-            style={
-              styles.promoPeriodText
-            }
-          >
-            {formatPromoDate(
-              promo.starts_at,
-            )}{' '}
-            –{' '}
-            {formatPromoDate(
-              promo.ends_at,
-            )}
+          <Text style={styles.promoPeriodText}>
+            {formatPromoDate(promo.starts_at)}
+            {' – '}
+            {formatPromoDate(promo.ends_at)}
           </Text>
         </View>
       </View>
     </View>
   );
 }
+
+/* ==========================================================
+   WEEKLY SCHEDULE
+   ========================================================== */
 
 function ScheduleCard({
   schedule,
@@ -1691,90 +1362,69 @@ function ScheduleCard({
   schedule: CustomerShopSchedule[];
 }) {
   return (
-    <View
-      style={styles.scheduleCard}
-    >
-      {schedule.map(
-        (
-          day,
-          index,
-        ) => (
-          <View
-            key={day.day_of_week}
-            style={[
-              styles.scheduleRow,
-
-              index
-              !== schedule.length - 1
-              &&
-                styles.scheduleRowBorder,
-            ]}
-          >
+    <View style={styles.scheduleCard}>
+      {schedule.map((day, index) => (
+        <View
+          key={day.day_of_week}
+          style={[
+            styles.scheduleRow,
+            index !== schedule.length - 1 &&
+              styles.scheduleRowBorder,
+          ]}
+        >
+          <View style={styles.scheduleDayBlock}>
             <View
-              style={
-                styles.scheduleDayBlock
-              }
-            >
-              <View
-                style={[
-                  styles.scheduleStatusDot,
-
-                  {
-                    backgroundColor:
-                      day.is_open
-                        ? COLORS.green
-                        : COLORS.textLight,
-                  },
-                ]}
-              />
-
-              <Text
-                style={
-                  styles.scheduleDay
-                }
-              >
-                {day.day_label}
-              </Text>
-            </View>
-
-            <Text
               style={[
-                styles.scheduleHours,
-
-                !day.is_open
-                &&
-                  styles.scheduleHoursClosed,
+                styles.scheduleStatusDot,
+                {
+                  backgroundColor: day.is_open
+                    ? COLORS.green
+                    : COLORS.textLight,
+                },
               ]}
-            >
-              {day.is_open
-                ? `${formatTime(day.opens_at)} – ${formatTime(day.closes_at)}`
-                : 'Closed'}
+            />
+
+            <Text style={styles.scheduleDay}>
+              {day.day_label}
             </Text>
           </View>
-        ),
-      )}
+
+          <Text
+            style={[
+              styles.scheduleHours,
+              !day.is_open &&
+                styles.scheduleHoursClosed,
+            ]}
+          >
+            {day.is_open
+              ? `${formatTime(day.opens_at)} – ${formatTime(
+                  day.closes_at,
+                )}`
+              : 'Closed'}
+          </Text>
+        </View>
+      ))}
     </View>
   );
 }
+
+/* ==========================================================
+   REVIEW CARD
+   ========================================================== */
 
 function ReviewCard({
   review,
 }: {
   review: CustomerReview;
 }) {
-  const reviewDate =
-    formatReviewDate(
-      review.created_at,
-    );
+  const reviewDate = formatReviewDate(
+    review.created_at,
+  );
 
   return (
     <View style={styles.reviewCard}>
-      <View
-        style={styles.reviewHeader}
-      >
-        <View
-          style={styles.reviewAvatar}
-        >
+      <View style={styles.reviewHeader}>
+        <View style={styles.reviewAvatar}>
           <Ionicons
             name="person-outline"
             size={18}
@@ -1782,118 +1432,78 @@ function ReviewCard({
           />
         </View>
 
-        <View
-          style={styles.reviewHeading}
-        >
-          <Text
-            style={styles.reviewerName}
-          >
+        <View style={styles.reviewHeading}>
+          <Text style={styles.reviewerName}>
             {review.reviewer.label}
           </Text>
 
           {review.verified_booking ? (
-            <View
-              style={styles.verifiedRow}
-            >
+            <View style={styles.verifiedRow}>
               <Ionicons
                 name="checkmark-circle"
                 size={13}
                 color={COLORS.green}
               />
 
-              <Text
-                style={
-                  styles.verifiedText
-                }
-              >
+              <Text style={styles.verifiedText}>
                 Verified booking
               </Text>
             </View>
           ) : null}
         </View>
 
-        <View
-          style={
-            styles.reviewRatingBadge
-          }
-        >
+        <View style={styles.reviewRatingBadge}>
           <Ionicons
             name="star"
             size={13}
             color={COLORS.warning}
           />
 
-          <Text
-            style={
-              styles.reviewRatingText
-            }
-          >
+          <Text style={styles.reviewRatingText}>
             {review.rating}/5
           </Text>
         </View>
       </View>
 
+      {/* REVIEW COMMENT */}
+
       {review.comment?.trim() ? (
-        <Text
-          style={styles.reviewComment}
-        >
+        <Text style={styles.reviewComment}>
           {review.comment}
         </Text>
       ) : (
-        <Text
-          style={
-            styles.reviewCommentMuted
-          }
-        >
-          Rating submitted without a
-          written comment.
+        <Text style={styles.reviewCommentMuted}>
+          Rating submitted without a written comment.
         </Text>
       )}
 
-      {(review.service
-      || reviewDate) ? (
-        <View
-          style={styles.reviewMetaCard}
-        >
+      {/* REVIEW METADATA */}
+
+      {review.service || reviewDate ? (
+        <View style={styles.reviewMetaCard}>
           {review.service ? (
-            <View
-              style={
-                styles.reviewMetaRow
-              }
-            >
+            <View style={styles.reviewMetaRow}>
               <Ionicons
                 name="cut-outline"
                 size={14}
                 color={COLORS.textMuted}
               />
 
-              <Text
-                style={
-                  styles.reviewMetaText
-                }
-              >
+              <Text style={styles.reviewMetaText}>
                 {review.service.name}
               </Text>
             </View>
           ) : null}
 
           {reviewDate ? (
-            <View
-              style={
-                styles.reviewMetaRow
-              }
-            >
+            <View style={styles.reviewMetaRow}>
               <Ionicons
                 name="calendar-outline"
                 size={14}
                 color={COLORS.textMuted}
               />
 
-              <Text
-                style={
-                  styles.reviewMetaText
-                }
-              >
+              <Text style={styles.reviewMetaText}>
                 {reviewDate}
               </Text>
             </View>
@@ -1903,6 +1513,10 @@ function ReviewCard({
     </View>
   );
 }
+
+/* ==========================================================
+   EMPTY SECTION
+   ========================================================== */
 
 function EmptySection({
   icon,
@@ -1934,6 +1548,10 @@ function EmptySection({
   );
 }
 
+/* ==========================================================
+   STATUS MESSAGE
+   ========================================================== */
+
 function MessageBox({
   type,
   title,
@@ -1943,25 +1561,20 @@ function MessageBox({
   title: string;
   message: string;
 }) {
-  const success =
-    type === 'success';
+  const success = type === 'success';
 
   return (
     <View
       style={[
         styles.messageBox,
-
         {
-          backgroundColor:
-            success
-              ? COLORS.successSoft
-              : COLORS.dangerSoft,
+          backgroundColor: success
+            ? COLORS.successSoft
+            : COLORS.dangerSoft,
         },
       ]}
     >
-      <View
-        style={styles.messageIcon}
-      >
+      <View style={styles.messageIcon}>
         <Ionicons
           name={
             success
@@ -1977,27 +1590,21 @@ function MessageBox({
         />
       </View>
 
-      <View
-        style={styles.messageContent}
-      >
+      <View style={styles.messageContent}>
         <Text
           style={[
             styles.messageTitle,
-
             {
-              color:
-                success
-                  ? COLORS.success
-                  : COLORS.danger,
+              color: success
+                ? COLORS.success
+                : COLORS.danger,
             },
           ]}
         >
           {title}
         </Text>
 
-        <Text
-          style={styles.messageText}
-        >
+        <Text style={styles.messageText}>
           {message}
         </Text>
       </View>
@@ -2005,21 +1612,27 @@ function MessageBox({
   );
 }
 
+/* ==========================================================
+   STYLES
+   ========================================================== */
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
 
+  // UPDATED: Match all other Customer screens.
   container: {
     width: '100%',
     maxWidth: LAYOUT.contentMaxWidth,
     alignSelf: 'center',
-    paddingHorizontal:
-      LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingHorizontal: LAYOUT.screenPadding,
+    paddingTop: 40,
     paddingBottom: 48,
   },
+
+  /* TOP BAR */
 
   topBar: {
     minHeight: 48,
@@ -2042,8 +1655,7 @@ const styles = StyleSheet.create({
 
   topBarTitle: {
     color: COLORS.text,
-    fontSize:
-      TYPOGRAPHY.cardTitle,
+    fontSize: TYPOGRAPHY.cardTitle,
     fontWeight: '800',
     textAlign: 'center',
   },
@@ -2062,9 +1674,10 @@ const styles = StyleSheet.create({
   },
 
   savedTopButtonActive: {
-    backgroundColor:
-      COLORS.accentSoft,
+    backgroundColor: COLORS.accentSoft,
   },
+
+  /* MESSAGE BOX */
 
   messageBox: {
     marginTop: 12,
@@ -2100,6 +1713,8 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
+  /* HERO CARD */
+
   heroCard: {
     marginTop: SPACING.lg,
     padding: 18,
@@ -2111,15 +1726,13 @@ const styles = StyleSheet.create({
   heroTopRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
-    justifyContent:
-      'space-between',
+    justifyContent: 'space-between',
     gap: 12,
   },
 
   heroAvatar: {
     borderRadius: 24,
-    backgroundColor:
-      COLORS.accentSoft,
+    backgroundColor: COLORS.accentSoft,
   },
 
   heroAvatarImage: {
@@ -2180,8 +1793,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'stretch',
     borderTopWidth: 1,
-    borderTopColor:
-      COLORS.navyMuted,
+    borderTopColor: COLORS.navyMuted,
   },
 
   heroStat: {
@@ -2204,17 +1816,17 @@ const styles = StyleSheet.create({
   heroStatValue: {
     marginTop: 4,
     color: COLORS.white,
-    fontSize:
-      TYPOGRAPHY.secondary,
+    fontSize: TYPOGRAPHY.secondary,
     fontWeight: '800',
   },
 
   heroDivider: {
     width: 1,
     marginHorizontal: 11,
-    backgroundColor:
-      COLORS.navyMuted,
+    backgroundColor: COLORS.navyMuted,
   },
+
+  /* AVAILABILITY */
 
   availabilityNotice: {
     marginTop: 12,
@@ -2239,8 +1851,7 @@ const styles = StyleSheet.create({
   },
 
   availabilityNoticeTitle: {
-    fontSize:
-      TYPOGRAPHY.secondary,
+    fontSize: TYPOGRAPHY.secondary,
     fontWeight: '800',
   },
 
@@ -2251,9 +1862,10 @@ const styles = StyleSheet.create({
     lineHeight: 18,
   },
 
+  /* PRIMARY BOOKING BUTTON */
+
   primaryBookButton: {
-    minHeight:
-      LAYOUT.buttonHeight,
+    minHeight: LAYOUT.buttonHeight,
     marginTop: 12,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2267,8 +1879,7 @@ const styles = StyleSheet.create({
   primaryBookButtonDisabled: {
     borderWidth: 1,
     borderColor: COLORS.border,
-    backgroundColor:
-      COLORS.surfaceSoft,
+    backgroundColor: COLORS.surfaceSoft,
   },
 
   primaryBookButtonText: {
@@ -2280,6 +1891,8 @@ const styles = StyleSheet.create({
   primaryBookButtonTextDisabled: {
     color: COLORS.textLight,
   },
+
+  /* SECTIONS */
 
   sectionHeading: {
     marginTop: SPACING.xxl,
@@ -2299,6 +1912,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 17,
   },
+
+  /* ABOUT SHOP */
 
   aboutCard: {
     padding: 15,
@@ -2321,8 +1936,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 14,
-    backgroundColor:
-      COLORS.accentSoft,
+    backgroundColor: COLORS.accentSoft,
   },
 
   aboutCopy: {
@@ -2331,8 +1945,7 @@ const styles = StyleSheet.create({
 
   aboutTitle: {
     color: COLORS.text,
-    fontSize:
-      TYPOGRAPHY.cardTitle,
+    fontSize: TYPOGRAPHY.cardTitle,
     fontWeight: '800',
   },
 
@@ -2348,8 +1961,7 @@ const styles = StyleSheet.create({
     gap: 9,
     padding: 12,
     borderRadius: RADII.md,
-    backgroundColor:
-      COLORS.surfaceSoft,
+    backgroundColor: COLORS.surfaceSoft,
   },
 
   contactRow: {
@@ -2385,6 +1997,8 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
 
+  /* PROMOTIONS */
+
   promoList: {
     gap: 10,
   },
@@ -2397,8 +2011,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: RADII.lg,
-    backgroundColor:
-      COLORS.warningSoft,
+    backgroundColor: COLORS.warningSoft,
   },
 
   promoIcon: {
@@ -2423,8 +2036,7 @@ const styles = StyleSheet.create({
   promoTitle: {
     flex: 1,
     color: COLORS.text,
-    fontSize:
-      TYPOGRAPHY.secondary,
+    fontSize: TYPOGRAPHY.secondary,
     lineHeight: 18,
     fontWeight: '800',
   },
@@ -2472,6 +2084,8 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 
+  /* SERVICES */
+
   serviceList: {
     gap: 12,
   },
@@ -2488,8 +2102,7 @@ const styles = StyleSheet.create({
   serviceImage: {
     width: '100%',
     aspectRatio: 16 / 9,
-    backgroundColor:
-      COLORS.surfaceSoft,
+    backgroundColor: COLORS.surfaceSoft,
   },
 
   serviceImageFallback: {
@@ -2497,8 +2110,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    backgroundColor:
-      COLORS.surfaceSoft,
+    backgroundColor: COLORS.surfaceSoft,
   },
 
   serviceImageFallbackIcon: {
@@ -2507,8 +2119,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 15,
-    backgroundColor:
-      COLORS.accentSoft,
+    backgroundColor: COLORS.accentSoft,
   },
 
   serviceImageFallbackText: {
@@ -2534,8 +2145,7 @@ const styles = StyleSheet.create({
 
   serviceName: {
     color: COLORS.text,
-    fontSize:
-      TYPOGRAPHY.cardTitle,
+    fontSize: TYPOGRAPHY.cardTitle,
     lineHeight: 22,
     fontWeight: '800',
   },
@@ -2555,8 +2165,7 @@ const styles = StyleSheet.create({
   servicePrice: {
     flexShrink: 0,
     color: COLORS.navy,
-    fontSize:
-      TYPOGRAPHY.cardTitle,
+    fontSize: TYPOGRAPHY.cardTitle,
     fontWeight: '800',
   },
 
@@ -2568,8 +2177,7 @@ const styles = StyleSheet.create({
   },
 
   serviceBookButton: {
-    minHeight:
-      LAYOUT.compactButtonHeight,
+    minHeight: LAYOUT.compactButtonHeight,
     marginTop: 13,
     flexDirection: 'row',
     alignItems: 'center',
@@ -2580,20 +2188,20 @@ const styles = StyleSheet.create({
   },
 
   serviceBookButtonDisabled: {
-    backgroundColor:
-      COLORS.surfaceSoft,
+    backgroundColor: COLORS.surfaceSoft,
   },
 
   serviceBookButtonText: {
     color: COLORS.white,
-    fontSize:
-      TYPOGRAPHY.secondary,
+    fontSize: TYPOGRAPHY.secondary,
     fontWeight: '800',
   },
 
   serviceBookButtonTextDisabled: {
     color: COLORS.textLight,
   },
+
+  /* SCHEDULE */
 
   scheduleCard: {
     overflow: 'hidden',
@@ -2607,8 +2215,7 @@ const styles = StyleSheet.create({
     minHeight: 58,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent:
-      'space-between',
+    justifyContent: 'space-between',
     gap: 12,
     paddingHorizontal: 14,
     paddingVertical: 10,
@@ -2633,8 +2240,7 @@ const styles = StyleSheet.create({
 
   scheduleDay: {
     color: COLORS.text,
-    fontSize:
-      TYPOGRAPHY.secondary,
+    fontSize: TYPOGRAPHY.secondary,
     fontWeight: '700',
   },
 
@@ -2648,6 +2254,8 @@ const styles = StyleSheet.create({
   scheduleHoursClosed: {
     color: COLORS.textLight,
   },
+
+  /* REVIEWS */
 
   reviewSectionHeading: {
     marginTop: SPACING.xxl,
@@ -2699,8 +2307,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 13,
-    backgroundColor:
-      COLORS.accentSoft,
+    backgroundColor: COLORS.accentSoft,
   },
 
   reviewHeading: {
@@ -2710,8 +2317,7 @@ const styles = StyleSheet.create({
 
   reviewerName: {
     color: COLORS.text,
-    fontSize:
-      TYPOGRAPHY.secondary,
+    fontSize: TYPOGRAPHY.secondary,
     fontWeight: '800',
   },
 
@@ -2735,8 +2341,7 @@ const styles = StyleSheet.create({
     gap: 4,
     paddingHorizontal: 8,
     borderRadius: RADII.pill,
-    backgroundColor:
-      COLORS.warningSoft,
+    backgroundColor: COLORS.warningSoft,
   },
 
   reviewRatingText: {
@@ -2765,8 +2370,7 @@ const styles = StyleSheet.create({
     gap: 6,
     padding: 10,
     borderRadius: RADII.md,
-    backgroundColor:
-      COLORS.surfaceSoft,
+    backgroundColor: COLORS.surfaceSoft,
   },
 
   reviewMetaRow: {
@@ -2781,6 +2385,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.micro,
     fontWeight: '600',
   },
+
+  /* EMPTY CONTENT */
 
   emptyCard: {
     alignItems: 'center',
@@ -2798,15 +2404,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 17,
-    backgroundColor:
-      COLORS.accentSoft,
+    backgroundColor: COLORS.accentSoft,
   },
 
   emptyTitle: {
     marginTop: 12,
     color: COLORS.text,
-    fontSize:
-      TYPOGRAPHY.cardTitle,
+    fontSize: TYPOGRAPHY.cardTitle,
     fontWeight: '800',
   },
 
@@ -2819,6 +2423,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  /* FOOTER */
+
   footerCard: {
     marginTop: SPACING.xxl,
     flexDirection: 'row',
@@ -2826,8 +2432,7 @@ const styles = StyleSheet.create({
     gap: 10,
     padding: 13,
     borderRadius: RADII.lg,
-    backgroundColor:
-      COLORS.greenSoft,
+    backgroundColor: COLORS.greenSoft,
   },
 
   footerIcon: {
@@ -2845,8 +2450,7 @@ const styles = StyleSheet.create({
 
   footerTitle: {
     color: COLORS.green,
-    fontSize:
-      TYPOGRAPHY.secondary,
+    fontSize: TYPOGRAPHY.secondary,
     fontWeight: '800',
   },
 
@@ -2856,6 +2460,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.micro,
     lineHeight: 16,
   },
+
+  /* LOADING SCREEN */
 
   loadingContainer: {
     flex: 1,
@@ -2876,8 +2482,7 @@ const styles = StyleSheet.create({
   loadingTitle: {
     marginTop: 14,
     color: COLORS.text,
-    fontSize:
-      TYPOGRAPHY.cardTitle,
+    fontSize: TYPOGRAPHY.cardTitle,
     fontWeight: '800',
   },
 
@@ -2890,11 +2495,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  /* UNAVAILABLE SHOP SCREEN */
+
   unavailableContainer: {
     flex: 1,
-    paddingHorizontal:
-      LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingHorizontal: LAYOUT.screenPadding,
+    paddingTop: 40,
   },
 
   unavailableContent: {
@@ -2910,8 +2516,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 20,
-    backgroundColor:
-      COLORS.accentSoft,
+    backgroundColor: COLORS.accentSoft,
   },
 
   unavailableTitle: {
@@ -2931,8 +2536,7 @@ const styles = StyleSheet.create({
   },
 
   discoverButton: {
-    minHeight:
-      LAYOUT.compactButtonHeight,
+    minHeight: LAYOUT.compactButtonHeight,
     marginTop: 16,
     alignItems: 'center',
     justifyContent: 'center',
@@ -2943,8 +2547,7 @@ const styles = StyleSheet.create({
 
   discoverButtonText: {
     color: COLORS.white,
-    fontSize:
-      TYPOGRAPHY.secondary,
+    fontSize: TYPOGRAPHY.secondary,
     fontWeight: '800',
   },
 

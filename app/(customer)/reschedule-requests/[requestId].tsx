@@ -1,3 +1,4 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import {
   router,
@@ -5,14 +6,9 @@ import {
   useLocalSearchParams,
 } from 'expo-router';
 import type { ComponentProps } from 'react';
-import {
-  useCallback,
-  useState,
-} from 'react';
+import { useCallback, useState } from 'react';
 import {
   ActivityIndicator,
-  Modal,
-  SafeAreaView,
   ScrollView,
   StatusBar,
   StyleSheet,
@@ -20,7 +16,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
+import StyleHubModal from '@/src/components/StyleHubModal';
 import { COLORS } from '@/src/constants/colors';
 import {
   LAYOUT,
@@ -40,8 +38,7 @@ import type {
   RescheduleRequestStatus,
 } from '@/src/types/customer';
 
-type IconName =
-  ComponentProps<typeof Ionicons>['name'];
+type IconName = ComponentProps<typeof Ionicons>['name'];
 
 type StatusPresentation = {
   icon: IconName;
@@ -51,12 +48,16 @@ type StatusPresentation = {
   message: string;
 };
 
+type RequestModal = 'withdraw' | 'withdrawSuccess' | null;
+
+/* ==========================================================
+   HELPERS
+   ========================================================== */
+
 function getRouteValue(
   value: string | string[] | undefined,
 ): string | undefined {
-  return Array.isArray(value)
-    ? value[0]
-    : value;
+  return Array.isArray(value) ? value[0] : value;
 }
 
 function statusPresentation(
@@ -65,54 +66,30 @@ function statusPresentation(
   switch (status) {
     case 'approved':
       return {
-        icon:
-          'checkmark-circle-outline',
-
-        color:
-          COLORS.green,
-
-        background:
-          COLORS.greenSoft,
-
-        title:
-          'Request approved',
-
+        icon: 'checkmark-circle-outline',
+        color: COLORS.green,
+        background: COLORS.greenSoft,
+        title: 'Request approved',
         message:
           'The Shop Owner approved this schedule change. The appointment now follows the approved schedule.',
       };
 
     case 'pending':
       return {
-        icon:
-          'time-outline',
-
-        color:
-          COLORS.warning,
-
-        background:
-          COLORS.warningSoft,
-
-        title:
-          'Waiting for a decision',
-
+        icon: 'time-outline',
+        color: COLORS.warning,
+        background: COLORS.warningSoft,
+        title: 'Waiting for a decision',
         message:
           'Your existing appointment remains unchanged while this request is pending.',
       };
 
     case 'withdrawn':
       return {
-        icon:
-          'arrow-undo-outline',
-
-        color:
-          COLORS.textMuted,
-
-        background:
-          COLORS.surfaceSoft,
-
-        title:
-          'Request withdrawn',
-
+        icon: 'arrow-undo-outline',
+        color: COLORS.textMuted,
+        background: COLORS.surfaceSoft,
+        title: 'Request withdrawn',
         message:
           'You withdrew this request before it was approved or rejected.',
       };
@@ -120,89 +97,56 @@ function statusPresentation(
     case 'rejected':
     default:
       return {
-        icon:
-          'close-circle-outline',
-
-        color:
-          COLORS.danger,
-
-        background:
-          COLORS.dangerSoft,
-
-        title:
-          'Request rejected',
-
+        icon: 'close-circle-outline',
+        color: COLORS.danger,
+        background: COLORS.dangerSoft,
+        title: 'Request rejected',
         message:
           'The Shop Owner did not approve this requested schedule change.',
       };
   }
 }
 
-function formatDate(
-  value: string,
-): string {
-  const date =
-    new Date(
-      `${value}T12:00:00+08:00`,
-    );
+function formatDate(value: string): string {
+  const date = new Date(`${value}T12:00:00+08:00`);
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return value;
   }
 
   try {
-    return new Intl.DateTimeFormat(
-      'en-PH',
-      {
-        weekday: 'long',
-        month: 'long',
-        day: 'numeric',
-        year: 'numeric',
-        timeZone: 'Asia/Manila',
-      },
-    ).format(date);
+    return new Intl.DateTimeFormat('en-PH', {
+      weekday: 'long',
+      month: 'long',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'Asia/Manila',
+    }).format(date);
   } catch {
     return value;
   }
 }
 
-function formatTime(
-  value: string,
-): string {
-  const match =
-    value.match(
-      /^(\d{1,2}):(\d{2})/,
-    );
+function formatTime(value: string): string {
+  const match = value.match(/^(\d{1,2}):(\d{2})/);
 
   if (!match) {
     return value;
   }
 
-  const hour24 =
-    Number(match[1]);
-
-  const minute =
-    match[2];
+  const hour24 = Number(match[1]);
+  const minute = match[2];
 
   if (
-    Number.isNaN(hour24)
-    || hour24 < 0
-    || hour24 > 23
+    Number.isNaN(hour24) ||
+    hour24 < 0 ||
+    hour24 > 23
   ) {
     return value;
   }
 
-  const suffix =
-    hour24 >= 12
-      ? 'PM'
-      : 'AM';
-
-  const hour12 =
-    hour24 % 12 || 12;
+  const suffix = hour24 >= 12 ? 'PM' : 'AM';
+  const hour12 = hour24 % 12 || 12;
 
   return `${hour12}:${minute} ${suffix}`;
 }
@@ -214,170 +158,122 @@ function formatDateTime(
     return null;
   }
 
-  const date =
-    new Date(value);
+  const date = new Date(value);
 
-  if (
-    Number.isNaN(
-      date.getTime(),
-    )
-  ) {
+  if (Number.isNaN(date.getTime())) {
     return value;
   }
 
   try {
-    return new Intl.DateTimeFormat(
-      'en-PH',
-      {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-        hour: 'numeric',
-        minute: '2-digit',
-        timeZone: 'Asia/Manila',
-      },
-    ).format(date);
+    return new Intl.DateTimeFormat('en-PH', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      timeZone: 'Asia/Manila',
+    }).format(date);
   } catch {
     return value;
   }
 }
 
+/* ==========================================================
+   CUSTOMER RESCHEDULE REQUEST DETAILS
+   ========================================================== */
+
 export default function CustomerRescheduleRequestDetailScreen() {
-  const params =
-    useLocalSearchParams<{
-      requestId?:
-        | string
-        | string[];
-    }>();
+  const params = useLocalSearchParams<{
+    requestId?: string | string[];
+  }>();
 
   const { token } = useAuth();
 
-  const requestId =
-    Number(
-      getRouteValue(
-        params.requestId,
-      ),
-    );
+  const requestId = Number(
+    getRouteValue(params.requestId),
+  );
 
-  const [
-    request,
-    setRequest,
-  ] =
-    useState<CustomerRescheduleRequest | null>(
-      null,
-    );
+  const [request, setRequest] =
+    useState<CustomerRescheduleRequest | null>(null);
 
-  const [
-    isLoading,
-    setIsLoading,
-  ] =
-    useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const [
-    isRefreshing,
-    setIsRefreshing,
-  ] =
-    useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
-  const [
-    isSubmitting,
-    setIsSubmitting,
-  ] =
-    useState(false);
+  /* ========================================================
+     SHARED STYLEHUB MODAL STATE
+     ======================================================== */
 
-  const [
-    errorMessage,
-    setErrorMessage,
-  ] =
+  const [activeModal, setActiveModal] =
+    useState<RequestModal>(null);
+
+  const [withdrawModalError, setWithdrawModalError] =
     useState('');
 
-  const [
-    successMessage,
-    setSuccessMessage,
-  ] =
-    useState('');
+  /* ========================================================
+     LOAD REQUEST FROM LARAVEL
+     ======================================================== */
 
-  const [
-    withdrawConfirmVisible,
-    setWithdrawConfirmVisible,
-  ] =
-    useState(false);
+  const loadRequest = useCallback(
+    async (refreshing = false): Promise<void> => {
+      if (
+        !token ||
+        !Number.isInteger(requestId) ||
+        requestId < 1
+      ) {
+        setIsLoading(false);
+        setIsRefreshing(false);
+        setErrorMessage('The selected request is invalid.');
+        return;
+      }
 
-  const loadRequest =
-    useCallback(
-      async (
-        refreshing = false,
-      ): Promise<void> => {
-        if (
-          !token
-          ||
-          !Number.isInteger(
-            requestId,
-          )
-          ||
-          requestId < 1
-        ) {
-          setIsLoading(false);
-          setIsRefreshing(false);
+      if (refreshing) {
+        setIsRefreshing(true);
+      } else {
+        setIsLoading(true);
+      }
 
-          setErrorMessage(
-            'The selected request is invalid.',
-          );
+      setErrorMessage('');
 
-          return;
-        }
+      try {
+        const response = await getCustomerRescheduleRequest(
+          token,
+          requestId,
+        );
 
-        if (refreshing) {
-          setIsRefreshing(true);
-        } else {
-          setIsLoading(true);
-        }
-
-        setErrorMessage('');
-
-        try {
-          const response =
-            await getCustomerRescheduleRequest(
-              token,
-              requestId,
-            );
-
-          setRequest(
-            response
-              .data
-              .reschedule_request,
-          );
-        } catch (error) {
-          setErrorMessage(
-            error instanceof ApiError
-              ? error.message
-              : 'Unable to load the reschedule request.',
-          );
-        } finally {
-          setIsLoading(false);
-          setIsRefreshing(false);
-        }
-      },
-      [
-        requestId,
-        token,
-      ],
-    );
+        setRequest(response.data.reschedule_request);
+      } catch (error) {
+        setErrorMessage(
+          error instanceof ApiError
+            ? error.message
+            : 'Unable to load the reschedule request.',
+        );
+      } finally {
+        setIsLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [requestId, token],
+  );
 
   useFocusEffect(
     useCallback(() => {
       void loadRequest();
-
       return undefined;
     }, [loadRequest]),
   );
 
+  /* ========================================================
+     OPEN WITHDRAW CONFIRMATION
+     ======================================================== */
+
   function requestWithdrawConfirmation(): void {
     if (
-      !request
-      ||
-      request.status !== 'pending'
-      ||
+      !request ||
+      request.status !== 'pending' ||
       isSubmitting
     ) {
       return;
@@ -385,30 +281,40 @@ export default function CustomerRescheduleRequestDetailScreen() {
 
     setErrorMessage('');
     setSuccessMessage('');
+    setWithdrawModalError('');
 
-    setWithdrawConfirmVisible(true);
+    setActiveModal('withdraw');
   }
+
+  /* ========================================================
+     CLOSE WITHDRAW MODAL
+     ======================================================== */
 
   function closeWithdrawConfirmation(): void {
     if (isSubmitting) {
       return;
     }
 
-    setWithdrawConfirmVisible(false);
+    setActiveModal(null);
+    setWithdrawModalError('');
   }
+
+  /* ========================================================
+     WITHDRAW REQUEST VIA LARAVEL
+     ======================================================== */
 
   async function performWithdraw(): Promise<void> {
     if (
-      !token
-      ||
-      !request
-      ||
+      !token ||
+      !request ||
+      request.status !== 'pending' ||
       isSubmitting
     ) {
       return;
     }
 
     setIsSubmitting(true);
+    setWithdrawModalError('');
     setErrorMessage('');
     setSuccessMessage('');
 
@@ -419,27 +325,26 @@ export default function CustomerRescheduleRequestDetailScreen() {
           request.id,
         );
 
-      const updated =
-        response
-          .data
-          .reschedule_request;
+      const updated = response.data.reschedule_request;
 
       setRequest({
         ...updated,
-
         appointment:
-          updated.appointment
-          ?? request.appointment,
+          updated.appointment ?? request.appointment,
       });
 
-      setWithdrawConfirmVisible(false);
-
       setSuccessMessage(
-        response.message
-        ?? 'Your reschedule request was withdrawn successfully.',
+        response.message ??
+          'Your reschedule request was withdrawn successfully.',
       );
+
+      /* Show the green success modal. */
+
+      setActiveModal('withdrawSuccess');
     } catch (error) {
-      setErrorMessage(
+      /* Keep the error visible inside the red modal. */
+
+      setWithdrawModalError(
         error instanceof ApiError
           ? error.message
           : 'Unable to withdraw the request.',
@@ -449,95 +354,83 @@ export default function CustomerRescheduleRequestDetailScreen() {
     }
   }
 
+  /* ========================================================
+     OPEN APPOINTMENT DETAILS
+     ======================================================== */
+
   function openAppointment(): void {
-    if (
-      !request
-        ?.appointment
-        ?.id
-    ) {
+    if (!request?.appointment?.id) {
       return;
     }
 
     router.push({
       pathname:
         '/(customer)/customer-appointment/[appointmentId]',
-
       params: {
-        appointmentId:
-          String(
-            request.appointment.id,
-          ),
+        appointmentId: String(request.appointment.id),
       },
     });
   }
 
-  if (
-    isLoading
-    &&
-    !request
-  ) {
+  /* ========================================================
+     LOADING STATE
+     ======================================================== */
+
+  if (isLoading && !request) {
     return (
       <SafeAreaView
+        edges={['top', 'bottom']}
         style={styles.safeArea}
       >
         <StatusBar
           barStyle="dark-content"
-          backgroundColor={
-            COLORS.background
-          }
+          backgroundColor={COLORS.background}
+          translucent={false}
         />
 
-        <View
-          style={styles.loadingContainer}
-        >
-          <View
-            style={styles.loadingIcon}
-          >
+        <View style={styles.loadingContainer}>
+          <View style={styles.loadingIcon}>
             <ActivityIndicator
               size="small"
               color={COLORS.navy}
             />
           </View>
 
-          <Text
-            style={styles.loadingTitle}
-          >
+          <Text style={styles.loadingTitle}>
             Loading request
           </Text>
 
-          <Text
-            style={styles.loadingText}
-          >
-            Getting the latest Shop Owner
-            decision and schedule details.
+          <Text style={styles.loadingText}>
+            Getting the latest Shop Owner decision
+            and schedule details.
           </Text>
         </View>
       </SafeAreaView>
     );
   }
 
+  /* ========================================================
+     UNAVAILABLE STATE
+     ======================================================== */
+
   if (!request) {
     return (
       <SafeAreaView
+        edges={['top', 'bottom']}
         style={styles.safeArea}
       >
         <StatusBar
           barStyle="dark-content"
-          backgroundColor={
-            COLORS.background
-          }
+          backgroundColor={COLORS.background}
+          translucent={false}
         />
 
-        <View
-          style={styles.unavailableContainer}
-        >
+        <View style={styles.unavailableContainer}>
           <TouchableOpacity
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel="Go back"
-            onPress={() =>
-              router.back()
-            }
+            onPress={() => router.back()}
             style={styles.topIconButton}
           >
             <Ionicons
@@ -547,12 +440,8 @@ export default function CustomerRescheduleRequestDetailScreen() {
             />
           </TouchableOpacity>
 
-          <View
-            style={styles.unavailableContent}
-          >
-            <View
-              style={styles.unavailableIcon}
-            >
+          <View style={styles.unavailableContent}>
+            <View style={styles.unavailableIcon}>
               <Ionicons
                 name="swap-horizontal-outline"
                 size={30}
@@ -560,17 +449,13 @@ export default function CustomerRescheduleRequestDetailScreen() {
               />
             </View>
 
-            <Text
-              style={styles.unavailableTitle}
-            >
+            <Text style={styles.unavailableTitle}>
               Request unavailable
             </Text>
 
-            <Text
-              style={styles.unavailableText}
-            >
-              {errorMessage
-                || 'Unable to display this reschedule request.'}
+            <Text style={styles.unavailableText}>
+              {errorMessage ||
+                'Unable to display this reschedule request.'}
             </Text>
           </View>
         </View>
@@ -578,53 +463,44 @@ export default function CustomerRescheduleRequestDetailScreen() {
     );
   }
 
-  const status =
-    statusPresentation(
-      request.status,
-    );
+  /* ========================================================
+     DISPLAY VALUES
+     ======================================================== */
 
-  const createdAt =
-    formatDateTime(
-      request.created_at,
-    );
+  const status = statusPresentation(request.status);
 
-  const reviewedAt =
-    formatDateTime(
-      request.reviewed_at,
-    );
+  const createdAt = formatDateTime(request.created_at);
+  const reviewedAt = formatDateTime(request.reviewed_at);
+  const updatedAt = formatDateTime(request.updated_at);
 
-  const updatedAt =
-    formatDateTime(
-      request.updated_at,
-    );
+  /* ========================================================
+     MAIN SCREEN
+     ======================================================== */
 
   return (
     <SafeAreaView
+      edges={['top', 'bottom']}
       style={styles.safeArea}
     >
       <StatusBar
         barStyle="dark-content"
-        backgroundColor={
-          COLORS.background
-        }
+        backgroundColor={COLORS.background}
+        translucent={false}
       />
 
       <ScrollView
-        showsVerticalScrollIndicator={
-          false
-        }
-        contentContainerStyle={
-          styles.container
-        }
+        style={styles.scrollView}
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={styles.container}
       >
+        {/* TOP NAVIGATION */}
+
         <View style={styles.topBar}>
           <TouchableOpacity
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel="Go back"
-            onPress={() =>
-              router.back()
-            }
+            onPress={() => router.back()}
             style={styles.topIconButton}
           >
             <Ionicons
@@ -634,22 +510,12 @@ export default function CustomerRescheduleRequestDetailScreen() {
             />
           </TouchableOpacity>
 
-          <View
-            style={
-              styles.topBarTitleBlock
-            }
-          >
-            <Text
-              style={styles.topBarTitle}
-            >
+          <View style={styles.topBarTitleBlock}>
+            <Text style={styles.topBarTitle}>
               Request details
             </Text>
 
-            <Text
-              style={
-                styles.topBarCaption
-              }
-            >
+            <Text style={styles.topBarCaption}>
               Request #{request.id}
             </Text>
           </View>
@@ -658,21 +524,12 @@ export default function CustomerRescheduleRequestDetailScreen() {
             activeOpacity={0.7}
             accessibilityRole="button"
             accessibilityLabel="Refresh request details"
-            disabled={
-              isSubmitting
-              || isRefreshing
-            }
-            onPress={() =>
-              void loadRequest(true)
-            }
+            disabled={isSubmitting || isRefreshing}
+            onPress={() => void loadRequest(true)}
             style={[
               styles.topIconButton,
-
-              (
-                isSubmitting
-                || isRefreshing
-              )
-              && styles.disabledButton,
+              (isSubmitting || isRefreshing) &&
+                styles.disabledButton,
             ]}
           >
             {isRefreshing ? (
@@ -690,23 +547,26 @@ export default function CustomerRescheduleRequestDetailScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* PAGE HEADER */}
+
         <View style={styles.header}>
           <Text style={styles.eyebrow}>
             RESCHEDULE REQUEST
           </Text>
 
           <Text style={styles.title}>
-            Compare the appointment and the
-            schedule you requested
+            Compare the appointment and the schedule
+            you requested
           </Text>
 
           <Text style={styles.subtitle}>
-            This page reflects the current
-            request status returned by Laravel,
-            including any Shop Owner rejection
-            reason or review timestamp.
+            This page reflects the current request status
+            returned by Laravel, including any Shop Owner
+            rejection reason or review timestamp.
           </Text>
         </View>
+
+        {/* PAGE ERRORS AND STATUS MESSAGES */}
 
         {errorMessage ? (
           <MessageBox
@@ -716,7 +576,7 @@ export default function CustomerRescheduleRequestDetailScreen() {
           />
         ) : null}
 
-        {successMessage ? (
+        {successMessage && activeModal === null ? (
           <MessageBox
             type="success"
             title="Request updated"
@@ -724,13 +584,11 @@ export default function CustomerRescheduleRequestDetailScreen() {
           />
         ) : null}
 
+        {/* REQUEST STATUS HERO */}
+
         <View style={styles.statusHero}>
-          <View
-            style={styles.statusHeroTopRow}
-          >
-            <View
-              style={styles.statusHeroIcon}
-            >
+          <View style={styles.statusHeroTopRow}>
+            <View style={styles.statusHeroIcon}>
               <Ionicons
                 name="swap-horizontal-outline"
                 size={24}
@@ -742,8 +600,7 @@ export default function CustomerRescheduleRequestDetailScreen() {
               style={[
                 styles.statusBadge,
                 {
-                  backgroundColor:
-                    status.background,
+                  backgroundColor: status.background,
                 },
               ]}
             >
@@ -757,8 +614,7 @@ export default function CustomerRescheduleRequestDetailScreen() {
                 style={[
                   styles.statusBadgeText,
                   {
-                    color:
-                      status.color,
+                    color: status.color,
                   },
                 ]}
               >
@@ -767,31 +623,21 @@ export default function CustomerRescheduleRequestDetailScreen() {
             </View>
           </View>
 
-          <Text
-            style={styles.statusHeroTitle}
-          >
+          <Text style={styles.statusHeroTitle}>
             {status.title}
           </Text>
 
-          <Text
-            style={
-              styles.statusHeroMessage
-            }
-          >
+          <Text style={styles.statusHeroMessage}>
             {status.message}
           </Text>
 
-          <View
-            style={styles.statusHeroFooter}
-          >
+          <View style={styles.statusHeroFooter}>
             <HeroStat
               label="Request"
               value={`#${request.id}`}
             />
 
-            <View
-              style={styles.heroDivider}
-            />
+            <View style={styles.heroDivider} />
 
             <HeroStat
               label="Submitted"
@@ -800,55 +646,38 @@ export default function CustomerRescheduleRequestDetailScreen() {
           </View>
         </View>
 
+        {/* SCHEDULE COMPARISON */}
+
         <SectionHeading
           title="Schedule comparison"
           subtitle="See the appointment record beside the requested schedule."
         />
 
-        <View
-          style={styles.comparisonCard}
-        >
+        <View style={styles.comparisonCard}>
           <ScheduleBlock
             icon="calendar-outline"
             label="Appointment record"
             date={
               request.appointment
                 ? formatDate(
-                    request
-                      .appointment
-                      .appointment_date,
+                    request.appointment.appointment_date,
                   )
                 : 'Appointment details unavailable'
             }
             time={
               request.appointment
                 ? `${formatTime(
-                    request
-                      .appointment
-                      .starts_at,
+                    request.appointment.starts_at,
                   )} – ${formatTime(
-                    request
-                      .appointment
-                      .ends_at,
+                    request.appointment.ends_at,
                   )}`
                 : '—'
             }
-            shop={
-              request
-                .appointment
-                ?.shop
-                .name
-            }
-            service={
-              request
-                .appointment
-                ?.service_name
-            }
+            shop={request.appointment?.shop?.name}
+            service={request.appointment?.service_name}
           />
 
-          <View
-            style={styles.comparisonArrow}
-          >
+          <View style={styles.comparisonArrow}>
             <Ionicons
               name="arrow-down-outline"
               size={19}
@@ -859,9 +688,7 @@ export default function CustomerRescheduleRequestDetailScreen() {
           <ScheduleBlock
             icon="swap-horizontal-outline"
             label="Requested schedule"
-            date={formatDate(
-              request.requested_date,
-            )}
+            date={formatDate(request.requested_date)}
             time={`${formatTime(
               request.requested_starts_at,
             )} – ${formatTime(
@@ -871,106 +698,74 @@ export default function CustomerRescheduleRequestDetailScreen() {
           />
         </View>
 
-        {request.customer_reason?.trim()
-          ? (
-            <>
-              <SectionHeading
-                title="Your reason"
-                subtitle="The explanation submitted with this request."
-              />
+        {/* CUSTOMER REASON */}
 
-              <View
-                style={styles.reasonCard}
-              >
-                <View
-                  style={styles.reasonIcon}
-                >
-                  <Ionicons
-                    name="chatbubble-ellipses-outline"
-                    size={20}
-                    color={COLORS.violet}
-                  />
-                </View>
+        {request.customer_reason?.trim() ? (
+          <>
+            <SectionHeading
+              title="Your reason"
+              subtitle="The explanation submitted with this request."
+            />
 
-                <Text
-                  style={styles.reasonText}
-                >
-                  {request.customer_reason}
+            <View style={styles.reasonCard}>
+              <View style={styles.reasonIcon}>
+                <Ionicons
+                  name="chatbubble-ellipses-outline"
+                  size={20}
+                  color={COLORS.violet}
+                />
+              </View>
+
+              <Text style={styles.reasonText}>
+                {request.customer_reason}
+              </Text>
+            </View>
+          </>
+        ) : null}
+
+        {/* SHOP OWNER REJECTION REASON */}
+
+        {request.rejection_reason?.trim() ? (
+          <>
+            <SectionHeading
+              title="Shop Owner response"
+              subtitle="Reason provided when the request was rejected."
+            />
+
+            <View style={styles.rejectionCard}>
+              <View style={styles.rejectionIcon}>
+                <Ionicons
+                  name="close-circle-outline"
+                  size={20}
+                  color={COLORS.danger}
+                />
+              </View>
+
+              <View style={styles.rejectionCopy}>
+                <Text style={styles.rejectionTitle}>
+                  Rejection reason
+                </Text>
+
+                <Text style={styles.rejectionText}>
+                  {request.rejection_reason}
                 </Text>
               </View>
-            </>
-          )
-          : null}
+            </View>
+          </>
+        ) : null}
 
-        {request.rejection_reason?.trim()
-          ? (
-            <>
-              <SectionHeading
-                title="Shop Owner response"
-                subtitle="Reason provided when the request was rejected."
-              />
-
-              <View
-                style={
-                  styles.rejectionCard
-                }
-              >
-                <View
-                  style={
-                    styles.rejectionIcon
-                  }
-                >
-                  <Ionicons
-                    name="close-circle-outline"
-                    size={20}
-                    color={COLORS.danger}
-                  />
-                </View>
-
-                <View
-                  style={
-                    styles.rejectionCopy
-                  }
-                >
-                  <Text
-                    style={
-                      styles.rejectionTitle
-                    }
-                  >
-                    Rejection reason
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.rejectionText
-                    }
-                  >
-                    {
-                      request
-                        .rejection_reason
-                    }
-                  </Text>
-                </View>
-              </View>
-            </>
-          )
-          : null}
+        {/* REQUEST ACTIVITY */}
 
         <SectionHeading
           title="Request activity"
           subtitle="Important timestamps returned with this reschedule request."
         />
 
-        <View
-          style={styles.activityCard}
-        >
+        <View style={styles.activityCard}>
           <ActivityRow
             icon="send-outline"
             label="Submitted"
-            value={
-              createdAt
-              ?? 'Not available'
-            }
+            value={createdAt ?? 'Not available'}
           />
 
           {reviewedAt ? (
@@ -998,21 +793,17 @@ export default function CustomerRescheduleRequestDetailScreen() {
           ) : null}
         </View>
 
+        {/* OPEN APPOINTMENT */}
+
         {request.appointment?.id ? (
           <TouchableOpacity
             activeOpacity={0.8}
             accessibilityRole="button"
             accessibilityLabel="Open appointment details"
             onPress={openAppointment}
-            style={
-              styles.appointmentButton
-            }
+            style={styles.appointmentButton}
           >
-            <View
-              style={
-                styles.appointmentButtonIcon
-              }
-            >
+            <View style={styles.appointmentButtonIcon}>
               <Ionicons
                 name="calendar-outline"
                 size={19}
@@ -1020,27 +811,14 @@ export default function CustomerRescheduleRequestDetailScreen() {
               />
             </View>
 
-            <View
-              style={
-                styles.appointmentButtonCopy
-              }
-            >
-              <Text
-                style={
-                  styles.appointmentButtonTitle
-                }
-              >
+            <View style={styles.appointmentButtonCopy}>
+              <Text style={styles.appointmentButtonTitle}>
                 Open appointment details
               </Text>
 
-              <Text
-                style={
-                  styles.appointmentButtonText
-                }
-              >
-                View the booking&apos;s current
-                status, service, notes, and
-                allowed actions.
+              <Text style={styles.appointmentButtonText}>
+                View the booking's current status,
+                service, notes, and allowed actions.
               </Text>
             </View>
 
@@ -1052,78 +830,57 @@ export default function CustomerRescheduleRequestDetailScreen() {
           </TouchableOpacity>
         ) : null}
 
-        {request.status === 'pending'
-          ? (
-            <View
-              style={styles.withdrawCard}
-            >
-              <View
-                style={styles.withdrawHeader}
-              >
-                <View
-                  style={styles.withdrawIcon}
-                >
-                  <Ionicons
-                    name="arrow-undo-outline"
-                    size={20}
-                    color={COLORS.danger}
-                  />
-                </View>
+        {/* WITHDRAW PENDING REQUEST */}
 
-                <View
-                  style={styles.withdrawCopy}
-                >
-                  <Text
-                    style={
-                      styles.withdrawTitle
-                    }
-                  >
-                    Withdraw this request
-                  </Text>
-
-                  <Text
-                    style={
-                      styles.withdrawText
-                    }
-                  >
-                    Withdrawing removes this
-                    pending schedule request. It
-                    does not cancel the
-                    appointment itself.
-                  </Text>
-                </View>
-              </View>
-
-              <TouchableOpacity
-                activeOpacity={0.82}
-                disabled={isSubmitting}
-                onPress={
-                  requestWithdrawConfirmation
-                }
-                style={[
-                  styles.withdrawButton,
-
-                  isSubmitting
-                  && styles.disabledButton,
-                ]}
-              >
+        {request.status === 'pending' ? (
+          <View style={styles.withdrawCard}>
+            <View style={styles.withdrawHeader}>
+              <View style={styles.withdrawIcon}>
                 <Ionicons
                   name="arrow-undo-outline"
-                  size={18}
+                  size={20}
                   color={COLORS.danger}
                 />
+              </View>
 
-                <Text
-                  style={
-                    styles.withdrawButtonText
-                  }
-                >
-                  Withdraw request
+              <View style={styles.withdrawCopy}>
+                <Text style={styles.withdrawTitle}>
+                  Withdraw this request
                 </Text>
-              </TouchableOpacity>
+
+                <Text style={styles.withdrawText}>
+                  Withdrawing removes this pending
+                  schedule request. It does not cancel
+                  the appointment itself.
+                </Text>
+              </View>
             </View>
-          )
-          : null}
+
+            <TouchableOpacity
+              activeOpacity={0.82}
+              accessibilityRole="button"
+              accessibilityLabel="Withdraw reschedule request"
+              disabled={isSubmitting}
+              onPress={requestWithdrawConfirmation}
+              style={[
+                styles.withdrawButton,
+                isSubmitting && styles.disabledButton,
+              ]}
+            >
+              <Ionicons
+                name="arrow-undo-outline"
+                size={18}
+                color={COLORS.danger}
+              />
+
+              <Text style={styles.withdrawButtonText}>
+                Withdraw request
+              </Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
+
+        {/* SECURITY NOTICE */}
 
         <View style={styles.footerNote}>
           <Ionicons
@@ -1132,111 +889,99 @@ export default function CustomerRescheduleRequestDetailScreen() {
             color={COLORS.green}
           />
 
-          <Text
-            style={styles.footerNoteText}
-          >
-            The Shop Owner decision and
-            appointment update are handled by
-            Laravel. This screen only displays
-            the returned request state and allows
-            withdrawal while pending.
+          <Text style={styles.footerNoteText}>
+            The Shop Owner decision and appointment
+            update are handled by Laravel. This screen
+            only displays the returned request state
+            and allows withdrawal while pending.
           </Text>
         </View>
       </ScrollView>
 
-      <Modal
-        visible={withdrawConfirmVisible}
-        transparent
-        animationType="fade"
-        statusBarTranslucent
-        onRequestClose={
-          closeWithdrawConfirmation
+      {/* ==================================================
+          SHARED STYLEHUB MODAL
+
+          Danger: Withdrawal confirmation
+          Success: Withdrawal completed
+          ================================================== */}
+
+      <StyleHubModal
+        visible={activeModal !== null}
+        onClose={closeWithdrawConfirmation}
+        title={
+          activeModal === 'withdrawSuccess'
+            ? 'Request withdrawn'
+            : 'Withdraw request?'
+        }
+        message={
+          activeModal === 'withdrawSuccess'
+            ? successMessage
+            : 'This removes your pending reschedule request. Your appointment remains active on its current schedule.'
+        }
+        tone={
+          activeModal === 'withdrawSuccess'
+            ? 'success'
+            : 'danger'
+        }
+        icon={
+          activeModal === 'withdrawSuccess'
+            ? 'checkmark-circle-outline'
+            : 'arrow-undo-outline'
+        }
+        dismissOnBackdrop={false}
+        actions={
+          activeModal === 'withdrawSuccess'
+            ? [
+                {
+                  label: 'Done',
+                  variant: 'primary',
+                  icon: 'checkmark-outline',
+                  onPress: closeWithdrawConfirmation,
+                },
+              ]
+            : activeModal === 'withdraw'
+              ? [
+                  {
+                    label: 'Keep request',
+                    variant: 'secondary',
+                    onPress: closeWithdrawConfirmation,
+                  },
+                  {
+                    label: 'Withdraw',
+                    variant: 'danger',
+                    icon: 'arrow-undo-outline',
+                    loading: isSubmitting,
+                    onPress: () =>
+                      void performWithdraw(),
+                  },
+                ]
+              : []
         }
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalCard}>
-            <View style={styles.modalIcon}>
-              <Ionicons
-                name="arrow-undo-outline"
-                size={23}
-                color={COLORS.danger}
-              />
-            </View>
+        {/* ERROR INSIDE THE MODAL */}
 
-            <Text style={styles.modalTitle}>
-              Withdraw request?
+        {activeModal === 'withdraw' &&
+        withdrawModalError ? (
+          <View style={styles.withdrawModalError}>
+            <Ionicons
+              name="alert-circle-outline"
+              size={17}
+              color={COLORS.danger}
+            />
+
+            <Text style={styles.withdrawModalErrorText}>
+              {withdrawModalError}
             </Text>
-
-            <Text style={styles.modalText}>
-              This removes the pending reschedule
-              request, but your appointment
-              remains active on its current
-              schedule.
-            </Text>
-
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                activeOpacity={0.78}
-                disabled={isSubmitting}
-                onPress={
-                  closeWithdrawConfirmation
-                }
-                style={
-                  styles.modalSecondaryButton
-                }
-              >
-                <Text
-                  style={
-                    styles.modalSecondaryText
-                  }
-                >
-                  Keep request
-                </Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                activeOpacity={0.82}
-                disabled={isSubmitting}
-                onPress={() =>
-                  void performWithdraw()
-                }
-                style={[
-                  styles.modalDangerButton,
-
-                  isSubmitting
-                  && styles.disabledButton,
-                ]}
-              >
-                {isSubmitting ? (
-                  <ActivityIndicator
-                    size="small"
-                    color={COLORS.white}
-                  />
-                ) : (
-                  <Ionicons
-                    name="arrow-undo-outline"
-                    size={17}
-                    color={COLORS.white}
-                  />
-                )}
-
-                <Text
-                  style={
-                    styles.modalDangerText
-                  }
-                >
-                  {isSubmitting
-                    ? 'Withdrawing...'
-                    : 'Withdraw request'}
-                </Text>
-              </TouchableOpacity>
-            </View>
           </View>
-        </View>
-      </Modal>
+        ) : null}
+      </StyleHubModal>
     </SafeAreaView>
   );
 }
+
+/* ==========================================================
+   REUSABLE SCREEN COMPONENTS
+   ========================================================== */
 
 function SectionHeading({
   title,
@@ -1302,17 +1047,14 @@ function ScheduleBlock({
     <View
       style={[
         styles.scheduleBlock,
-
-        highlighted
-        && styles.scheduleBlockHighlighted,
+        highlighted && styles.scheduleBlockHighlighted,
       ]}
     >
       <View
         style={[
           styles.scheduleBlockIcon,
-
-          highlighted
-          && styles.scheduleBlockIconHighlighted,
+          highlighted &&
+            styles.scheduleBlockIconHighlighted,
         ]}
       >
         <Ionicons
@@ -1326,44 +1068,33 @@ function ScheduleBlock({
         />
       </View>
 
-      <View
-        style={styles.scheduleBlockCopy}
-      >
+      <View style={styles.scheduleBlockCopy}>
         <Text
           style={[
             styles.scheduleBlockLabel,
-
-            highlighted
-            && styles.scheduleBlockLabelHighlighted,
+            highlighted &&
+              styles.scheduleBlockLabelHighlighted,
           ]}
         >
           {label}
         </Text>
 
-        <Text
-          style={styles.scheduleBlockDate}
-        >
+        <Text style={styles.scheduleBlockDate}>
           {date}
         </Text>
 
-        <Text
-          style={styles.scheduleBlockTime}
-        >
+        <Text style={styles.scheduleBlockTime}>
           {time}
         </Text>
 
         {shop ? (
-          <Text
-            style={styles.scheduleBlockMeta}
-          >
+          <Text style={styles.scheduleBlockMeta}>
             {shop}
           </Text>
         ) : null}
 
         {service ? (
-          <Text
-            style={styles.scheduleBlockMeta}
-          >
+          <Text style={styles.scheduleBlockMeta}>
             {service}
           </Text>
         ) : null}
@@ -1405,9 +1136,7 @@ function ActivityRow({
 }
 
 function ActivityDivider() {
-  return (
-    <View style={styles.activityDivider} />
-  );
+  return <View style={styles.activityDivider} />;
 }
 
 function MessageBox({
@@ -1419,18 +1148,16 @@ function MessageBox({
   title: string;
   message: string;
 }) {
-  const success =
-    type === 'success';
+  const success = type === 'success';
 
   return (
     <View
       style={[
         styles.messageBox,
         {
-          backgroundColor:
-            success
-              ? COLORS.successSoft
-              : COLORS.dangerSoft,
+          backgroundColor: success
+            ? COLORS.successSoft
+            : COLORS.dangerSoft,
         },
       ]}
     >
@@ -1450,17 +1177,14 @@ function MessageBox({
         />
       </View>
 
-      <View
-        style={styles.messageContent}
-      >
+      <View style={styles.messageContent}>
         <Text
           style={[
             styles.messageTitle,
             {
-              color:
-                success
-                  ? COLORS.success
-                  : COLORS.danger,
+              color: success
+                ? COLORS.success
+                : COLORS.danger,
             },
           ]}
         >
@@ -1475,20 +1199,33 @@ function MessageBox({
   );
 }
 
+/* ==========================================================
+   COMPLETE SCREEN STYLES
+   ========================================================== */
+
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
     backgroundColor: COLORS.background,
   },
 
+  scrollView: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
+
+  /* MAIN CONTAINER */
+
   container: {
     width: '100%',
     maxWidth: LAYOUT.contentMaxWidth,
     alignSelf: 'center',
     paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingTop: 40,
     paddingBottom: 48,
   },
+
+  /* TOP NAVIGATION */
 
   topBar: {
     minHeight: 48,
@@ -1523,6 +1260,8 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  /* PAGE HEADER */
+
   header: {
     marginTop: SPACING.lg,
   },
@@ -1551,6 +1290,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.body,
     lineHeight: 21,
   },
+
+  /* PAGE MESSAGES */
 
   messageBox: {
     marginTop: SPACING.lg,
@@ -1585,6 +1326,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 18,
   },
+
+  /* REQUEST STATUS HERO */
 
   statusHero: {
     marginTop: SPACING.xl,
@@ -1674,6 +1417,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.navyMuted,
   },
 
+  /* SECTION HEADINGS */
+
   sectionHeading: {
     marginTop: SPACING.xxl,
     marginBottom: 12,
@@ -1692,6 +1437,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 17,
   },
+
+  /* SCHEDULE COMPARISON */
 
   comparisonCard: {
     padding: 14,
@@ -1774,6 +1521,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.violetSoft,
   },
 
+  /* CUSTOMER REASON */
+
   reasonCard: {
     flexDirection: 'row',
     alignItems: 'flex-start',
@@ -1798,6 +1547,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.body,
     lineHeight: 20,
   },
+
+  /* SHOP OWNER REJECTION */
 
   rejectionCard: {
     flexDirection: 'row',
@@ -1833,6 +1584,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.caption,
     lineHeight: 18,
   },
+
+  /* REQUEST ACTIVITY */
 
   activityCard: {
     overflow: 'hidden',
@@ -1884,6 +1637,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.border,
   },
 
+  /* APPOINTMENT NAVIGATION */
+
   appointmentButton: {
     minHeight: 78,
     marginTop: 14,
@@ -1922,6 +1677,8 @@ const styles = StyleSheet.create({
     fontSize: TYPOGRAPHY.micro,
     lineHeight: 16,
   },
+
+  /* WITHDRAWAL CARD */
 
   withdrawCard: {
     marginTop: SPACING.xxl,
@@ -1983,6 +1740,8 @@ const styles = StyleSheet.create({
     fontWeight: '800',
   },
 
+  /* SECURITY FOOTER */
+
   footerNote: {
     marginTop: SPACING.xxl,
     flexDirection: 'row',
@@ -2000,89 +1759,26 @@ const styles = StyleSheet.create({
     lineHeight: 16,
   },
 
-  modalOverlay: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 18,
-    backgroundColor:
-      'rgba(0, 0, 0, 0.42)',
-  },
+  /* SHARED MODAL ERROR */
 
-  modalCard: {
+  withdrawModalError: {
     width: '100%',
-    maxWidth: 500,
-    padding: 18,
-    borderRadius: RADII.xl,
-    backgroundColor: COLORS.surface,
-    ...SHADOWS.floating,
-  },
-
-  modalIcon: {
-    width: 50,
-    height: 50,
-    alignSelf: 'center',
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 17,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    padding: 11,
+    borderRadius: 10,
     backgroundColor: COLORS.dangerSoft,
   },
 
-  modalTitle: {
-    marginTop: 13,
-    color: COLORS.text,
-    fontSize: TYPOGRAPHY.section,
-    fontWeight: '800',
-    textAlign: 'center',
-  },
-
-  modalText: {
-    marginTop: 6,
-    color: COLORS.textMuted,
-    fontSize: TYPOGRAPHY.body,
-    lineHeight: 20,
-    textAlign: 'center',
-  },
-
-  modalActions: {
-    marginTop: 16,
-    flexDirection: 'row',
-    gap: 8,
-  },
-
-  modalSecondaryButton: {
+  withdrawModalErrorText: {
     flex: 1,
-    minHeight: LAYOUT.compactButtonHeight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.surfaceSoft,
+    color: COLORS.danger,
+    fontSize: 12,
+    lineHeight: 18,
   },
 
-  modalSecondaryText: {
-    color: COLORS.navy,
-    fontSize: TYPOGRAPHY.secondary,
-    fontWeight: '800',
-  },
-
-  modalDangerButton: {
-    flex: 1.25,
-    minHeight: LAYOUT.compactButtonHeight,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 6,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.danger,
-  },
-
-  modalDangerText: {
-    color: COLORS.white,
-    fontSize: TYPOGRAPHY.secondary,
-    fontWeight: '800',
-  },
+  /* LOADING STATE */
 
   loadingContainer: {
     flex: 1,
@@ -2116,10 +1812,12 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 
+  /* UNAVAILABLE STATE */
+
   unavailableContainer: {
     flex: 1,
     paddingHorizontal: LAYOUT.screenPadding,
-    paddingTop: SPACING.sm,
+    paddingTop: 40,
   },
 
   unavailableContent: {

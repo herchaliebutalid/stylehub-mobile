@@ -1,20 +1,26 @@
+
 import { Ionicons } from '@expo/vector-icons';
 import { router } from 'expo-router';
+import { useRef, useState } from 'react';
 import {
-    ActivityIndicator,
-    Alert,
-    SafeAreaView,
-    ScrollView,
-    StatusBar,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  ActivityIndicator,
+  SafeAreaView,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from 'react-native';
 
+import StyleHubModal from '@/src/components/StyleHubModal';
 import { COLORS } from '@/src/constants/colors';
 import { useAuth } from '@/src/context/AuthContext';
 import { useShopOwnerAccess } from '@/src/context/ShopOwnerAccessContext';
+
+/* ==========================================================
+   HELPERS
+   ========================================================== */
 
 function formatSuspendedAt(
   value: string | null | undefined,
@@ -23,233 +29,207 @@ function formatSuspendedAt(
     return null;
   }
 
-  const parsed =
-    new Date(value);
+  const parsed = new Date(value);
 
-  if (
-    Number.isNaN(
-      parsed.getTime(),
-    )
-  ) {
+  if (Number.isNaN(parsed.getTime())) {
     return null;
   }
 
-  return new Intl.DateTimeFormat(
-    'en-PH',
-    {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-      timeZone: 'Asia/Manila',
-    },
-  ).format(parsed);
+  return new Intl.DateTimeFormat('en-PH', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZone: 'Asia/Manila',
+  }).format(parsed);
 }
 
+/* ==========================================================
+   SHOP OWNER SUSPENDED SCREEN
+   ========================================================== */
+
 export default function ShopOwnerSuspendedScreen() {
-  const {
-    logout,
-    isSubmitting,
-  } =
-    useAuth();
+  const { logout, isSubmitting } = useAuth();
 
   const {
     shop,
     isRefreshing,
     errorMessage,
     refreshAccess,
-  } =
-    useShopOwnerAccess();
+  } = useShopOwnerAccess();
 
-  const suspendedAt =
-    formatSuspendedAt(
-      shop?.suspension
-        .suspended_at,
-    );
+  const suspendedAt = formatSuspendedAt(
+    shop?.suspension.suspended_at,
+  );
 
-  const handleLogout =
-    async (): Promise<void> => {
-      try {
-        await logout();
-      } catch {
-        Alert.alert(
-          'Unable to Sign Out',
-          'Please try again.',
-        );
-      }
-    };
+  /* ========================================================
+     SHARED STYLEHUB MODAL STATES
+     ======================================================== */
+
+  const [logoutModal, setLogoutModal] = useState<
+    'confirm' | 'error' | null
+  >(null);
+
+  const [isLoggingOut, setIsLoggingOut] =
+    useState(false);
+
+  const logoutInFlightRef = useRef(false);
+
+  const logoutBusy = isSubmitting || isLoggingOut;
+
+  /* ========================================================
+     OPEN SIGN-OUT CONFIRMATION
+     ======================================================== */
+
+  function openLogoutConfirmation(): void {
+    if (logoutBusy || logoutInFlightRef.current) {
+      return;
+    }
+
+    setLogoutModal('confirm');
+  }
+
+  /* ========================================================
+     CLOSE SIGN-OUT MODAL
+     ======================================================== */
+
+  function closeLogoutModal(): void {
+    if (logoutBusy || logoutInFlightRef.current) {
+      return;
+    }
+
+    setLogoutModal(null);
+  }
+
+  /* ========================================================
+     SIGN OUT USING EXISTING AUTH CONTEXT
+     ======================================================== */
+
+  async function handleLogout(): Promise<void> {
+    if (logoutBusy || logoutInFlightRef.current) {
+      return;
+    }
+
+    logoutInFlightRef.current = true;
+    setIsLoggingOut(true);
+
+    try {
+      // Preserve existing authentication and navigation.
+      await logout();
+
+      setLogoutModal(null);
+    } catch {
+      // Replace native Alert.alert with StyleHubModal.
+      setLogoutModal('error');
+    } finally {
+      logoutInFlightRef.current = false;
+      setIsLoggingOut(false);
+    }
+  }
+
+  /* ========================================================
+     MAIN SCREEN
+     ======================================================== */
 
   return (
-    <SafeAreaView
-      style={
-        styles.safeArea
-      }
-    >
+    <SafeAreaView style={styles.safeArea}>
       <StatusBar
         barStyle="dark-content"
-        backgroundColor={
-          COLORS.background
-        }
+        backgroundColor={COLORS.background}
       />
 
       <ScrollView
-        contentContainerStyle={
-          styles.container
-        }
-        showsVerticalScrollIndicator={
-          false
-        }
+        contentContainerStyle={styles.container}
+        showsVerticalScrollIndicator={false}
       >
-        <View
-          style={
-            styles.statusIcon
-          }
-        >
+        {/* SUSPENSION ICON */}
+
+        <View style={styles.statusIcon}>
           <Ionicons
             name="ban-outline"
             size={38}
-            color={
-              COLORS.danger
-            }
+            color={COLORS.danger}
           />
         </View>
 
-        <Text
-          style={
-            styles.eyebrow
-          }
-        >
+        {/* PAGE HEADER */}
+
+        <Text style={styles.eyebrow}>
           ADMINISTRATIVE STATUS
         </Text>
 
-        <Text
-          style={
-            styles.title
-          }
-        >
+        <Text style={styles.title}>
           Shop Suspended
         </Text>
 
-        <Text
-          style={
-            styles.shopName
-          }
-        >
+        <Text style={styles.shopName}>
           {shop?.name ?? 'StyleHub Shop'}
         </Text>
 
-        <Text
-          style={
-            styles.description
-          }
-        >
-          Your Shop Owner account remains active, but this shop has been
-          suspended by a StyleHub Administrator. Shop management is locked
-          and customers cannot discover or book the shop until reactivation.
+        <Text style={styles.description}>
+          Your Shop Owner account remains active,
+          but this shop has been suspended by a
+          StyleHub Administrator. Shop management
+          is locked and customers cannot discover
+          or book the shop until reactivation.
         </Text>
 
-        <View
-          style={
-            styles.reasonCard
-          }
-        >
-          <View
-            style={
-              styles.reasonHeading
-            }
-          >
+        {/* SUSPENSION REASON */}
+
+        <View style={styles.reasonCard}>
+          <View style={styles.reasonHeading}>
             <Ionicons
               name="information-circle-outline"
               size={19}
-              color={
-                COLORS.danger
-              }
+              color={COLORS.danger}
             />
 
-            <Text
-              style={
-                styles.reasonLabel
-              }
-            >
+            <Text style={styles.reasonLabel}>
               SUSPENSION REASON
             </Text>
           </View>
 
-          <Text
-            style={
-              styles.reasonText
-            }
-          >
-            {shop?.suspension.reason
-              ||
+          <Text style={styles.reasonText}>
+            {shop?.suspension.reason ||
               'No suspension reason is currently available.'}
           </Text>
 
           {suspendedAt ? (
-            <Text
-              style={
-                styles.suspendedAt
-              }
-            >
+            <Text style={styles.suspendedAt}>
               Suspended {suspendedAt}
             </Text>
           ) : null}
         </View>
 
-        <View
-          style={
-            styles.accountCard
-          }
-        >
-          <View
-            style={
-              styles.accountIcon
-            }
-          >
+        {/* ACTIVE ACCOUNT NOTICE */}
+
+        <View style={styles.accountCard}>
+          <View style={styles.accountIcon}>
             <Ionicons
               name="person-circle-outline"
               size={22}
-              color={
-                COLORS.green
-              }
+              color={COLORS.green}
             />
           </View>
 
-          <View
-            style={
-              styles.accountContent
-            }
-          >
-            <Text
-              style={
-                styles.accountTitle
-              }
-            >
+          <View style={styles.accountContent}>
+            <Text style={styles.accountTitle}>
               Your account is still active
             </Text>
 
-            <Text
-              style={
-                styles.accountDescription
-              }
-            >
-              Suspension applies only to the shop. Your login is not revoked,
-              and existing appointment records remain preserved.
+            <Text style={styles.accountDescription}>
+              Suspension applies only to the shop.
+              Your login is not revoked, and existing
+              appointment records remain preserved.
             </Text>
           </View>
         </View>
 
-        <View
-          style={
-            styles.lockedCard
-          }
-        >
-          <Text
-            style={
-              styles.lockedTitle
-            }
-          >
+        {/* RESTRICTIONS */}
+
+        <View style={styles.lockedCard}>
+          <Text style={styles.lockedTitle}>
             While suspended
           </Text>
 
@@ -274,147 +254,179 @@ export default function ShopOwnerSuspendedScreen() {
           />
         </View>
 
+        {/* ACCESS ERROR */}
+
         {errorMessage ? (
-          <View
-            style={
-              styles.errorBox
-            }
-          >
+          <View style={styles.errorBox}>
             <Ionicons
               name="alert-circle-outline"
               size={18}
-              color={
-                COLORS.danger
-              }
+              color={COLORS.danger}
             />
 
-            <Text
-              style={
-                styles.errorText
-              }
-            >
+            <Text style={styles.errorText}>
               {errorMessage}
             </Text>
           </View>
         ) : null}
 
+        {/* REFRESH SHOP STATUS */}
+
         <TouchableOpacity
           activeOpacity={0.82}
-          disabled={
-            isRefreshing
-          }
-          onPress={() =>
-            void refreshAccess()
-          }
+          accessibilityRole="button"
+          accessibilityLabel="Refresh shop status"
+          disabled={isRefreshing}
+          onPress={() => void refreshAccess()}
           style={[
             styles.refreshButton,
-            isRefreshing
-              &&
-              styles.disabledButton,
+            isRefreshing && styles.disabledButton,
           ]}
         >
           {isRefreshing ? (
             <ActivityIndicator
               size="small"
-              color={
-                COLORS.white
-              }
+              color={COLORS.white}
             />
           ) : (
             <>
               <Ionicons
                 name="refresh-outline"
                 size={18}
-                color={
-                  COLORS.white
-                }
+                color={COLORS.white}
               />
 
-              <Text
-                style={
-                  styles.refreshText
-                }
-              >
+              <Text style={styles.refreshText}>
                 Refresh Shop Status
               </Text>
             </>
           )}
         </TouchableOpacity>
 
+        {/* ACCOUNT SECURITY */}
+
         <TouchableOpacity
           activeOpacity={0.82}
+          accessibilityRole="button"
+          accessibilityLabel="Open account security"
           onPress={() =>
             router.push(
               '/(shop-owner)/shop-owner-security',
             )
           }
-          style={
-            styles.securityButton
-          }
+          style={styles.securityButton}
         >
           <Ionicons
             name="shield-checkmark-outline"
             size={18}
-            color={
-              COLORS.primary
-            }
+            color={COLORS.primary}
           />
 
-          <Text
-            style={
-              styles.securityText
-            }
-          >
+          <Text style={styles.securityText}>
             Account Security
           </Text>
         </TouchableOpacity>
 
+        {/* SIGN OUT */}
+
         <TouchableOpacity
           activeOpacity={0.82}
-          disabled={
-            isSubmitting
-          }
-          onPress={() =>
-            void handleLogout()
-          }
+          accessibilityRole="button"
+          accessibilityLabel="Sign out"
+          disabled={logoutBusy}
+          onPress={openLogoutConfirmation}
           style={[
             styles.logoutButton,
-            isSubmitting
-              &&
-              styles.disabledButton,
+            logoutBusy && styles.disabledButton,
           ]}
         >
-          {isSubmitting ? (
+          {logoutBusy ? (
             <ActivityIndicator
               size="small"
-              color={
-                COLORS.danger
-              }
+              color={COLORS.danger}
             />
           ) : (
             <>
               <Ionicons
                 name="log-out-outline"
                 size={18}
-                color={
-                  COLORS.danger
-                }
+                color={COLORS.danger}
               />
 
-              <Text
-                style={
-                  styles.logoutText
-                }
-              >
+              <Text style={styles.logoutText}>
                 Sign Out
               </Text>
             </>
           )}
         </TouchableOpacity>
       </ScrollView>
+
+      {/* ==================================================
+          SHARED STYLEHUB MODAL
+
+          Red confirmation: Sign out
+          Red error: Unable to sign out
+          ================================================== */}
+
+      <StyleHubModal
+        visible={logoutModal !== null}
+        onClose={closeLogoutModal}
+        title={
+          logoutModal === 'error'
+            ? 'Unable to sign out'
+            : 'Sign out of StyleHub?'
+        }
+        message={
+          logoutModal === 'error'
+            ? 'Please try again.'
+            : 'Your current Shop Owner session will end. You can sign in again later. Signing out does not change your shop suspension status.'
+        }
+        tone="danger"
+        icon={
+          logoutModal === 'error'
+            ? 'alert-circle-outline'
+            : 'log-out-outline'
+        }
+        dismissOnBackdrop={false}
+        actions={
+          logoutModal === 'error'
+            ? [
+                {
+                  label: 'Close',
+                  variant: 'secondary',
+                  onPress: closeLogoutModal,
+                },
+                {
+                  label: 'Try again',
+                  variant: 'primary',
+                  icon: 'refresh-outline',
+                  loading: logoutBusy,
+                  onPress: () => void handleLogout(),
+                },
+              ]
+            : [
+                {
+                  label: 'Stay signed in',
+                  variant: 'secondary',
+                  onPress: closeLogoutModal,
+                },
+                {
+                  label: 'Sign out',
+                  variant: 'danger',
+                  icon: 'log-out-outline',
+                  loading: logoutBusy,
+                  onPress: () => void handleLogout(),
+                },
+              ]
+        }
+      />
     </SafeAreaView>
   );
 }
+
+/* ==========================================================
+   REUSABLE LOCKED FEATURE ROW
+   ========================================================== */
 
 function LockedRow({
   icon,
@@ -428,300 +440,281 @@ function LockedRow({
   text: string;
 }) {
   return (
-    <View
-      style={
-        styles.lockedRow
-      }
-    >
+    <View style={styles.lockedRow}>
       <Ionicons
         name={icon}
         size={17}
-        color={
-          COLORS.textMuted
-        }
+        color={COLORS.textMuted}
       />
 
-      <Text
-        style={
-          styles.lockedText
-        }
-      >
+      <Text style={styles.lockedText}>
         {text}
       </Text>
     </View>
   );
 }
 
-const styles =
-  StyleSheet.create({
-    safeArea: {
-      flex: 1,
-      backgroundColor:
-        COLORS.background,
-    },
+/* ==========================================================
+   COMPLETE SCREEN STYLES
+   ========================================================== */
 
-    container: {
-      flexGrow: 1,
-      alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingTop: 42,
-      paddingBottom: 40,
-      backgroundColor:
-        COLORS.background,
-    },
+const styles = StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: COLORS.background,
+  },
 
-    statusIcon: {
-      width: 78,
-      height: 78,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: 25,
-      backgroundColor:
-        COLORS.dangerSoft,
-    },
+  container: {
+    flexGrow: 1,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingTop: 42,
+    paddingBottom: 40,
+    backgroundColor: COLORS.background,
+  },
 
-    eyebrow: {
-      marginTop: 20,
-      color:
-        COLORS.danger,
-      fontSize: 8,
-      fontWeight: '700',
-      letterSpacing: 1.5,
-    },
+  /* SUSPENSION HEADER */
 
-    title: {
-      marginTop: 7,
-      color:
-        COLORS.text,
-      fontSize: 25,
-      fontWeight: '800',
-      textAlign: 'center',
-    },
+  statusIcon: {
+    width: 78,
+    height: 78,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 25,
+    backgroundColor: COLORS.dangerSoft,
+  },
 
-    shopName: {
-      marginTop: 8,
-      color:
-        COLORS.primary,
-      fontSize: 13,
-      fontWeight: '700',
-      textAlign: 'center',
-    },
+  eyebrow: {
+    marginTop: 20,
+    color: COLORS.danger,
+    fontSize: 8,
+    fontWeight: '700',
+    letterSpacing: 1.5,
+  },
 
-    description: {
-      maxWidth: 520,
-      marginTop: 13,
-      color:
-        COLORS.textMuted,
-      fontSize: 10,
-      lineHeight: 17,
-      textAlign: 'center',
-    },
+  title: {
+    marginTop: 7,
+    color: COLORS.text,
+    fontSize: 25,
+    fontWeight: '800',
+    textAlign: 'center',
+  },
 
-    reasonCard: {
-      width: '100%',
-      marginTop: 22,
-      padding: 16,
-      borderWidth: 1,
-      borderColor: '#F2CCCC',
-      borderRadius: 17,
-      backgroundColor:
-        COLORS.dangerSoft,
-    },
+  shopName: {
+    marginTop: 8,
+    color: COLORS.primary,
+    fontSize: 13,
+    fontWeight: '700',
+    textAlign: 'center',
+  },
 
-    reasonHeading: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 7,
-    },
+  description: {
+    maxWidth: 520,
+    marginTop: 13,
+    color: COLORS.textMuted,
+    fontSize: 10,
+    lineHeight: 17,
+    textAlign: 'center',
+  },
 
-    reasonLabel: {
-      color:
-        COLORS.danger,
-      fontSize: 8,
-      fontWeight: '800',
-      letterSpacing: 0.8,
-    },
+  /* SUSPENSION REASON */
 
-    reasonText: {
-      marginTop: 9,
-      color:
-        '#874747',
-      fontSize: 10,
-      lineHeight: 16,
-    },
+  reasonCard: {
+    width: '100%',
+    marginTop: 22,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#F2CCCC',
+    borderRadius: 17,
+    backgroundColor: COLORS.dangerSoft,
+  },
 
-    suspendedAt: {
-      marginTop: 10,
-      color:
-        '#A46D6D',
-      fontSize: 8,
-      fontWeight: '500',
-    },
+  reasonHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
 
-    accountCard: {
-      width: '100%',
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      gap: 10,
-      marginTop: 12,
-      padding: 15,
-      borderRadius: 17,
-      backgroundColor:
-        COLORS.greenSoft,
-    },
+  reasonLabel: {
+    color: COLORS.danger,
+    fontSize: 8,
+    fontWeight: '800',
+    letterSpacing: 0.8,
+  },
 
-    accountIcon: {
-      width: 34,
-      height: 34,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: 11,
-      backgroundColor:
-        COLORS.white,
-    },
+  reasonText: {
+    marginTop: 9,
+    color: '#874747',
+    fontSize: 10,
+    lineHeight: 16,
+  },
 
-    accountContent: {
-      flex: 1,
-    },
+  suspendedAt: {
+    marginTop: 10,
+    color: '#A46D6D',
+    fontSize: 8,
+    fontWeight: '500',
+  },
 
-    accountTitle: {
-      color:
-        COLORS.green,
-      fontSize: 10,
-      fontWeight: '700',
-    },
+  /* ACCOUNT STATUS */
 
-    accountDescription: {
-      marginTop: 5,
-      color:
-        '#527A68',
-      fontSize: 8,
-      lineHeight: 14,
-    },
+  accountCard: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 10,
+    marginTop: 12,
+    padding: 15,
+    borderRadius: 17,
+    backgroundColor: COLORS.greenSoft,
+  },
 
-    lockedCard: {
-      width: '100%',
-      marginTop: 12,
-      padding: 16,
-      borderWidth: 1,
-      borderColor:
-        COLORS.border,
-      borderRadius: 17,
-      backgroundColor:
-        COLORS.surface,
-    },
+  accountIcon: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 11,
+    backgroundColor: COLORS.white,
+  },
 
-    lockedTitle: {
-      marginBottom: 3,
-      color:
-        COLORS.text,
-      fontSize: 11,
-      fontWeight: '700',
-    },
+  accountContent: {
+    flex: 1,
+  },
 
-    lockedRow: {
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      gap: 9,
-      paddingVertical: 8,
-    },
+  accountTitle: {
+    color: COLORS.green,
+    fontSize: 10,
+    fontWeight: '700',
+  },
 
-    lockedText: {
-      flex: 1,
-      color:
-        COLORS.textMuted,
-      fontSize: 9,
-      lineHeight: 15,
-    },
+  accountDescription: {
+    marginTop: 5,
+    color: '#527A68',
+    fontSize: 8,
+    lineHeight: 14,
+  },
 
-    errorBox: {
-      width: '100%',
-      flexDirection: 'row',
-      alignItems: 'flex-start',
-      gap: 8,
-      marginTop: 12,
-      padding: 13,
-      borderWidth: 1,
-      borderColor: '#F2CCCC',
-      borderRadius: 14,
-      backgroundColor:
-        COLORS.dangerSoft,
-    },
+  /* LOCKED FEATURES */
 
-    errorText: {
-      flex: 1,
-      color:
-        COLORS.danger,
-      fontSize: 9,
-      lineHeight: 15,
-    },
+  lockedCard: {
+    width: '100%',
+    marginTop: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 17,
+    backgroundColor: COLORS.surface,
+  },
 
-    refreshButton: {
-      width: '100%',
-      minHeight: 52,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-      marginTop: 18,
-      borderRadius: 16,
-      backgroundColor:
-        COLORS.primary,
-    },
+  lockedTitle: {
+    marginBottom: 3,
+    color: COLORS.text,
+    fontSize: 11,
+    fontWeight: '700',
+  },
 
-    refreshText: {
-      color:
-        COLORS.white,
-      fontSize: 10,
-      fontWeight: '700',
-    },
+  lockedRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 9,
+    paddingVertical: 8,
+  },
 
-    securityButton: {
-      width: '100%',
-      minHeight: 50,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-      marginTop: 10,
-      borderWidth: 1,
-      borderColor:
-        COLORS.border,
-      borderRadius: 16,
-      backgroundColor:
-        COLORS.surface,
-    },
+  lockedText: {
+    flex: 1,
+    color: COLORS.textMuted,
+    fontSize: 9,
+    lineHeight: 15,
+  },
 
-    securityText: {
-      color:
-        COLORS.primary,
-      fontSize: 10,
-      fontWeight: '700',
-    },
+  /* ACCESS ERROR */
 
-    logoutButton: {
-      width: '100%',
-      minHeight: 50,
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 8,
-      marginTop: 10,
-      borderWidth: 1,
-      borderColor: '#F2CCCC',
-      borderRadius: 16,
-      backgroundColor:
-        '#FFF7F7',
-    },
+  errorBox: {
+    width: '100%',
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: 8,
+    marginTop: 12,
+    padding: 13,
+    borderWidth: 1,
+    borderColor: '#F2CCCC',
+    borderRadius: 14,
+    backgroundColor: COLORS.dangerSoft,
+  },
 
-    logoutText: {
-      color:
-        COLORS.danger,
-      fontSize: 10,
-      fontWeight: '700',
-    },
+  errorText: {
+    flex: 1,
+    color: COLORS.danger,
+    fontSize: 9,
+    lineHeight: 15,
+  },
 
-    disabledButton: {
-      opacity: 0.55,
-    },
-  });
+  /* REFRESH BUTTON */
+
+  refreshButton: {
+    width: '100%',
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 18,
+    borderRadius: 16,
+    backgroundColor: COLORS.primary,
+  },
+
+  refreshText: {
+    color: COLORS.white,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+
+  /* ACCOUNT SECURITY BUTTON */
+
+  securityButton: {
+    width: '100%',
+    minHeight: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 16,
+    backgroundColor: COLORS.surface,
+  },
+
+  securityText: {
+    color: COLORS.primary,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+
+  /* SIGN OUT BUTTON */
+
+  logoutButton: {
+    width: '100%',
+    minHeight: 50,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#F2CCCC',
+    borderRadius: 16,
+    backgroundColor: '#FFF7F7',
+  },
+
+  logoutText: {
+    color: COLORS.danger,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+
+  disabledButton: {
+    opacity: 0.55,
+  },
+});
